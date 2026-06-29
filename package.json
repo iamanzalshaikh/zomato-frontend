@@ -46,6 +46,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "cross-env": "^7.0.3",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~56.0.4",
     "typescript": "~6.0.3"
@@ -55,6 +56,12 @@
     "reset-project": "node ./scripts/reset-project.js",
     "android:reverse": "adb reverse tcp:5000 tcp:5000",
     "android": "npm run android:reverse && expo run:android",
+    "android:release:local": "npm run android:reverse && expo run:android --variant release",
+    "android:release:prod": "cross-env NODE_ENV=production expo run:android --variant release",
+    "android:apk:prod": "cross-env NODE_ENV=production npx expo prebuild --platform android && cd android && gradlew.bat assembleRelease",
+    "android:apk:local": "npx expo prebuild --platform android && cd android && gradlew.bat assembleRelease",
+    "eas:build:prod": "eas build --platform android --profile production",
+    "eas:build:preview": "eas build --platform android --profile preview",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint"

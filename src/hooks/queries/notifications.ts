@@ -1,16 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from '@/services/notifications';
+import { perfQuery } from '@/lib/perf';
 
 export const notificationKeys = {
   all: ['notifications'] as const,
 };
 
 export function useNotificationsQuery() {
-  return useQuery({
+  const q = useQuery({
     queryKey: notificationKeys.all,
     queryFn: fetchNotifications,
+    staleTime: 60 * 1000,       // 1 minute — fresh enough without hammering API
+    gcTime: 5 * 60 * 1000,
   });
+  perfQuery('Notifications', q.isFetching, q.dataUpdatedAt);
+  return q;
 }
 
 export function useMarkNotificationReadMutation() {

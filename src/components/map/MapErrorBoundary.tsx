@@ -23,7 +23,7 @@ export class MapErrorBoundary extends Component<Props, State> {
         <View style={[styles.fallback, { height: this.props.height ?? 260 }]}>
           <ThemedText themeColor="textSecondary" style={styles.text}>
             Map could not load. Rebuild the app with{' '}
-            <ThemedText type="defaultSemiBold">npx expo run:android</ThemedText> so Google Maps is linked.
+            <ThemedText type="code">npx expo run:android</ThemedText> so Google Maps is linked.
           </ThemedText>
         </View>
       );

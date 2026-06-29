@@ -20,11 +20,6 @@ import { saveAuthFromResponse } from '@/lib/auth';
 import { getApiUrl } from '@/config/env';
 import { useTheme } from '@/hooks/use-theme';
 
-function extractDevOtp(body: unknown): string | undefined {
-  const data = (body as { data?: { devOtp?: string } })?.data;
-  return data?.devOtp;
-}
-
 function extractErrorMessage(error: unknown, fallback: string): string {
   const err = error as { message?: string; data?: { message?: string } };
   return err?.data?.message ?? err?.message ?? fallback;
@@ -42,7 +37,6 @@ export default function LoginScreen() {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
   const [resendTimer, setResendTimer] = useState(0);
 
   const inputRefs = useRef<(TextInput | null)[]>([]);
@@ -134,18 +128,12 @@ export default function LoginScreen() {
 
     setBusy(true);
     setError(null);
-    setDevOtpHint(null);
     try {
       if (__DEV__) console.log('📨 [AUTH] send-otp', { email: emailTrim, api: getApiUrl() });
-      const body = await apiFetch('/auth/send-otp', {
+      await apiFetch('/auth/send-otp', {
         method: 'POST',
         body: JSON.stringify({ email: emailTrim, purpose: 'login' }),
       });
-      const devOtp = extractDevOtp(body);
-      if (devOtp) {
-        setDevOtpHint(devOtp);
-        if (__DEV__) console.log('🧪 [DEV OTP]', devOtp);
-      }
       setMode('login');
       setStep('otp');
       setResendTimer(60);
@@ -155,15 +143,10 @@ export default function LoginScreen() {
       if (status === 404) {
         try {
           if (__DEV__) console.log('📨 [AUTH] send-otp (signup)', { email: emailTrim, purpose: 'signup' });
-          const body = await apiFetch('/auth/send-otp', {
+          await apiFetch('/auth/send-otp', {
             method: 'POST',
             body: JSON.stringify({ email: emailTrim, purpose: 'signup' }),
           });
-          const devOtp = extractDevOtp(body);
-          if (devOtp) {
-            setDevOtpHint(devOtp);
-            if (__DEV__) console.log('🧪 [DEV OTP]', devOtp);
-          }
           setMode('signup');
           setStep('otp');
           setResendTimer(60);
@@ -226,15 +209,10 @@ export default function LoginScreen() {
 
     setBusy(true);
     try {
-      const body = await apiFetch('/auth/send-otp', {
+      await apiFetch('/auth/send-otp', {
         method: 'POST',
         body: JSON.stringify({ email: emailTrim, purpose: mode }),
       });
-      const devOtp = extractDevOtp(body);
-      if (devOtp) {
-        setDevOtpHint(devOtp);
-        if (__DEV__) console.log('🧪 [DEV OTP]', devOtp);
-      }
       setResendTimer(60);
       setOtp(['', '', '', '', '', '']);
       requestAnimationFrame(() => inputRefs.current[0]?.focus());
@@ -319,15 +297,6 @@ export default function LoginScreen() {
                 </Text>
               )}
             </View>
-
-            {__DEV__ && step === 'otp' && devOtpHint ? (
-              <View style={[styles.devOtpBanner, { backgroundColor: `${theme.primary}18`, borderColor: theme.primary }]}>
-                <Text style={[styles.devOtpLabel, { color: theme.textSecondary }]}>
-                  Gmail failed — use dev OTP:
-                </Text>
-                <Text style={[styles.devOtpCode, { color: theme.primary }]}>{devOtpHint}</Text>
-              </View>
-            ) : null}
 
             {error ? (
               <Text style={[styles.errorText, { color: '#e53935' }]}>{error}</Text>
@@ -719,23 +688,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'PlusJakartaSans_500Medium',
     textAlign: 'center',
-  },
-  devOtpBanner: {
-    marginBottom: 12,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  devOtpLabel: {
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    marginBottom: 4,
-  },
-  devOtpCode: {
-    fontSize: 28,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    letterSpacing: 4,
   },
   errorText: {
     marginBottom: 10,

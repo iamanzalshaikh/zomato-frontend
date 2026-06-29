@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -7,14 +7,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { OrderTrackingMap } from '@/components/order-tracking-map';
-import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useOrderByIdQuery, useOrderTrackQuery } from '@/hooks/queries/orderDetail';
 import { fetchOrderRoute } from '@/services/orders';
 import { useQuery } from '@tanstack/react-query';
 import { useOrderSocket } from '@/hooks/use-order-socket';
 
-function pickCoord(...sources: Array<{ latitude?: number; longitude?: number } | null | undefined>) {
+function pickCoord(...sources: ({ latitude?: number; longitude?: number } | null | undefined)[]) {
   for (const s of sources) {
     const lat = Number(s?.latitude);
     const lng = Number(s?.longitude);
@@ -73,11 +72,15 @@ export default function TrackOrderScreen() {
 
   const status = String(tracking?.orderStatus ?? tracking?.status ?? order?.orderStatus ?? 'PENDING');
   
+  // Use a ref for the mount time so it's stable across renders.
+  // Date.now() inside useMemo is impure (ESLint react-hooks/purity).
+  const mountTimeRef = useRef(Date.now());
+
   const remainingMins = useMemo(() => {
     if (tracking?.etaMinutes != null) return tracking.etaMinutes;
     const estTime = tracking?.estimatedDeliveryTime ?? order?.estimatedDeliveryTime;
     if (!estTime) return null;
-    const diffMs = new Date(estTime).getTime() - Date.now();
+    const diffMs = new Date(estTime).getTime() - mountTimeRef.current;
     const diffMins = Math.ceil(diffMs / (60 * 1000));
     return diffMins > 0 ? diffMins : 0;
   }, [tracking?.etaMinutes, tracking?.estimatedDeliveryTime, order?.estimatedDeliveryTime]);
@@ -105,19 +108,6 @@ export default function TrackOrderScreen() {
     (tracking?.liveLocation as { heading?: number } | undefined)?.heading ??
     (tracking?.riderLocation as { heading?: number } | undefined)?.heading;
 
-  const routeQ = useQuery({
-    queryKey: [
-      'order-route',
-      id,
-      riderCoord ? Math.round(riderCoord.latitude * 200) : 0,
-      riderCoord ? Math.round(riderCoord.longitude * 200) : 0,
-      status,
-    ],
-    queryFn: () => fetchOrderRoute(id),
-    enabled: Boolean(id) && Boolean(riderCoord || restaurantCoord),
-    staleTime: 45_000,
-  });
-
   const customerCoord = pickCoord(
     tracking?.deliveryLocation,
     order?.customerAddress,
@@ -134,6 +124,19 @@ export default function TrackOrderScreen() {
       : null,
     order?.restaurant?.location,
   );
+
+  const routeQ = useQuery({
+    queryKey: [
+      'order-route',
+      id,
+      riderCoord ? Math.round(riderCoord.latitude * 200) : 0,
+      riderCoord ? Math.round(riderCoord.longitude * 200) : 0,
+      status,
+    ],
+    queryFn: () => fetchOrderRoute(id),
+    enabled: Boolean(id) && Boolean(riderCoord || restaurantCoord),
+    staleTime: 45_000,
+  });
 
   const timeline = useMemo(() => {
     const logs = tracking?.timelineLogs ?? order?.timelineLogs ?? [];

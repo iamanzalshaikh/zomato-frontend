@@ -19,6 +19,8 @@ export function useCartQuery() {
   return useQuery({
     queryKey: cartKeys.all,
     queryFn: fetchCart,
+    staleTime: 30_000,
+    refetchOnMount: false,
   });
 }
 

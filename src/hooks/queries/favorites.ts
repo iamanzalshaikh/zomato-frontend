@@ -1,16 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { addFavorite, fetchFavorites, removeFavorite } from '@/services/favorites';
+import { perfQuery } from '@/lib/perf';
 
 export const favoritesKeys = {
   all: ['favorites'] as const,
 };
 
 export function useFavoritesQuery() {
-  return useQuery({
+  const q = useQuery({
     queryKey: favoritesKeys.all,
     queryFn: fetchFavorites,
+    staleTime: 3 * 60 * 1000,   // 3 minutes — favorites don't change often
+    gcTime: 10 * 60 * 1000,
   });
+  perfQuery('Favorites', q.isFetching, q.dataUpdatedAt);
+  return q;
 }
 
 export function useToggleFavoriteMutation() {

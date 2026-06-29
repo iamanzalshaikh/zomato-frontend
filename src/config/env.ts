@@ -12,11 +12,22 @@ import { Platform } from 'react-native';
 
 const isProduction = !__DEV__;
 
-const PRODUCTION_API_URL = 'https://zomato-backend-pt66.onrender.com/api/v1';
-const PRODUCTION_SOCKET_URL = 'https://zomato-backend-pt66.onrender.com';
+/** Render production backend — used for release APK / EAS builds */
+export const BACKEND_URLS = {
+  production: {
+    base: 'https://zomato-backend-pt66.onrender.com',
+    api: 'https://zomato-backend-pt66.onrender.com/api/v1',
+    socket: 'https://zomato-backend-pt66.onrender.com',
+  },
+  /** Local: http://<YOUR_PC_LAN_IP>:5000 — set EXPO_PUBLIC_* in .env for dev */
+  localPort: 5000,
+} as const;
 
-const DEFAULT_BACKEND_PORT = 5000;
-const FALLBACK_LAN_HOST = '192.168.1.100';
+const PRODUCTION_API_URL = BACKEND_URLS.production.api;
+const PRODUCTION_SOCKET_URL = BACKEND_URLS.production.socket;
+
+const DEFAULT_BACKEND_PORT = BACKEND_URLS.localPort;
+const FALLBACK_LAN_HOST = '192.168.1.101';
 /** 127.0.0.1 works with `adb reverse tcp:5000 tcp:5000`; LAN IP works on Windows emulator without adb */
 const ANDROID_EMULATOR_HOST =
   process.env.EXPO_PUBLIC_ANDROID_API_HOST?.trim() || FALLBACK_LAN_HOST;

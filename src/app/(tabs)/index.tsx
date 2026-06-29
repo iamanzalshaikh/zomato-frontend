@@ -6,23 +6,25 @@ import {
   RefreshControl,
   StyleSheet,
   View,
-  Image,
   ScrollView,
   Text,
-  ImageBackground,
   Platform,
   ActivityIndicator,
   Modal,
   Animated,
   Easing,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { fetchRestaurants, fetchRecommendedRestaurants, type Restaurant, type PaginationMeta } from '@/services/restaurants';
+import { fetchRestaurants, fetchRecommendedRestaurants, fetchRestaurantById, type Restaurant, type PaginationMeta } from '@/services/restaurants';
+import { fetchMenuItemsByRestaurant, fetchCombosByRestaurant } from '@/services/menu';
+import { restaurantKeys } from '@/hooks/queries/restaurants';
+import { menuKeys } from '@/hooks/queries/menu';
 import { useTheme } from '@/hooks/use-theme';
 import { useCart } from '@/hooks/use-cart';
 import { useQueryClient } from '@tanstack/react-query';
@@ -36,6 +38,7 @@ import { getCartDisplayTotal, getCartItemCount, getCartRestaurantName } from '@/
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { useUnreadNotificationCount } from '@/hooks/use-unread-notifications';
 import { useRestaurantOfferBadges } from '@/hooks/use-restaurant-offers';
+import { perfScreen } from '@/lib/perf';
 
 const CATEGORIES = [
   { name: 'All', image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=150&auto=format&fit=crop&q=80' },
@@ -89,11 +92,13 @@ const RestaurantItem = memo(({ item, index, theme, offerBadge, onPress }: Restau
     >
       <ThemedView type="backgroundElement" style={styles.rCard}>
         {/* Restaurant Food Banner */}
-        <ImageBackground
-          source={getRestaurantImage(item, index)}
-          style={styles.rHero}
-          resizeMode="cover"
-        >
+        <View style={styles.rHero}>
+          <Image
+            source={getRestaurantImage(item, index)}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            transition={200}
+          />
           {/* Semi-transparent dark overlay to pop text & badges */}
           <View style={styles.imageOverlay} />
 
@@ -116,7 +121,7 @@ const RestaurantItem = memo(({ item, index, theme, offerBadge, onPress }: Restau
               {item.averageDeliveryTime ?? 30} min | {(item.distanceKm ?? 1.4).toFixed(1)} km
             </Text>
           </View>
-        </ImageBackground>
+        </View>
 
         {/* Zomato-style Card Body details */}
         <View style={styles.rBody}>
@@ -158,6 +163,76 @@ const RestaurantItem = memo(({ item, index, theme, offerBadge, onPress }: Restau
 });
 
 RestaurantItem.displayName = 'RestaurantItem';
+
+/**
+ * Wrapper that provides a stable onPress callback so React.memo on RestaurantItem
+ * actually prevents re-renders when the parent HomeScreen re-renders.
+ * (Hooks cannot be called inside renderItem callbacks, so a component is needed.)
+ */
+interface RestaurantListItemProps {
+  item: Restaurant;
+  index: number;
+  theme: any;
+  offerBadges: Record<string, string | null>;
+  onPressRestaurant: (restaurantId: string) => void;
+}
+
+const RestaurantListItem = memo(({ item, index, theme, offerBadges, onPressRestaurant }: RestaurantListItemProps) => {
+  const handlePress = useCallback(() => {
+    onPressRestaurant(item._id);
+  }, [item._id, onPressRestaurant]);
+
+  return (
+    <RestaurantItem
+      item={item}
+      index={index}
+      theme={theme}
+      offerBadge={offerBadges[item._id] ?? null}
+      onPress={handlePress}
+    />
+  );
+});
+
+RestaurantListItem.displayName = 'RestaurantListItem';
+
+interface CategoryChipProps {
+  category: { name: string; image: string };
+  isSelected: boolean;
+  onSelect: (name: string) => void;
+  theme: any;
+}
+
+const CategoryChip = memo(({ category, isSelected, onSelect, theme }: CategoryChipProps) => {
+  const handlePress = useCallback(() => {
+    onSelect(category.name);
+  }, [category.name, onSelect]);
+
+  return (
+    <Pressable onPress={handlePress} style={styles.categoryItem}>
+      <View style={[
+        styles.categoryIcon,
+        { backgroundColor: theme.backgroundSelected },
+        isSelected && { borderColor: theme.primary, borderWidth: 2.5, backgroundColor: theme.primarySoft }
+      ]}>
+        <Image
+          source={{ uri: category.image }}
+          style={styles.categoryImage}
+          contentFit="cover"
+          transition={200}
+        />
+      </View>
+      <Text style={[
+        styles.categoryText,
+        { color: theme.text },
+        isSelected && { color: theme.primary, fontFamily: 'PlusJakartaSans_850ExtraBold', fontWeight: '800' }
+      ]}>
+        {category.name}
+      </Text>
+    </Pressable>
+  );
+});
+
+CategoryChip.displayName = 'CategoryChip';
 
 export default function HomeScreen() {
   const theme = useTheme();
@@ -212,6 +287,10 @@ export default function HomeScreen() {
     setActiveCuisine,
     resetFilters,
   } = useFilterStore();
+
+  const handleSelectCuisine = useCallback((name: string) => {
+    setActiveCuisine(name === 'All' ? null : name);
+  }, [setActiveCuisine]);
 
   const [recommendedItems, setRecommendedItems] = useState<Restaurant[]>([]);
 
@@ -400,20 +479,40 @@ export default function HomeScreen() {
     }
   };
 
+  const openRestaurant = useCallback(
+    (restaurantId: string) => {
+      void qc.prefetchQuery({
+        queryKey: restaurantKeys.byId(restaurantId),
+        queryFn: () => fetchRestaurantById(restaurantId),
+        staleTime: 3 * 60 * 1000,
+      });
+      void qc.prefetchQuery({
+        queryKey: menuKeys.byRestaurant(restaurantId),
+        queryFn: () => fetchMenuItemsByRestaurant(restaurantId),
+        staleTime: 2 * 60 * 1000,
+      });
+      void qc.prefetchQuery({
+        queryKey: menuKeys.combos(restaurantId),
+        queryFn: () => fetchCombosByRestaurant(restaurantId),
+        staleTime: 2 * 60 * 1000,
+      });
+      router.push({
+        pathname: '/restaurant/[restaurantId]',
+        params: { restaurantId },
+      });
+    },
+    [qc, router],
+  );
+
   const renderRestaurantItem = useCallback(({ item, index }: { item: Restaurant; index: number }) => (
-    <RestaurantItem
+    <RestaurantListItem
       item={item}
       index={index}
       theme={theme}
-      offerBadge={offerBadges[item._id] ?? null}
-      onPress={() =>
-        router.push({
-          pathname: '/restaurant/[restaurantId]',
-          params: { restaurantId: item._id },
-        })
-      }
+      offerBadges={offerBadges}
+      onPressRestaurant={openRestaurant}
     />
-  ), [theme, router, offerBadges]);
+  ), [theme, offerBadges, openRestaurant]);
 
   // Filters Modal Helper functions
   const openFiltersModal = () => {
@@ -460,6 +559,10 @@ export default function HomeScreen() {
           onEndReached={onLoadMore}
           onEndReachedThreshold={0.4}
           contentContainerStyle={{ paddingBottom: listBottomPadding }}
+          initialNumToRender={6}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS === 'android'}
           ListFooterComponent={
             loadingMore ? (
               <View style={styles.loaderFooter}>
@@ -541,7 +644,8 @@ export default function HomeScreen() {
                     <Image
                       source={{ uri: user.profileImage }}
                       style={{ width: '100%', height: '100%' }}
-                      resizeMode="cover"
+                      contentFit="cover"
+                      transition={200}
                     />
                   ) : (
                     <View style={{ width: '100%', height: '100%', backgroundColor: theme.primary, justifyContent: 'center', alignItems: 'center' }}>
@@ -625,30 +729,13 @@ export default function HomeScreen() {
                   {CATEGORIES.map((c) => {
                     const isSelected = c.name === 'All' ? activeCuisine === null : activeCuisine === c.name;
                     return (
-                      <Pressable 
-                        key={c.name} 
-                        onPress={() => setActiveCuisine(c.name === 'All' ? null : c.name)}
-                        style={styles.categoryItem}
-                      >
-                        <View style={[
-                          styles.categoryIcon, 
-                          { backgroundColor: theme.backgroundSelected },
-                          isSelected && { borderColor: theme.primary, borderWidth: 2.5, backgroundColor: theme.primarySoft }
-                        ]}>
-                          <Image
-                            source={{ uri: c.image }}
-                            style={styles.categoryImage}
-                            resizeMode="cover"
-                          />
-                        </View>
-                        <Text style={[
-                          styles.categoryText, 
-                          { color: theme.text },
-                          isSelected && { color: theme.primary, fontFamily: 'PlusJakartaSans_850ExtraBold', fontWeight: '800' }
-                        ]}>
-                          {c.name}
-                        </Text>
-                      </Pressable>
+                      <CategoryChip
+                        key={c.name}
+                        category={c}
+                        isSelected={isSelected}
+                        onSelect={handleSelectCuisine}
+                        theme={theme}
+                      />
                     );
                   })}
                 </ScrollView>
@@ -740,20 +827,16 @@ export default function HomeScreen() {
                       return (
                         <Pressable
                           key={`rec-${item._id}`}
-                          onPress={() =>
-                            router.push({
-                              pathname: '/restaurant/[restaurantId]',
-                              params: { restaurantId: item._id },
-                            })
-                          }
+                          onPress={() => openRestaurant(item._id)}
                           style={styles.recCard}
                         >
-                          <ImageBackground
-                            source={getRestaurantImage(item, index)}
-                            style={styles.recHero}
-                            imageStyle={{ borderRadius: 12 }}
-                            resizeMode="cover"
-                          >
+                          <View style={styles.recHero}>
+                            <Image
+                              source={getRestaurantImage(item, index)}
+                              style={[StyleSheet.absoluteFill, { borderRadius: 12 }]}
+                              contentFit="cover"
+                              transition={200}
+                            />
                             <View style={styles.imageOverlayRec} />
                             
                             {discountText ? (
@@ -766,7 +849,7 @@ export default function HomeScreen() {
                             <View style={[styles.recRatingPill, { backgroundColor: ratingColor }]}>
                               <Text style={styles.recRatingText}>★ {rating.toFixed(1)}</Text>
                             </View>
-                          </ImageBackground>
+                          </View>
 
                           {/* Details */}
                           <View style={styles.recDetails}>

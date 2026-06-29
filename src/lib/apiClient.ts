@@ -3,16 +3,19 @@ import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'ax
 import { getApiUrl } from '@/config/env';
 import { refreshAccessToken } from '@/lib/tokenRefresh';
 import { clearTokens, getAccessToken } from '@/lib/storage';
+import { perfStart, perfEnd } from '@/lib/perf';
 
 type RetryConfig = InternalAxiosRequestConfig & {
   _retry?: boolean;
   _skipAuthRefresh?: boolean;
+  _perfId?: string;  // perf tracking id
 };
 
 // eslint-disable-next-line import/no-named-as-default-member
 export const api: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
+    'Connection': 'keep-alive',
   },
   timeout: 30000,
 });
@@ -30,7 +33,10 @@ api.interceptors.request.use(
     config.baseURL = getApiUrl();
     const token = await getAccessToken();
     if (__DEV__) {
-      console.log(`🌐 [API] ${String(config.method).toUpperCase()} ${config.baseURL ?? ''}${config.url ?? ''}`);
+      const label = `${String(config.method).toUpperCase()} ${config.url ?? ''}`;
+      console.log(`🌐 [API] ${label}`);
+      // Start perf timer — stored on config so response interceptor can read it
+      retryConfig._perfId = perfStart(label);
     }
     if (token) {
       config.headers = config.headers ?? {};
@@ -44,6 +50,8 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => {
     if (__DEV__) {
+      const cfg = response.config as RetryConfig;
+      perfEnd(cfg._perfId ?? '', response.status);
       console.log(`✅ [API] ${response.status} ${response.config.url ?? ''}`);
     }
     return response;
@@ -53,6 +61,7 @@ api.interceptors.response.use(
     const config = (error.config ?? {}) as RetryConfig;
 
     if (__DEV__) {
+      perfEnd(config._perfId ?? '', status ?? 0);
       console.log(`❌ [API] ${status ?? 'NO_STATUS'} ${config.url ?? ''}`, {
         message: error.message,
         data: error.response?.data,

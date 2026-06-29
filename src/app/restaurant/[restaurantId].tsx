@@ -1,17 +1,17 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
   StyleSheet,
   View,
   TextInput,
-  Image,
   Modal,
   Platform,
   Clipboard,
   ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -78,7 +78,7 @@ function MenuItemAddColumn({
   busy,
 }: {
   item: MenuItem;
-  onPress: () => void;
+  onPress: (item: MenuItem) => void;
   busy?: boolean;
 }) {
   const hasAddons = Boolean(item.addons?.length);
@@ -86,7 +86,7 @@ function MenuItemAddColumn({
   return (
     <View style={styles.itemRight}>
       {item.images?.[0] ? (
-        <Image source={{ uri: item.images[0] }} style={styles.dishImage} resizeMode="cover" />
+        <Image source={{ uri: item.images[0] }} style={styles.dishImage} contentFit="cover" transition={200} />
       ) : (
         <View style={styles.noPhotoImage}>
           <Ionicons name="fast-food-outline" size={32} color="#cccccc" />
@@ -94,7 +94,7 @@ function MenuItemAddColumn({
       )}
       <View style={styles.addBlock}>
         <Pressable
-          onPress={onPress}
+          onPress={() => onPress(item)}
           style={[styles.addBtn, busy && { opacity: 0.65 }]}
           disabled={busy}
           hitSlop={8}
@@ -113,6 +113,46 @@ function MenuItemAddColumn({
   );
 }
 
+const MenuItemRow = memo(function MenuItemRow({
+  item,
+  addingItemId,
+  onAdd,
+  showRecommendedBadge,
+}: {
+  item: MenuItem;
+  addingItemId: string | null;
+  onAdd: (item: MenuItem) => void;
+  showRecommendedBadge?: boolean;
+}) {
+  return (
+    <View style={styles.menuRow}>
+      <View style={styles.itemLeft}>
+        <FoodTypeBadge type={item.foodType} />
+        <ThemedText style={styles.itemName}>{item.itemName}</ThemedText>
+        {showRecommendedBadge ? (
+          <View style={{ flexDirection: 'row' }}>
+            <ThemedText style={{ fontSize: 10, color: '#0f8a5f', fontWeight: 'bold', backgroundColor: '#eefcf7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+              ★ Highly reordered
+            </ThemedText>
+          </View>
+        ) : null}
+        <View style={styles.priceRow}>
+          <ThemedText style={styles.price}>₹{item.discountedPrice ?? item.price}</ThemedText>
+          {!!item.discountedPrice ? (
+            <ThemedText style={styles.originalPrice}>₹{item.price}</ThemedText>
+          ) : null}
+        </View>
+        {!!item.shortDescription ? (
+          <ThemedText themeColor="textSecondary" style={styles.itemDesc} numberOfLines={2}>
+            {item.shortDescription}
+          </ThemedText>
+        ) : null}
+      </View>
+      <MenuItemAddColumn item={item} onPress={onAdd} busy={addingItemId === item._id} />
+    </View>
+  );
+});
+
 export default function RestaurantDetailScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -124,15 +164,18 @@ export default function RestaurantDetailScreen() {
   const restaurantQ = useRestaurantByIdQuery(rid);
   const menuQ = useMenuByRestaurantQuery(rid);
   const combosQ = useCombosByRestaurantQuery(rid);
-  const reviewsQ = useRestaurantReviewsQuery(rid);
+  const menuReady = Boolean(menuQ.data);
+  const reviewsQ = useRestaurantReviewsQuery(rid, 5, menuReady);
   const reviews = useMemo(() => (Array.isArray(reviewsQ.data) ? reviewsQ.data : []), [reviewsQ.data]);
-  const couponsQ = useCouponsByRestaurantQuery(rid);
-  const busy = restaurantQ.isLoading || menuQ.isLoading || combosQ.isLoading;
+  const [showOffersModal, setShowOffersModal] = useState(false);
+  const couponsQ = useCouponsByRestaurantQuery(rid, showOffersModal);
+  const restaurantLoading = restaurantQ.isLoading && !restaurantQ.data;
+  const menuLoading = menuQ.isLoading && !menuQ.data;
   const restaurant: any = restaurantQ.data ?? null;
   const items = useMemo(() => (menuQ.data ?? []) as MenuItem[], [menuQ.data]);
   const combosData = useMemo(() => (combosQ.data ?? []) as ComboItem[], [combosQ.data]);
   const coupons: Coupon[] = (couponsQ.data?.coupons ?? []) as Coupon[];
-  const couponCount: number = couponsQ.data?.count ?? 0;
+  const couponCount: number = showOffersModal ? (couponsQ.data?.count ?? 0) : 0;
   const error = (restaurantQ.error as any)?.message ?? (menuQ.error as any)?.message ?? (combosQ.error as any)?.message ?? null;
   const { cart } = useCart();
   const cartCount = getCartItemCount(cart);
@@ -147,8 +190,7 @@ export default function RestaurantDetailScreen() {
   const [showRecommendedOnly, setShowRecommendedOnly] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
-  // Offers Modal State
-  const [showOffersModal, setShowOffersModal] = useState(false);
+  // Offers Modal State — coupons load when modal opens
 
   // Customize / Addon State
   const [customizingItem, setCustomizingItem] = useState<MenuItem | null>(null);
@@ -217,7 +259,7 @@ export default function RestaurantDetailScreen() {
     return Object.values(groups);
   }, [filteredItems]);
 
-  const handleAddToCart = async (item: MenuItem) => {
+  const handleAddToCart = useCallback(async (item: MenuItem) => {
     if (!item._id || !rid || addingItemId) return;
     setAddingItemId(String(item._id));
     try {
@@ -233,15 +275,14 @@ export default function RestaurantDetailScreen() {
     } finally {
       setAddingItemId(null);
     }
-  };
+  }, [add, addingItemId, rid]);
 
-  const handleAddClick = (item: MenuItem) => {
+  const handleAddClick = useCallback((item: MenuItem) => {
     if (item.addons && item.addons.length > 0) {
       setCustomizingItem(item);
       setSelectedAddons({});
       setQuantity(1);
 
-      // Pre-select first portion size if available
       const sizes = item.addons.filter(
         (ad) => ad.name.startsWith('Portion:') || ad.name.startsWith('Size:')
       );
@@ -251,9 +292,9 @@ export default function RestaurantDetailScreen() {
         setSelectedSize('');
       }
     } else {
-      handleAddToCart(item);
+      void handleAddToCart(item);
     }
-  };
+  }, [handleAddToCart]);
 
   const handleAddCustomizedToCart = async () => {
     if (!customizingItem || !rid) return;
@@ -296,10 +337,12 @@ export default function RestaurantDetailScreen() {
     }
   };
 
+  const isCategoryCollapsed = (catName: string) => collapsedCategories[catName] ?? true;
+
   const toggleCategory = (catName: string) => {
     setCollapsedCategories((prev) => ({
       ...prev,
-      [catName]: !prev[catName],
+      [catName]: !(prev[catName] ?? true),
     }));
   };
 
@@ -375,8 +418,11 @@ export default function RestaurantDetailScreen() {
 
         <ScrollView contentContainerStyle={{ paddingBottom: scrollBottomPadding }}>
           <View style={[styles.sheet, { backgroundColor: theme.background }]}>
-            {busy ? (
-              <ThemedText themeColor="textSecondary" style={{ textAlign: 'center', marginTop: 32 }}>Loading…</ThemedText>
+            {restaurantLoading ? (
+              <View style={{ alignItems: 'center', marginTop: 32 }}>
+                <ActivityIndicator size="large" color={theme.primary} />
+                <ThemedText themeColor="textSecondary" style={{ marginTop: 12 }}>Loading restaurant…</ThemedText>
+              </View>
             ) : error ? (
               <ThemedView type="backgroundElement" style={styles.errorCard}>
                 <ThemedText style={styles.errorText}>{error}</ThemedText>
@@ -435,9 +481,9 @@ export default function RestaurantDetailScreen() {
                   >
                     <Ionicons name="pricetag" size={16} color={theme.primary} />
                     <ThemedText style={styles.offerText}>
-                      {couponCount > 0
+                      {showOffersModal && couponCount > 0
                         ? `${couponCount} offer${couponCount > 1 ? 's' : ''} available — Tap to view`
-                        : 'Free delivery on your first order'}
+                        : 'Tap to view offers'}
                     </ThemedText>
                     <Ionicons name="chevron-forward" size={14} color={theme.primary} style={{ marginLeft: 'auto' }} />
                   </Pressable>
@@ -573,6 +619,15 @@ export default function RestaurantDetailScreen() {
 
                 {/* Grouped Category Accordion */}
                 <View style={{ marginTop: Spacing.two }}>
+                  {menuLoading ? (
+                    <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                      <ActivityIndicator size="small" color={theme.primary} />
+                      <ThemedText themeColor="textSecondary" style={{ marginTop: 8 }}>
+                        Loading menu…
+                      </ThemedText>
+                    </View>
+                  ) : null}
+
                   {/* Your Orders and Collections Accordion */}
                   {!selectedFoodType && !searchQuery && userPastOrders.length > 0 && (
                     <View style={styles.categorySection}>
@@ -584,13 +639,13 @@ export default function RestaurantDetailScreen() {
                           Your Orders and Collections ({userPastOrders.length})
                         </ThemedText>
                         <Ionicons
-                          name={collapsedCategories['PastOrders'] ? 'chevron-down' : 'chevron-up'}
+                          name={isCategoryCollapsed('PastOrders') ? 'chevron-down' : 'chevron-up'}
                           size={18}
                           color={theme.textSecondary}
                         />
                       </Pressable>
                       
-                      {!collapsedCategories['PastOrders'] && (
+                      {!isCategoryCollapsed('PastOrders') && (
                         <View style={styles.categoryList}>
                           {userPastOrders.map((it) => (
                             <View key={`past-${it._id}`} style={styles.menuRow}>
@@ -614,7 +669,7 @@ export default function RestaurantDetailScreen() {
 
                               <MenuItemAddColumn
                                 item={it}
-                                onPress={() => handleAddClick(it)}
+                                onPress={handleAddClick}
                                 busy={addingItemId === it._id}
                               />
                             </View>
@@ -635,13 +690,13 @@ export default function RestaurantDetailScreen() {
                           Most ordered together ({mostOrderedTogether.length})
                         </ThemedText>
                         <Ionicons
-                          name={collapsedCategories['Combos'] ? 'chevron-down' : 'chevron-up'}
+                          name={isCategoryCollapsed('Combos') ? 'chevron-down' : 'chevron-up'}
                           size={18}
                           color={theme.textSecondary}
                         />
                       </Pressable>
 
-                      {!collapsedCategories['Combos'] && (
+                      {!isCategoryCollapsed('Combos') && (
                         <ScrollView
                           horizontal
                           showsHorizontalScrollIndicator={false}
@@ -650,7 +705,7 @@ export default function RestaurantDetailScreen() {
                           {mostOrderedTogether.map((combo) => (
                             <View key={combo.id} style={[styles.comboCard, { backgroundColor: theme.backgroundElement }]}>
                               <View style={styles.comboImageContainer}>
-                                <Image source={{ uri: combo.image }} style={styles.comboImage} resizeMode="cover" />
+                                <Image source={{ uri: combo.image }} style={styles.comboImage} contentFit="cover" transition={200} />
                                 <View style={styles.comboTagBadge}>
                                   <ThemedText style={styles.comboTagBadgeText}>{combo.tag}</ThemedText>
                                 </View>
@@ -694,64 +749,22 @@ export default function RestaurantDetailScreen() {
                           Recommended ({recommendedItems.length})
                         </ThemedText>
                         <Ionicons
-                          name={collapsedCategories['Recommended'] ? 'chevron-down' : 'chevron-up'}
+                          name={isCategoryCollapsed('Recommended') ? 'chevron-down' : 'chevron-up'}
                           size={18}
                           color={theme.textSecondary}
                         />
                       </Pressable>
                       
-                      {!collapsedCategories['Recommended'] && (
+                      {!isCategoryCollapsed('Recommended') && (
                         <View style={styles.categoryList}>
                           {recommendedItems.map((it) => (
-                            <View key={`rec-${it._id}`} style={styles.menuRow}>
-                              {/* Left Details */}
-                              <View style={styles.itemLeft}>
-                                <FoodTypeBadge type={it.foodType} />
-                                <ThemedText style={[styles.itemName, { color: theme.text }]}>
-                                  {it.itemName}
-                                </ThemedText>
-                                
-                                <View style={{ flexDirection: 'row' }}>
-                                  <ThemedText style={{ fontSize: 10, color: '#0f8a5f', fontWeight: 'bold', backgroundColor: '#eefcf7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                    ★ Highly reordered
-                                  </ThemedText>
-                                </View>
-
-                                <View style={styles.priceRow}>
-                                  <ThemedText style={[styles.price, { color: theme.text }]}>
-                                    ₹{it.discountedPrice ?? it.price}
-                                  </ThemedText>
-                                  {!!it.discountedPrice && (
-                                    <ThemedText style={styles.originalPrice}>
-                                      ₹{it.price}
-                                    </ThemedText>
-                                  )}
-                                </View>
-
-                                {!!it.shortDescription && (
-                                  <ThemedText themeColor="textSecondary" style={styles.itemDesc} numberOfLines={2}>
-                                    {it.shortDescription}
-                                  </ThemedText>
-                                )}
-
-                                <View style={styles.itemActions}>
-                                  <Pressable style={styles.itemActionBtn}>
-                                    <Ionicons name="bookmark-outline" size={14} color={theme.textSecondary} />
-                                    <ThemedText style={styles.itemActionText}>Save</ThemedText>
-                                  </Pressable>
-                                  <Pressable style={styles.itemActionBtn}>
-                                    <Ionicons name="share-outline" size={14} color={theme.textSecondary} />
-                                    <ThemedText style={styles.itemActionText}>Share</ThemedText>
-                                  </Pressable>
-                                </View>
-                              </View>
-
-                              <MenuItemAddColumn
-                                item={it}
-                                onPress={() => handleAddClick(it)}
-                                busy={addingItemId === it._id}
-                              />
-                            </View>
+                            <MenuItemRow
+                              key={`rec-${it._id}`}
+                              item={it}
+                              addingItemId={addingItemId}
+                              onAdd={handleAddClick}
+                              showRecommendedBadge
+                            />
                           ))}
                         </View>
                       )}
@@ -764,7 +777,7 @@ export default function RestaurantDetailScreen() {
                     </ThemedText>
                   ) : (
                     groupedItems.map((group) => {
-                      const isCollapsed = collapsedCategories[group.categoryName] ?? false;
+                      const isCollapsed = isCategoryCollapsed(group.categoryName);
                       return (
                         <View key={group.categoryName} style={styles.categorySection}>
                           <Pressable
@@ -784,57 +797,13 @@ export default function RestaurantDetailScreen() {
                           {!isCollapsed && (
                             <View style={styles.categoryList}>
                               {group.items.map((it) => (
-                                <View key={it._id} style={styles.menuRow}>
-                                  {/* Left Details */}
-                                  <View style={styles.itemLeft}>
-                                    <FoodTypeBadge type={it.foodType} />
-                                    <ThemedText style={[styles.itemName, { color: theme.text }]}>
-                                      {it.itemName}
-                                    </ThemedText>
-                                    
-                                    {it.isRecommended && (
-                                      <View style={{ flexDirection: 'row' }}>
-                                        <ThemedText style={{ fontSize: 10, color: '#0f8a5f', fontWeight: 'bold', backgroundColor: '#eefcf7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                          ★ Highly reordered
-                                        </ThemedText>
-                                      </View>
-                                    )}
-
-                                    <View style={styles.priceRow}>
-                                      <ThemedText style={[styles.price, { color: theme.text }]}>
-                                        ₹{it.discountedPrice ?? it.price}
-                                      </ThemedText>
-                                      {!!it.discountedPrice && (
-                                        <ThemedText style={styles.originalPrice}>
-                                          ₹{it.price}
-                                        </ThemedText>
-                                      )}
-                                    </View>
-
-                                    {!!it.shortDescription && (
-                                      <ThemedText themeColor="textSecondary" style={styles.itemDesc} numberOfLines={2}>
-                                        {it.shortDescription}
-                                      </ThemedText>
-                                    )}
-
-                                    <View style={styles.itemActions}>
-                                      <Pressable style={styles.itemActionBtn}>
-                                        <Ionicons name="bookmark-outline" size={14} color={theme.textSecondary} />
-                                        <ThemedText style={styles.itemActionText}>Save</ThemedText>
-                                      </Pressable>
-                                      <Pressable style={styles.itemActionBtn}>
-                                        <Ionicons name="share-outline" size={14} color={theme.textSecondary} />
-                                        <ThemedText style={styles.itemActionText}>Share</ThemedText>
-                                      </Pressable>
-                                    </View>
-                                  </View>
-
-                                  <MenuItemAddColumn
-                                    item={it}
-                                    onPress={() => handleAddClick(it)}
-                                    busy={addingItemId === it._id}
-                                  />
-                                </View>
+                                <MenuItemRow
+                                  key={it._id}
+                                  item={it}
+                                  addingItemId={addingItemId}
+                                  onAdd={handleAddClick}
+                                  showRecommendedBadge={Boolean(it.isRecommended)}
+                                />
                               ))}
                             </View>
                           )}

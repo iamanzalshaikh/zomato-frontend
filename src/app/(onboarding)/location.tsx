@@ -37,7 +37,7 @@ export default function LocationSetupScreen() {
   const [label, setLabel] = useState<'Home' | 'Work' | 'Other'>('Home');
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locBusy, setLocBusy] = useState(false);
-  const [permissionChecked, setPermissionChecked] = useState(false);
+  const [permissionChecked, setPermissionChecked] = useState(true); // true on mount — avoids effect-driven setState
   const [city, setCity] = useState('New Delhi');
   const qc = useQueryClient();
   const addAddressMutation = useMutation({
@@ -77,9 +77,7 @@ export default function LocationSetupScreen() {
     };
   }, [router]);
 
-  useEffect(() => {
-    setPermissionChecked(true);
-  }, []);
+  // permissionChecked is initialized to true — no effect needed
 
   function formatReverseGeocode(parts: Record<string, unknown>): string {
     const segs = [

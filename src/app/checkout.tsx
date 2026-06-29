@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, TextInput, View, ScrollView, Platform } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View, ScrollView, Platform } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,19 +36,26 @@ export default function CheckoutScreen() {
     () => (profileQuery.data?.addresses ?? []) as Address[],
     [profileQuery.data],
   );
-  const [addressId, setAddressId] = useState<string>('');
+  // Derive default address without an effect — effects that only set state from
+  // derived data cause a wasted render cycle and trigger ESLint react-hooks/set-state-in-effect.
+  const defaultAddressId = useMemo(() => {
+    const def = addresses.find((a) => a.isDefault) ?? addresses[0];
+    return def?._id ?? '';
+  }, [addresses]);
+  const [addressId, setAddressId] = useState<string>(defaultAddressId);
+
+  // If addresses load async after mount, keep addressId in sync
+  useEffect(() => {
+    if (!addressId && defaultAddressId) {
+      setAddressId(defaultAddressId);
+    }
+  }, [defaultAddressId, addressId]);
+
   const [instructions, setInstructions] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'COD' | 'ONLINE'>('COD');
 
   const total = useMemo(() => Number(cart?.grandTotal ?? cart?.total ?? 0), [cart]);
-
   const restaurant = cart?.restaurantId as any;
-
-  // Sync address from profile default
-  useEffect(() => {
-    const def = addresses.find((a) => a.isDefault) ?? addresses[0];
-    if (def?._id) setAddressId(def._id);
-  }, [addresses]);
 
   // Sync payment method from storage on mount
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, memo } from 'react';
 import {
   FlatList,
   Pressable,
@@ -6,12 +6,12 @@ import {
   StyleSheet,
   TextInput,
   View,
-  Image,
   ScrollView,
   Alert,
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -62,6 +62,89 @@ const POPULAR_CRAVINGS = [
   { name: 'Dessert', display: 'Desserts & Sweets', image: 'https://images.unsplash.com/photo-1551024601-bec78aea704b?w=150&auto=format&fit=crop&q=80' },
   { name: 'Kebab', display: 'Hot Kebabs', image: 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=150&auto=format&fit=crop&q=80' },
 ];
+
+// ─── Memoized search result rows ───────────────────────────────────────────
+
+interface RestaurantSearchItemProps {
+  item: SearchRestaurant;
+  theme: any;
+  onPress: () => void;
+}
+
+const RestaurantSearchItem = memo(({ item, theme, onPress }: RestaurantSearchItemProps) => (
+  <Pressable onPress={onPress}>
+    <ThemedView type="backgroundElement" style={styles.restaurantRowCard}>
+      <Image
+        source={item.logo && item.logo.length > 0
+          ? { uri: item.logo }
+          : { uri: 'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=150&auto=format&fit=crop&q=80' }
+        }
+        style={styles.restaurantRowImage}
+        transition={200}
+      />
+      <View style={{ flex: 1, gap: 4 }}>
+        <ThemedText style={styles.restaurantRowName}>{item.restaurantName}</ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.restaurantRowSub}>
+          {(item.cuisines ?? []).slice(0, 3).join(' • ') || 'Indian • Fast Food'}
+        </ThemedText>
+        <View style={styles.restaurantMetadataRow}>
+          <View style={styles.badgeRatingPill}>
+            <ThemedText style={styles.badgeRatingText}>⭐ {(item.averageRating ?? 4.4).toFixed(1)}</ThemedText>
+          </View>
+          <ThemedText themeColor="textSecondary" style={styles.restaurantMetadataText}>
+            {item.averageDeliveryTime ?? 30} mins • {item.distanceKm ? `${item.distanceKm.toFixed(1)} km` : '1.2 km'}
+          </ThemedText>
+        </View>
+        <View style={styles.promoOfferRow}>
+          <ThemedText style={[styles.promoOfferText, { color: theme.primary }]}>
+            🏷️ FLAT 50% OFF | Use code FIRST50
+          </ThemedText>
+        </View>
+      </View>
+    </ThemedView>
+  </Pressable>
+));
+RestaurantSearchItem.displayName = 'RestaurantSearchItem';
+
+interface FoodSearchItemProps {
+  item: SearchFood;
+  theme: any;
+  onAddPress: () => void;
+  onRestaurantPress: () => void;
+}
+
+const FoodSearchItem = memo(({ item, theme, onAddPress, onRestaurantPress }: FoodSearchItemProps) => (
+  <ThemedView type="backgroundElement" style={styles.foodRowCard}>
+    <Image
+      source={item.images && item.images.length > 0 && item.images[0]
+        ? { uri: item.images[0] }
+        : { uri: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=150&auto=format&fit=crop&q=80' }
+      }
+      style={styles.foodRowImage}
+      transition={200}
+    />
+    <View style={{ flex: 1, gap: 4 }}>
+      <View style={styles.foodTitleRow}>
+        <View style={[styles.typeDot, { borderColor: item.foodType === 'veg' ? '#0f8a5f' : '#e23744' }]}>
+          <View style={[styles.typeDotInner, { backgroundColor: item.foodType === 'veg' ? '#0f8a5f' : '#e23744' }]} />
+        </View>
+        <ThemedText style={styles.foodRowName} numberOfLines={1}>{item.itemName}</ThemedText>
+      </View>
+      <ThemedText style={styles.foodRowPrice}>₹{item.price}</ThemedText>
+      <Pressable onPress={onRestaurantPress}>
+        <ThemedText style={[styles.foodSellerText, { color: theme.primary }]}>
+          by {item.restaurantId.restaurantName} ★ {(item.restaurantId.averageRating ?? 4.4).toFixed(1)} ›
+        </ThemedText>
+      </Pressable>
+    </View>
+    <View style={styles.addBtnContainer}>
+      <Pressable onPress={onAddPress} style={[styles.addBtn, { borderColor: theme.primary, backgroundColor: theme.primarySoft }]}>
+        <ThemedText style={[styles.addBtnText, { color: theme.primary }]}>ADD +</ThemedText>
+      </Pressable>
+    </View>
+  </ThemedView>
+));
+FoodSearchItem.displayName = 'FoodSearchItem';
 
 export default function SearchScreen() {
   const theme = useTheme();
@@ -219,6 +302,23 @@ export default function SearchScreen() {
     return { uri: 'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=150&auto=format&fit=crop&q=80' };
   };
 
+  const renderRestaurantItem = useCallback(({ item }: { item: SearchRestaurant }) => (
+    <RestaurantSearchItem
+      item={item}
+      theme={theme}
+      onPress={() => router.push({ pathname: '/restaurant/[restaurantId]', params: { restaurantId: item._id } })}
+    />
+  ), [theme, router]);
+
+  const renderFoodItem = useCallback(({ item }: { item: SearchFood }) => (
+    <FoodSearchItem
+      item={item}
+      theme={theme}
+      onAddPress={() => handleAddFoodDirect(item)}
+      onRestaurantPress={() => router.push({ pathname: '/restaurant/[restaurantId]', params: { restaurantId: item.restaurantId._id } })}
+    />
+  ), [theme, router, handleAddFoodDirect]);
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -336,7 +436,7 @@ export default function SearchScreen() {
                     style={[styles.gridCard, { backgroundColor: theme.backgroundSelected }]}
                   >
                     <ThemedText style={styles.gridCardText}>{item.display}</ThemedText>
-                    <Image source={{ uri: item.image }} style={styles.gridCardImage} />
+                    <Image source={{ uri: item.image }} style={styles.gridCardImage} transition={200} />
                   </Pressable>
                 ))}
               </View>
@@ -393,7 +493,7 @@ export default function SearchScreen() {
                       style={[styles.recCard, { backgroundColor: theme.backgroundSelected }]}
                     >
                       {r.logo ? (
-                        <Image source={{ uri: r.logo }} style={styles.recImage} />
+                        <Image source={{ uri: r.logo }} style={styles.recImage} transition={200} />
                       ) : (
                         <View style={[styles.recImage, styles.recImagePlaceholder]}>
                           <Ionicons name="restaurant" size={28} color={theme.textSecondary} />
@@ -459,45 +559,16 @@ export default function SearchScreen() {
                 keyExtractor={(r) => r._id}
                 contentContainerStyle={{ paddingBottom: 60 }}
                 refreshControl={<RefreshControl refreshing={busy} onRefresh={() => searchQuery.refetch()} />}
+                initialNumToRender={6}
+                maxToRenderPerBatch={10}
+                windowSize={5}
+                removeClippedSubviews={Platform.OS === 'android'}
                 ListEmptyComponent={
                   <View style={styles.emptyResultsState}>
                     <ThemedText themeColor="textSecondary">No restaurants match your search.</ThemedText>
                   </View>
                 }
-                renderItem={({ item }) => (
-                  <Pressable
-                    onPress={() =>
-                      router.push({
-                        pathname: '/restaurant/[restaurantId]',
-                        params: { restaurantId: item._id },
-                      })
-                    }
-                  >
-                    <ThemedView type="backgroundElement" style={styles.restaurantRowCard}>
-                      <Image source={getRestaurantImage(item)} style={styles.restaurantRowImage} />
-                      <View style={{ flex: 1, gap: 4 }}>
-                        <ThemedText style={styles.restaurantRowName}>{item.restaurantName}</ThemedText>
-                        <ThemedText themeColor="textSecondary" style={styles.restaurantRowSub}>
-                          {(item.cuisines ?? []).slice(0, 3).join(' • ') || 'Indian • Fast Food'}
-                        </ThemedText>
-                        <View style={styles.restaurantMetadataRow}>
-                          <View style={styles.badgeRatingPill}>
-                            <ThemedText style={styles.badgeRatingText}>⭐ {(item.averageRating ?? 4.4).toFixed(1)}</ThemedText>
-                          </View>
-                          <ThemedText themeColor="textSecondary" style={styles.restaurantMetadataText}>
-                            {item.averageDeliveryTime ?? 30} mins • {item.distanceKm ? `${item.distanceKm.toFixed(1)} km` : '1.2 km'}
-                          </ThemedText>
-                        </View>
-                        {/* Inline Promo offer badge */}
-                        <View style={styles.promoOfferRow}>
-                          <ThemedText style={[styles.promoOfferText, { color: theme.primary }]}>
-                            🏷️ FLAT 50% OFF | Use code FIRST50
-                          </ThemedText>
-                        </View>
-                      </View>
-                    </ThemedView>
-                  </Pressable>
-                )}
+                renderItem={renderRestaurantItem}
               />
             ) : (
               // FOOD ITEMS (DISHES) RESULTS
@@ -506,62 +577,16 @@ export default function SearchScreen() {
                 keyExtractor={(f) => f._id}
                 contentContainerStyle={{ paddingBottom: 60 }}
                 refreshControl={<RefreshControl refreshing={busy} onRefresh={() => searchQuery.refetch()} />}
+                initialNumToRender={6}
+                maxToRenderPerBatch={10}
+                windowSize={5}
+                removeClippedSubviews={Platform.OS === 'android'}
                 ListEmptyComponent={
                   <View style={styles.emptyResultsState}>
                     <ThemedText themeColor="textSecondary">No dishes match your search.</ThemedText>
                   </View>
                 }
-                renderItem={({ item }) => (
-                  <ThemedView type="backgroundElement" style={styles.foodRowCard}>
-                    <Image source={getFoodImage(item)} style={styles.foodRowImage} />
-                    <View style={{ flex: 1, gap: 4 }}>
-                      <View style={styles.foodTitleRow}>
-                        {/* Food Type Indicator Dot */}
-                        <View
-                          style={[
-                            styles.typeDot,
-                            { borderColor: item.foodType === 'veg' ? '#0f8a5f' : '#e23744' },
-                          ]}
-                        >
-                          <View
-                            style={[
-                              styles.typeDotInner,
-                              { backgroundColor: item.foodType === 'veg' ? '#0f8a5f' : '#e23744' },
-                            ]}
-                          />
-                        </View>
-                        <ThemedText style={styles.foodRowName} numberOfLines={1}>
-                          {item.itemName}
-                        </ThemedText>
-                      </View>
-                      <ThemedText style={styles.foodRowPrice}>₹{item.price}</ThemedText>
-                      
-                      {/* Link to Restaurant details page */}
-                      <Pressable
-                        onPress={() =>
-                          router.push({
-                            pathname: '/restaurant/[restaurantId]',
-                            params: { restaurantId: item.restaurantId._id },
-                          })
-                        }
-                      >
-                        <ThemedText style={[styles.foodSellerText, { color: theme.primary }]}>
-                          by {item.restaurantId.restaurantName} ★ {(item.restaurantId.averageRating ?? 4.4).toFixed(1)} ›
-                        </ThemedText>
-                      </Pressable>
-                    </View>
-
-                    {/* Direct Add to Cart Button */}
-                    <View style={styles.addBtnContainer}>
-                      <Pressable
-                        onPress={() => handleAddFoodDirect(item)}
-                        style={[styles.addBtn, { borderColor: theme.primary, backgroundColor: theme.primarySoft }]}
-                      >
-                        <ThemedText style={[styles.addBtnText, { color: theme.primary }]}>ADD +</ThemedText>
-                      </Pressable>
-                    </View>
-                  </ThemedView>
-                )}
+                renderItem={renderFoodItem}
               />
             )}
           </View>
