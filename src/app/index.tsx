@@ -5,12 +5,14 @@ import { ActivityIndicator, View } from 'react-native';
 import { refreshAccessToken } from '@/lib/tokenRefresh';
 import { registerForPushNotifications } from '@/lib/pushNotifications';
 import { getAccessToken, getRefreshToken } from '@/lib/storage';
+import { getSelectedDeliveryPointId } from '@/lib/caseCheckout';
+import { CASE_CHECKOUT_ENABLED } from '@/config/features';
 
 const BOOT_TIMEOUT_MS = 5000;
 const LOADING_ORANGE = '#ff5a00';
 
 export default function Index() {
-  const [target, setTarget] = useState<'welcome' | 'tabs' | null>(null);
+  const [target, setTarget] = useState<'welcome' | 'tabs' | 'delivery' | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -32,6 +34,13 @@ export default function Index() {
         clearTimeout(fallback);
         if (token) {
           void registerForPushNotifications();
+          if (CASE_CHECKOUT_ENABLED) {
+            const pointId = await getSelectedDeliveryPointId();
+            if (!pointId) {
+              setTarget('delivery');
+              return;
+            }
+          }
           setTarget('tabs');
         } else {
           setTarget('welcome');
@@ -55,6 +64,10 @@ export default function Index() {
         <ActivityIndicator size="large" color="#ffffff" />
       </View>
     );
+  }
+
+  if (target === 'delivery') {
+    return <Redirect href="/(onboarding)/delivery-point" />;
   }
 
   return <Redirect href={target === 'tabs' ? '/(tabs)' : '/(onboarding)'} />;

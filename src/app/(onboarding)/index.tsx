@@ -4,7 +4,6 @@ import {
   FlatList,
   Image,
   ImageBackground,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -16,8 +15,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { ONBOARDING_LOGO, ONBOARDING_SLIDE_IMAGES } from '@/constants/onboardingAssets';
+import { PressableScale } from '@/components/pressable-scale';
 
 const BRAND = '#ff5a00';
 const BRAND_DARK = '#c94400';
@@ -107,21 +108,23 @@ export default function OnboardingCarouselScreen() {
             </View>
           </View>
           {!isLast ? (
-            <Pressable onPress={() => goToLogin(router)} hitSlop={12} style={styles.skipBtn}>
+            <PressableScale onPress={() => goToLogin(router)} hitSlop={12} style={styles.skipBtn}>
               <Text style={styles.skipText}>Skip</Text>
-            </Pressable>
+            </PressableScale>
           ) : (
             <View style={{ width: 52 }} />
           )}
         </View>
 
         <View style={styles.bottomPanel}>
-          <View style={[styles.iconRing, { borderColor: slide.accent }]}>
-            <Ionicons name={slide.icon} size={22} color={slide.accent} />
-          </View>
+          <Animated.View key={`slide-content-${index}`} entering={FadeIn.duration(280)}>
+            <View style={[styles.iconRing, { borderColor: slide.accent }]}>
+              <Ionicons name={slide.icon} size={22} color={slide.accent} />
+            </View>
 
-          <Text style={styles.title}>{slide.title}</Text>
-          <Text style={styles.subtitle}>{slide.subtitle}</Text>
+            <Text style={styles.title}>{slide.title}</Text>
+            <Text style={styles.subtitle}>{slide.subtitle}</Text>
+          </Animated.View>
 
           <View style={styles.dots}>
             {SLIDES.map((s, i) => (
@@ -136,7 +139,7 @@ export default function OnboardingCarouselScreen() {
             ))}
           </View>
 
-          <Pressable
+          <PressableScale
             onPress={() => {
               if (isLast) {
                 goToLogin(router);
@@ -144,7 +147,7 @@ export default function OnboardingCarouselScreen() {
               }
               listRef.current?.scrollToIndex({ index: index + 1, animated: true });
             }}
-            style={({ pressed }) => [styles.cta, pressed && { opacity: 0.92, transform: [{ scale: 0.98 }] }]}
+            style={styles.cta}
           >
             <LinearGradient
               colors={[BRAND, BRAND_DARK]}
@@ -155,7 +158,7 @@ export default function OnboardingCarouselScreen() {
               <Text style={styles.ctaText}>{isLast ? 'Get started' : 'Continue'}</Text>
               <Ionicons name={isLast ? 'arrow-forward' : 'chevron-forward'} size={20} color="#fff" />
             </LinearGradient>
-          </Pressable>
+          </PressableScale>
 
           <Text style={styles.stepHint}>
             {index + 1} of {SLIDES.length}

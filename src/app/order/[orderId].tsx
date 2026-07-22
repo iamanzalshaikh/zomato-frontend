@@ -1,23 +1,34 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View, Image } from 'react-native';
+import { Alert, ScrollView, StyleSheet, TextInput, View, Text, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
-import { useOrderByIdQuery } from '@/hooks/queries/orderDetail';
+import { PressableScale } from '@/components/pressable-scale';
+import { ErrorState } from '@/components/state-views';
+import { CaseUi } from '@/constants/caseUi';
+import { CASE_CHECKOUT_ENABLED } from '@/config/features';
+import { useOrderByIdQuery, orderDetailKeys } from '@/hooks/queries/orderDetail';
 import { requestOrderRefund } from '@/services/orders';
 import { useAddToCartMutation } from '@/hooks/queries/cart';
+import {
+  useCancelCaseOrderMutation,
+  useCaseReorderMutation,
+  caseOrderKeys,
+} from '@/hooks/queries/caseOrders';
+import { saveReorderDraft } from '@/lib/caseCheckout';
+import { openCaseReceiptPdf } from '@/lib/caseReceipt';
 import {
   canTrackOrder,
   getPaymentStatusDisplay,
   isPaymentFailed,
   needsOnlinePayment,
 } from '@/lib/orderPayment';
+import { toast } from '@/lib/toast';
+
+const WARN = '#F59E0B';
 
 function formatDate(dateStr?: string) {
   if (!dateStr) return '';
@@ -31,9 +42,40 @@ function formatDate(dateStr?: string) {
   });
 }
 
+function getStatusColor(s: string) {
+  switch (s.toUpperCase()) {
+    case 'DELIVERED':
+      return CaseUi.success;
+    case 'CANCELLED':
+      return CaseUi.danger;
+    default:
+      return CaseUi.orange;
+  }
+}
+
+function isLikelyNonVeg(itemName: string) {
+  const lower = itemName.toLowerCase();
+  return ['chicken', 'mutton', 'egg', 'fish', 'kabab', 'kebab', 'meat', 'tikka', 'tandoori'].some((kw) =>
+    lower.includes(kw),
+  );
+}
+
+function FoodTypeDot({ itemName }: { itemName: string }) {
+  const nonVeg = isLikelyNonVeg(itemName);
+  return (
+    <View style={[styles.foodTypeBorder, { borderColor: nonVeg ? CaseUi.danger : CaseUi.success }]}>
+      {nonVeg ? (
+        <View style={[styles.nonVegTriangle, { borderBottomColor: CaseUi.danger }]} />
+      ) : (
+        <View style={[styles.vegDotInner, { backgroundColor: CaseUi.success }]} />
+      )}
+    </View>
+  );
+}
+
 export default function OrderDetailScreen() {
-  const theme = useTheme();
   const router = useRouter();
+  const qc = useQueryClient();
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const id = orderId ?? '';
   const [refundNote, setRefundNote] = useState('');
@@ -41,22 +83,24 @@ export default function OrderDetailScreen() {
   const q = useOrderByIdQuery(id);
   const order: any = q.data;
   const addToCart = useAddToCartMutation();
+  const cancelMut = useCancelCaseOrderMutation();
+  const reorderMut = useCaseReorderMutation();
 
   const status = String(order?.orderStatus ?? order?.status ?? 'UNKNOWN');
   const isDelivered = status === 'DELIVERED';
   const isCancelled = status === 'CANCELLED';
+  const isPendingPayment = status === 'PENDING_PAYMENT_VERIFICATION';
   const paymentDisplay = order ? getPaymentStatusDisplay(order) : null;
-  const showPayAgain = order && needsOnlinePayment(order);
+  const showPayAgain = !CASE_CHECKOUT_ENABLED && order && needsOnlinePayment(order);
   const paymentFailed = order && isPaymentFailed(order);
-  const showTrack = order && canTrackOrder(order);
+  const showTrack = !CASE_CHECKOUT_ENABLED && order && canTrackOrder(order);
+  const money = (n: number | undefined) =>
+    CASE_CHECKOUT_ENABLED ? `J$${Number(n ?? 0).toFixed(0)}` : `₹${Number(n ?? 0).toFixed(0)}`;
 
   function retryPayment() {
     router.push({
       pathname: '/payment/razorpay',
-      params: {
-        orderId: id,
-        restaurantName: order?.restaurantId?.restaurantName ?? '',
-      },
+      params: { orderId: id, restaurantName: order?.restaurantId?.restaurantName ?? '' },
     });
   }
 
@@ -70,6 +114,18 @@ export default function OrderDetailScreen() {
   });
 
   async function reorder() {
+    if (CASE_CHECKOUT_ENABLED) {
+      try {
+        const payload = await reorderMut.mutateAsync(id);
+        await saveReorderDraft(payload.items, payload.deliveryPointId);
+        toast.success('Items ready — confirm checkout', 'Reorder');
+        router.push('/checkout');
+      } catch (e: any) {
+        Alert.alert('Reorder Error', e?.message ?? 'Failed to reorder');
+      }
+      return;
+    }
+
     const restaurantId = String(order?.restaurantId?._id ?? order?.restaurantId ?? '');
     const items = order?.orderItems ?? order?.items ?? [];
     if (!restaurantId || items.length === 0) {
@@ -93,445 +149,384 @@ export default function OrderDetailScreen() {
     }
   }
 
-  const getStatusColor = (s: string) => {
-    switch (s.toUpperCase()) {
-      case 'DELIVERED':
-        return '#0f8a5f';
-      case 'CANCELLED':
-        return '#e23744';
-      default:
-        return '#ff5a00';
-    }
-  };
-
-  const getFoodTypeIcon = (itemName: string) => {
-    const lower = itemName.toLowerCase();
-    const isNonVeg =
-      lower.includes('chicken') ||
-      lower.includes('mutton') ||
-      lower.includes('egg') ||
-      lower.includes('fish') ||
-      lower.includes('kabab') ||
-      lower.includes('kebab') ||
-      lower.includes('meat') ||
-      lower.includes('tikka') ||
-      lower.includes('tandoori');
-
-    return (
-      <View
-        style={[
-          styles.foodTypeBorder,
-          { borderColor: isNonVeg ? '#e23744' : '#0f8a5f' },
-        ]}
-      >
-        {isNonVeg ? (
-          <View style={[styles.nonVegTriangle, { borderBottomColor: '#e23744' }]} />
-        ) : (
-          <View style={[styles.vegDotInner, { backgroundColor: '#0f8a5f' }]} />
-        )}
-      </View>
-    );
-  };
+  function cancelOrder() {
+    Alert.alert('Cancel order', 'Cancel this CASE order?', [
+      { text: 'Keep', style: 'cancel' },
+      {
+        text: 'Cancel order',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await cancelMut.mutateAsync({ orderId: id, reason: 'Cancelled by customer' });
+            await qc.invalidateQueries({ queryKey: orderDetailKeys.byId(id) });
+            await qc.invalidateQueries({ queryKey: caseOrderKeys.list() });
+            toast.success('Order cancelled');
+          } catch (e: any) {
+            Alert.alert('Cancel failed', e?.message ?? 'Could not cancel');
+          }
+        },
+      },
+    ]);
+  }
 
   if (q.isLoading) {
     return (
-      <ThemedView style={[styles.container, styles.center, { backgroundColor: theme.background }]}>
-        <ThemedText style={{ color: theme.textSecondary }}>Loading order details...</ThemedText>
-      </ThemedView>
+      <View style={[styles.container, styles.center]}>
+        <Text style={styles.mutedText}>Loading order details...</Text>
+      </View>
     );
   }
 
   if (q.isError || !order) {
     return (
-      <ThemedView style={[styles.container, styles.center, { backgroundColor: theme.background }]}>
-        <ThemedView type="backgroundElement" style={styles.errorCard}>
-          <ThemedText style={{ color: '#e23744' }}>
-            {(q.error as Error)?.message ?? 'Order details not found.'}
-          </ThemedText>
-        </ThemedView>
-        <Pressable onPress={() => router.back()} style={[styles.secondaryBtn, { width: 120 }]}>
-          <ThemedText style={styles.secondaryText}>Go Back</ThemedText>
-        </Pressable>
-      </ThemedView>
+      <View style={styles.container}>
+        <SafeAreaView style={styles.safeArea}>
+          <ErrorState
+            title="Order not found"
+            subtitle={(q.error as Error)?.message ?? 'This order could not be loaded.'}
+            actionLabel="Go back"
+            onAction={() => router.back()}
+          />
+        </SafeAreaView>
+      </View>
     );
   }
 
   const items = order.orderItems ?? order.items ?? [];
+  const paymentToneColor =
+    paymentDisplay?.tone === 'failed'
+      ? CaseUi.danger
+      : paymentDisplay?.tone === 'pending'
+        ? WARN
+        : paymentDisplay?.tone === 'paid'
+          ? CaseUi.success
+          : CaseUi.ink;
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        {/* Header */}
         <View style={styles.topRow}>
-          <Pressable onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: theme.backgroundSelected, borderColor: theme.backgroundSelected }]}>
-            <Ionicons name="arrow-back" size={20} color={theme.text} />
-          </Pressable>
-          <ThemedText style={styles.headerTitle}>Order Summary</ThemedText>
+          <PressableScale onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
+            <Ionicons name="arrow-back" size={20} color={CaseUi.ink} />
+          </PressableScale>
+          <Text style={styles.headerTitle}>Order Summary</Text>
           <View style={{ width: 40 }} />
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
-          {/* Status & Restaurant Details Card */}
-          <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.backgroundSelected }]}>
+          <Animated.View entering={FadeInDown.duration(280)} style={styles.card}>
             <View style={styles.restaurantRow}>
-              <View style={[styles.logoCircle, { backgroundColor: theme.backgroundSelected }]}>
+              <View style={styles.logoCircle}>
                 {order.restaurantId?.logo ? (
                   <Image source={{ uri: order.restaurantId.logo }} style={styles.restaurantLogo} />
                 ) : (
-                  <Ionicons name="restaurant" size={18} color={theme.primary} />
+                  <Ionicons name="restaurant" size={18} color={CaseUi.orange} />
                 )}
               </View>
               <View style={{ flex: 1 }}>
-                <ThemedText style={styles.restaurantName}>
-                  {order.restaurantId?.restaurantName || 'Restaurant'}
-                </ThemedText>
-                <ThemedText style={[styles.orderNumber, { color: theme.textSecondary }]}>
-                  Order: #{order.orderNumber ?? id.slice(-8).toUpperCase()}
-                </ThemedText>
-                <ThemedText style={[styles.orderDate, { color: theme.textSecondary }]}>
-                  Placed on {formatDate(order.createdAt)}
-                </ThemedText>
+                <Text style={styles.restaurantName}>
+                  {order.restaurantId?.restaurantName || order.restaurant?.restaurantName || order.deliveryPoint?.name || 'CASE order'}
+                </Text>
+                <Text style={styles.orderNumber}>Order: #{order.orderNumber ?? id.slice(-8).toUpperCase()}</Text>
+                <Text style={styles.orderDate}>Placed on {formatDate(order.createdAt)}</Text>
               </View>
             </View>
 
-            <View style={[styles.divider, { backgroundColor: theme.backgroundSelected }]} />
+            <View style={styles.divider} />
 
             <View style={styles.metaRow}>
               <View>
-                <ThemedText style={[styles.metaLabel, { color: theme.textSecondary }]}>ORDER STATUS</ThemedText>
-                <ThemedText style={[styles.metaValue, { color: getStatusColor(status) }]}>
-                  {status.replace(/_/g, ' ')}
-                </ThemedText>
+                <Text style={styles.metaLabel}>ORDER STATUS</Text>
+                <Text style={[styles.metaValue, { color: getStatusColor(status) }]}>{status.replace(/_/g, ' ')}</Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <ThemedText style={[styles.metaLabel, { color: theme.textSecondary }]}>PAYMENT</ThemedText>
-                <ThemedText
-                  style={[
-                    styles.metaValue,
-                    {
-                      color:
-                        paymentDisplay?.tone === 'failed'
-                          ? '#e23744'
-                          : paymentDisplay?.tone === 'pending'
-                            ? '#f59e0b'
-                            : paymentDisplay?.tone === 'paid'
-                              ? '#0f8a5f'
-                              : theme.text,
-                    },
-                  ]}
-                >
-                  {paymentDisplay?.label ?? '—'}
-                </ThemedText>
+                <Text style={styles.metaLabel}>PAYMENT</Text>
+                <Text style={[styles.metaValue, { color: paymentToneColor }]}>{paymentDisplay?.label ?? '—'}</Text>
               </View>
             </View>
-          </ThemedView>
+          </Animated.View>
 
           {showPayAgain && (
-            <ThemedView
-              type="backgroundElement"
-              style={[
-                styles.paymentAlert,
-                {
-                  borderColor: paymentFailed ? 'rgba(226,55,68,0.35)' : 'rgba(245,158,11,0.45)',
-                  backgroundColor: paymentFailed ? 'rgba(226,55,68,0.08)' : 'rgba(245,158,11,0.1)',
-                },
-              ]}
+            <Animated.View
+              entering={FadeInDown.delay(40).duration(280)}
+              style={[styles.paymentAlert, paymentFailed ? styles.paymentAlertDanger : styles.paymentAlertWarn]}
             >
-              <Ionicons
-                name={paymentFailed ? 'close-circle' : 'card-outline'}
-                size={22}
-                color={paymentFailed ? '#e23744' : '#f59e0b'}
-              />
+              <Ionicons name={paymentFailed ? 'close-circle' : 'card-outline'} size={22} color={paymentFailed ? CaseUi.danger : WARN} />
               <View style={{ flex: 1 }}>
-                <ThemedText style={[styles.paymentAlertTitle, { color: theme.text }]}>
-                  {paymentFailed ? 'Payment not completed' : 'Payment required'}
-                </ThemedText>
-                <ThemedText style={[styles.paymentAlertBody, { color: theme.textSecondary }]}>
+                <Text style={styles.paymentAlertTitle}>{paymentFailed ? 'Payment not completed' : 'Payment required'}</Text>
+                <Text style={styles.paymentAlertBody}>
                   {paymentFailed
                     ? 'Your payment did not go through. Retry to confirm this order with the restaurant.'
                     : 'Complete online payment to confirm your order. The restaurant will accept after payment.'}
-                </ThemedText>
+                </Text>
               </View>
-            </ThemedView>
+            </Animated.View>
           )}
 
-          {/* Items Invoice Card */}
-          <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.backgroundSelected }]}>
-            <ThemedText style={styles.sectionTitle}>Invoice details</ThemedText>
-            
+          <Animated.View entering={FadeInDown.delay(80).duration(280)} style={styles.card}>
+            <Text style={styles.sectionTitle}>Invoice details</Text>
+
             <View style={{ gap: 12, marginTop: 8 }}>
               {items.map((line: any, idx: number) => {
-                const addText =
-                  line.addons && line.addons.length > 0
-                    ? line.addons.map((a: any) => a.name).join(', ')
-                    : '';
-
+                const addText = line.addons && line.addons.length > 0 ? line.addons.map((a: any) => a.name).join(', ') : '';
                 return (
                   <View key={idx} style={styles.itemInvoiceRow}>
                     <View style={{ flexDirection: 'row', gap: 8, flex: 1 }}>
-                      <View style={{ marginTop: 2 }}>{getFoodTypeIcon(line.itemName)}</View>
+                      <View style={{ marginTop: 2 }}>
+                        <FoodTypeDot itemName={line.itemName} />
+                      </View>
                       <View style={{ flex: 1 }}>
-                        <ThemedText style={styles.itemNameText}>{line.itemName}</ThemedText>
+                        <Text style={styles.itemNameText}>{line.itemName}</Text>
                         {!!addText && (
-                          <ThemedText style={[styles.itemAddonsText, { color: theme.textSecondary }]} numberOfLines={1}>
+                          <Text style={styles.itemAddonsText} numberOfLines={1}>
                             {addText}
-                          </ThemedText>
+                          </Text>
                         )}
                       </View>
                     </View>
-                    <ThemedText style={[styles.itemQtyPrice, { color: theme.text }]}>
-                      {line.quantity} x ₹{line.price} = ₹{line.total ?? line.price * line.quantity}
-                    </ThemedText>
+                    <Text style={styles.itemQtyPrice}>
+                      {line.quantity} x {money(line.price)} = {money(line.total ?? line.price * line.quantity)}
+                    </Text>
                   </View>
                 );
               })}
             </View>
 
-            <View style={[styles.divider, { backgroundColor: theme.backgroundSelected, marginVertical: 14 }]} />
+            <View style={[styles.divider, { marginVertical: 14 }]} />
 
-            {/* Bill Summaries */}
             <View style={{ gap: 8 }}>
               <View style={styles.billRow}>
-                <ThemedText style={[styles.billLabel, { color: theme.textSecondary }]}>Item Total</ThemedText>
-                <ThemedText style={[styles.billValue, { color: theme.text }]}>₹{order.subtotal}</ThemedText>
+                <Text style={styles.billLabel}>Item Total</Text>
+                <Text style={styles.billValue}>{money(order.subtotal)}</Text>
               </View>
               {!!order.deliveryFee && (
                 <View style={styles.billRow}>
-                  <ThemedText style={[styles.billLabel, { color: theme.textSecondary }]}>Delivery Fee</ThemedText>
-                  <ThemedText style={[styles.billValue, { color: theme.text }]}>₹{order.deliveryFee}</ThemedText>
+                  <Text style={styles.billLabel}>Delivery Fee</Text>
+                  <Text style={styles.billValue}>{money(order.deliveryFee)}</Text>
                 </View>
               )}
               {!!order.taxAmount && (
                 <View style={styles.billRow}>
-                  <ThemedText style={[styles.billLabel, { color: theme.textSecondary }]}>Taxes & charges</ThemedText>
-                  <ThemedText style={[styles.billValue, { color: theme.text }]}>₹{order.taxAmount}</ThemedText>
+                  <Text style={styles.billLabel}>Taxes & charges</Text>
+                  <Text style={styles.billValue}>{money(order.taxAmount)}</Text>
                 </View>
               )}
               {!!order.platformFee && (
                 <View style={styles.billRow}>
-                  <ThemedText style={[styles.billLabel, { color: theme.textSecondary }]}>Platform Fee</ThemedText>
-                  <ThemedText style={[styles.billValue, { color: theme.text }]}>₹{order.platformFee}</ThemedText>
+                  <Text style={styles.billLabel}>Platform Fee</Text>
+                  <Text style={styles.billValue}>{money(order.platformFee)}</Text>
                 </View>
               )}
               {!!order.couponDiscount && (
                 <View style={styles.billRow}>
-                  <ThemedText style={[styles.billLabel, { color: '#0f8a5f' }]}>Coupon Discount</ThemedText>
-                  <ThemedText style={[styles.billValue, { color: '#0f8a5f' }]}>-₹{order.couponDiscount}</ThemedText>
+                  <Text style={[styles.billLabel, { color: CaseUi.success }]}>Coupon Discount</Text>
+                  <Text style={[styles.billValue, { color: CaseUi.success }]}>-{money(order.couponDiscount)}</Text>
                 </View>
               )}
               {!!order.walletDeduction && (
                 <View style={styles.billRow}>
-                  <ThemedText style={[styles.billLabel, { color: '#0f8a5f' }]}>Wallet Deduction</ThemedText>
-                  <ThemedText style={[styles.billValue, { color: '#0f8a5f' }]}>-₹{order.walletDeduction}</ThemedText>
+                  <Text style={[styles.billLabel, { color: CaseUi.success }]}>Wallet Deduction</Text>
+                  <Text style={[styles.billValue, { color: CaseUi.success }]}>-{money(order.walletDeduction)}</Text>
                 </View>
               )}
 
-              <View style={[styles.divider, { backgroundColor: theme.backgroundSelected, marginVertical: 8 }]} />
+              <View style={[styles.divider, { marginVertical: 8 }]} />
 
               <View style={styles.billRow}>
-                <ThemedText style={[styles.grandTotalLabel, { color: theme.text }]}>Grand Total</ThemedText>
-                <ThemedText style={[styles.grandTotalValue, { color: theme.primary }]}>₹{order.grandTotal}</ThemedText>
+                <Text style={styles.grandTotalLabel}>Grand Total</Text>
+                <Text style={[styles.grandTotalValue, { color: CaseUi.orange }]}>{money(order.grandTotal)}</Text>
               </View>
             </View>
-          </ThemedView>
+          </Animated.View>
 
-          {/* Delivery Address Card */}
-          {order.customerAddress?.fullAddress && (
-            <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.backgroundSelected }]}>
+          {(order.customerAddress?.fullAddress || order.deliveryPoint?.name) && (
+            <Animated.View entering={FadeInDown.delay(120).duration(280)} style={styles.card}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <Ionicons name="location" size={16} color={theme.primary} />
-                <ThemedText style={styles.sectionTitle}>Delivered To</ThemedText>
+                <Ionicons name="location" size={16} color={CaseUi.orange} />
+                <Text style={styles.sectionTitle}>Delivered To</Text>
               </View>
-              <ThemedText style={[styles.addressText, { color: theme.textSecondary }]}>
-                {order.customerAddress.fullAddress}
-              </ThemedText>
-            </ThemedView>
+              <Text style={styles.addressText}>{order.deliveryPoint?.name ?? order.customerAddress?.fullAddress}</Text>
+            </Animated.View>
           )}
 
-          {/* Payment / tracking actions */}
-          {showPayAgain && (
-            <Pressable
-              onPress={retryPayment}
-              style={[styles.primaryBtn, { backgroundColor: paymentFailed ? '#e23744' : theme.primary }]}
+          {CASE_CHECKOUT_ENABLED && isPendingPayment && (
+            <PressableScale
+              onPress={() => router.push({ pathname: '/bank-transfer/[orderId]', params: { orderId: id } })}
+              style={styles.primaryBtn}
             >
-              <Ionicons name="card" size={18} color="#ffffff" style={{ marginRight: 6 }} />
-              <ThemedText style={styles.primaryText}>
-                {paymentFailed ? 'Retry payment' : 'Pay now'}
-              </ThemedText>
-            </Pressable>
+              <Ionicons name="business" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.primaryText}>Upload bank receipt</Text>
+            </PressableScale>
+          )}
+
+          {CASE_CHECKOUT_ENABLED && !isDelivered && !isCancelled && (
+            <>
+              {(status === 'PENDING' || status === 'PENDING_PAYMENT_VERIFICATION') && (
+                <PressableScale
+                  onPress={() => router.push({ pathname: '/order/edit/[orderId]', params: { orderId: id } })}
+                  style={styles.secondaryBtn}
+                >
+                  <Ionicons name="create-outline" size={16} color={CaseUi.orange} style={{ marginRight: 6 }} />
+                  <Text style={[styles.secondaryText, { color: CaseUi.orange }]}>Edit order</Text>
+                </PressableScale>
+              )}
+              <PressableScale
+                onPress={() => router.push({ pathname: '/order/chat/[orderId]', params: { orderId: id } })}
+                style={styles.secondaryBtn}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={16} color={CaseUi.orange} style={{ marginRight: 6 }} />
+                <Text style={[styles.secondaryText, { color: CaseUi.orange }]}>Order chat</Text>
+              </PressableScale>
+              <PressableScale onPress={cancelOrder} disabled={cancelMut.isPending} style={[styles.secondaryBtn, styles.secondaryBtnDanger]}>
+                <Ionicons name="close-circle-outline" size={16} color={CaseUi.danger} style={{ marginRight: 6 }} />
+                <Text style={[styles.secondaryText, { color: CaseUi.danger }]}>
+                  {cancelMut.isPending ? 'Cancelling…' : 'Cancel order'}
+                </Text>
+              </PressableScale>
+            </>
+          )}
+
+          {showPayAgain && (
+            <PressableScale onPress={retryPayment} style={[styles.primaryBtn, paymentFailed && { backgroundColor: CaseUi.danger }]}>
+              <Ionicons name="card" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.primaryText}>{paymentFailed ? 'Retry payment' : 'Pay now'}</Text>
+            </PressableScale>
           )}
 
           {showTrack && (
-            <Pressable
+            <PressableScale
               onPress={() => router.push({ pathname: '/order/track/[orderId]', params: { orderId: id } })}
-              style={[styles.primaryBtn, { backgroundColor: theme.primary }]}
+              style={styles.primaryBtn}
             >
-              <Ionicons name="bicycle" size={18} color="#ffffff" style={{ marginRight: 6 }} />
-              <ThemedText style={styles.primaryText}>Track live order</ThemedText>
-            </Pressable>
+              <Ionicons name="bicycle" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.primaryText}>Track live order</Text>
+            </PressableScale>
           )}
 
-          {/* Past Order Options */}
-          {(isDelivered || isCancelled) && (
-            <View style={{ gap: 10 }}>
-              <Pressable onPress={reorder} style={[styles.secondaryBtn, { borderColor: theme.primary }]}>
-                <Ionicons name="refresh" size={16} color={theme.primary} style={{ marginRight: 6 }} />
-                <ThemedText style={[styles.secondaryText, { color: theme.primary }]}>Reorder items</ThemedText>
-              </Pressable>
+          {CASE_CHECKOUT_ENABLED && (
+            <PressableScale
+              onPress={async () => {
+                try {
+                  await openCaseReceiptPdf(id);
+                } catch {
+                  /* handled */
+                }
+              }}
+              style={styles.secondaryBtn}
+            >
+              <Ionicons name="document-outline" size={16} color={CaseUi.ink} style={{ marginRight: 6 }} />
+              <Text style={styles.secondaryText}>Receipt PDF</Text>
+            </PressableScale>
+          )}
 
-              <Pressable
-                onPress={() => router.push({ pathname: '/rate-order/[orderId]', params: { orderId: id } })}
-                style={[styles.secondaryBtn, { borderColor: theme.backgroundSelected }]}
-              >
-                <Ionicons name="star" size={16} color="#fbbf24" style={{ marginRight: 6 }} />
-                <ThemedText style={styles.secondaryText}>Rate this order</ThemedText>
-              </Pressable>
+          {CASE_CHECKOUT_ENABLED && !isCancelled && (
+            <View style={{ gap: 10 }}>
+              <PressableScale onPress={reorder} style={styles.secondaryBtn}>
+                <Ionicons name="refresh" size={16} color={CaseUi.orange} style={{ marginRight: 6 }} />
+                <Text style={[styles.secondaryText, { color: CaseUi.orange }]}>Reorder items</Text>
+              </PressableScale>
+              {isDelivered ? (
+                <PressableScale
+                  onPress={() => router.push({ pathname: '/rate-order/[orderId]', params: { orderId: id } })}
+                  style={styles.secondaryBtn}
+                >
+                  <Ionicons name="star" size={16} color="#FBBF24" style={{ marginRight: 6 }} />
+                  <Text style={styles.secondaryText}>Rate this order</Text>
+                </PressableScale>
+              ) : null}
             </View>
           )}
 
-          {/* Refund Section */}
+          {!CASE_CHECKOUT_ENABLED && (isDelivered || isCancelled) && (
+            <View style={{ gap: 10 }}>
+              <PressableScale onPress={reorder} style={styles.secondaryBtn}>
+                <Ionicons name="refresh" size={16} color={CaseUi.orange} style={{ marginRight: 6 }} />
+                <Text style={[styles.secondaryText, { color: CaseUi.orange }]}>Reorder items</Text>
+              </PressableScale>
+
+              <PressableScale
+                onPress={() => router.push({ pathname: '/rate-order/[orderId]', params: { orderId: id } })}
+                style={styles.secondaryBtn}
+              >
+                <Ionicons name="star" size={16} color="#FBBF24" style={{ marginRight: 6 }} />
+                <Text style={styles.secondaryText}>Rate this order</Text>
+              </PressableScale>
+            </View>
+          )}
+
           {isDelivered && (
-            <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.backgroundSelected, marginTop: 6 }]}>
-              <ThemedText style={styles.sectionTitle}>Need Help with this order?</ThemedText>
-              <ThemedText style={[styles.refundSubtitle, { color: theme.textSecondary }]}>
+            <Animated.View entering={FadeInDown.delay(160).duration(280)} style={[styles.card, { marginTop: 6 }]}>
+              <Text style={styles.sectionTitle}>Need Help with this order?</Text>
+              <Text style={styles.refundSubtitle}>
                 If items were missing, spilled or you had quality issues, submit a refund request.
-              </ThemedText>
-              
+              </Text>
+
               <TextInput
                 value={refundNote}
                 onChangeText={setRefundNote}
                 placeholder="Describe your issue in details (min 10 chars)..."
                 multiline
-                placeholderTextColor={theme.textSecondary}
-                style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundSelected, borderColor: theme.backgroundSelected }]}
+                placeholderTextColor={CaseUi.muted}
+                style={styles.input}
               />
-              
-              <Pressable
+
+              <PressableScale
                 disabled={refundMut.isPending || refundNote.trim().length < 10}
                 onPress={() => refundMut.mutate()}
-                style={({ pressed }) => [
-                  styles.refundSubmitBtn,
-                  { backgroundColor: refundNote.trim().length >= 10 ? '#e23744' : theme.backgroundSelected },
-                  pressed && { opacity: 0.9 },
-                ]}
+                style={[styles.refundSubmitBtn, refundNote.trim().length >= 10 && styles.refundSubmitBtnActive]}
               >
-                <ThemedText style={[styles.refundSubmitText, { color: refundNote.trim().length >= 10 ? '#ffffff' : theme.textSecondary }]}>
+                <Text style={[styles.refundSubmitText, refundNote.trim().length >= 10 && styles.refundSubmitTextActive]}>
                   {refundMut.isPending ? 'Submitting...' : 'Request Refund'}
-                </ThemedText>
-              </Pressable>
-            </ThemedView>
+                </Text>
+              </PressableScale>
+            </Animated.View>
           )}
         </ScrollView>
       </SafeAreaView>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: CaseUi.white },
   safeArea: { flex: 1 },
   center: { justifyContent: 'center', alignItems: 'center' },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
+  mutedText: { color: CaseUi.muted, fontFamily: 'PlusJakartaSans_500Medium' },
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
   backBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
     borderWidth: 1,
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.field,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 16.5,
-  },
-  scrollBody: {
-    padding: 16,
-    paddingBottom: 40,
-    gap: 14,
-  },
+  headerTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 16.5, color: CaseUi.ink },
+  scrollBody: { padding: 16, paddingBottom: 40, gap: 14 },
   card: {
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.white,
+    ...CaseUi.softShadow,
   },
-  restaurantRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  logoCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  restaurantLogo: {
-    width: '100%',
-    height: '100%',
-  },
-  restaurantName: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 15,
-  },
-  orderNumber: {
-    fontSize: 11.5,
-    fontFamily: 'PlusJakartaSans_700Bold',
-    marginTop: 2,
-  },
-  orderDate: {
-    fontSize: 10.5,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    marginTop: 1,
-  },
-  divider: {
-    height: 1,
-    marginVertical: 12,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  metaLabel: {
-    fontSize: 8.5,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    letterSpacing: 0.5,
-  },
-  metaValue: {
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_750Bold',
-    marginTop: 2,
-  },
-  sectionTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 13,
-  },
-  itemInvoiceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingVertical: 2,
-  },
-  foodTypeBorder: {
-    width: 12,
-    height: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 2,
-  },
-  vegDotInner: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
+  restaurantRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logoCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: CaseUi.field },
+  restaurantLogo: { width: '100%', height: '100%' },
+  restaurantName: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15, color: CaseUi.ink },
+  orderNumber: { fontSize: 11.5, fontFamily: 'PlusJakartaSans_700Bold', marginTop: 2, color: CaseUi.muted },
+  orderDate: { fontSize: 10.5, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 1, color: CaseUi.muted },
+  divider: { height: 1, marginVertical: 12, backgroundColor: CaseUi.line },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  metaLabel: { fontSize: 8.5, fontFamily: 'PlusJakartaSans_800ExtraBold', letterSpacing: 0.5, color: CaseUi.muted },
+  metaValue: { fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold', marginTop: 2 },
+  sectionTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: CaseUi.ink },
+  itemInvoiceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 2 },
+  foodTypeBorder: { width: 12, height: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 2 },
+  vegDotInner: { width: 6, height: 6, borderRadius: 3 },
   nonVegTriangle: {
     width: 0,
     height: 0,
@@ -542,57 +537,24 @@ const styles = StyleSheet.create({
     borderRightColor: 'transparent',
     backgroundColor: 'transparent',
   },
-  itemNameText: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 12.5,
-  },
-  itemAddonsText: {
-    fontSize: 10,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    marginTop: 2,
-  },
-  itemQtyPrice: {
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_700Bold',
-  },
-  billRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  billLabel: {
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-  },
-  billValue: {
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_700Bold',
-  },
-  grandTotalLabel: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 14,
-  },
-  grandTotalValue: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 15.5,
-  },
-  addressText: {
-    fontSize: 11.5,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    lineHeight: 16.5,
-    marginTop: 4,
-  },
+  itemNameText: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: CaseUi.ink },
+  itemAddonsText: { fontSize: 10, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 2, color: CaseUi.muted },
+  itemQtyPrice: { fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold', color: CaseUi.ink },
+  billRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  billLabel: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: CaseUi.muted },
+  billValue: { fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold', color: CaseUi.ink },
+  grandTotalLabel: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, color: CaseUi.ink },
+  grandTotalValue: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15.5 },
+  addressText: { fontSize: 11.5, fontFamily: 'PlusJakartaSans_500Medium', lineHeight: 16.5, marginTop: 4, color: CaseUi.muted },
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     height: 48,
     borderRadius: 14,
+    backgroundColor: CaseUi.orange,
   },
-  primaryText: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 13.5,
-  },
+  primaryText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13.5 },
   secondaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -600,63 +562,32 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 14,
     borderWidth: 1,
+    borderColor: CaseUi.orange,
     backgroundColor: 'transparent',
   },
-  secondaryText: {
-    color: '#1a1c1c',
-    fontFamily: 'PlusJakartaSans_750Bold',
-    fontSize: 13,
-  },
-  refundSubtitle: {
-    fontSize: 11,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    marginTop: 4,
-    marginBottom: 12,
-    lineHeight: 15,
-  },
+  secondaryBtnDanger: { borderColor: CaseUi.danger },
+  secondaryText: { color: CaseUi.ink, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13 },
+  refundSubtitle: { fontSize: 11, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 4, marginBottom: 12, lineHeight: 15, color: CaseUi.muted },
   input: {
     minHeight: 80,
     borderRadius: 10,
     borderWidth: 1,
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.field,
     padding: 10,
     fontSize: 11.5,
     fontFamily: 'PlusJakartaSans_500Medium',
     textAlignVertical: 'top',
     marginBottom: 12,
+    color: CaseUi.ink,
   },
-  refundSubmitBtn: {
-    height: 40,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  refundSubmitText: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 12,
-  },
-  errorCard: {
-    margin: 16,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(226,55,68,0.2)',
-  },
-  paymentAlert: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-  },
-  paymentAlertTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 13,
-  },
-  paymentAlertBody: {
-    marginTop: 4,
-    fontSize: 11.5,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    lineHeight: 16,
-  },
+  refundSubmitBtn: { height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: CaseUi.field },
+  refundSubmitBtnActive: { backgroundColor: CaseUi.danger },
+  refundSubmitText: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 12, color: CaseUi.muted },
+  refundSubmitTextActive: { color: '#FFFFFF' },
+  paymentAlert: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, borderRadius: 14, borderWidth: 1, padding: 14 },
+  paymentAlertWarn: { borderColor: 'rgba(245,158,11,0.45)', backgroundColor: 'rgba(245,158,11,0.1)' },
+  paymentAlertDanger: { borderColor: 'rgba(220,38,38,0.35)', backgroundColor: 'rgba(220,38,38,0.08)' },
+  paymentAlertTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: CaseUi.ink },
+  paymentAlertBody: { marginTop: 4, fontSize: 11.5, fontFamily: 'PlusJakartaSans_500Medium', lineHeight: 16, color: CaseUi.muted },
 });

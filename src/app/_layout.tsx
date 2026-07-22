@@ -1,4 +1,4 @@
-import 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { DefaultTheme, ThemeProvider, Stack } from 'expo-router';
 import { useEffect } from 'react';
@@ -40,25 +40,29 @@ export default function RootLayout() {
 
   if (!fontsLoaded) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: LOADING_ORANGE }}>
-        <ActivityIndicator size="large" color="#ffffff" />
-      </View>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: LOADING_ORANGE }}>
+          <ActivityIndicator size="large" color="#ffffff" />
+        </View>
+      </GestureHandlerRootView>
     );
   }
 
   return (
-    <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider value={DefaultTheme}>
-          <ToastHost />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: SURFACE },
-            }}
-          />
-        </ThemeProvider>
-      </QueryClientProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider value={DefaultTheme}>
+            <ToastHost />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: SURFACE },
+              }}
+            />
+          </ThemeProvider>
+        </QueryClientProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

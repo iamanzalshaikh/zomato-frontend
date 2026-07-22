@@ -1,1782 +1,1105 @@
-import { useEffect, useMemo, useState, useCallback, memo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
-  FlatList,
-  Pressable,
+  Dimensions,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   RefreshControl,
-  StyleSheet,
-  View,
   ScrollView,
+  StyleSheet,
   Text,
-  Platform,
-  ActivityIndicator,
-  Modal,
-  Animated,
-  Easing,
+  View,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ThemedText } from '@/components/themed-text';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  FadeInRight,
+  FadeInUp,
+  ZoomIn,
+} from 'react-native-reanimated';
+
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
-import { fetchRestaurants, fetchRecommendedRestaurants, fetchRestaurantById, type Restaurant, type PaginationMeta } from '@/services/restaurants';
-import { fetchMenuItemsByRestaurant, fetchCombosByRestaurant } from '@/services/menu';
-import { restaurantKeys } from '@/hooks/queries/restaurants';
-import { menuKeys } from '@/hooks/queries/menu';
-import { useTheme } from '@/hooks/use-theme';
-import { useCart } from '@/hooks/use-cart';
-import { useQueryClient } from '@tanstack/react-query';
-import { cartKeys } from '@/hooks/queries/cart';
-import { useFilterStore } from '@/lib/filterStore';
-import { apiFetch } from '@/lib/apiFetch';
-import { useProfileQuery } from '@/hooks/queries/profile';
-import { FavoriteHeart } from '@/components/favorite-heart';
+import { PressableScale } from '@/components/pressable-scale';
 import { FloatingCartBar } from '@/components/floating-cart-bar';
-import { getCartDisplayTotal, getCartItemCount, getCartRestaurantName } from '@/lib/cartDisplay';
+import { ShopCard } from '@/components/shop-card';
+import { ProductCard, type ProductCardItem } from '@/components/product-card';
+import { HomeSkeleton } from '@/components/skeleton';
+import {
+  CASE_CATEGORY_META,
+  CASE_DEFAULT_DELIVERY_MINS,
+  CASE_HOME_CATEGORY_ROW,
+  type CaseCategoryId,
+} from '@/constants/caseHome';
+import { CaseUi } from '@/constants/caseUi';
+import type { MenuItemAttributes } from '@/constants/categoryFields';
+import { caseKeys, useCaseBootstrapQuery, useCaseMerchantsQuery } from '@/hooks/queries/case';
+import { useCaseOrdersQuery } from '@/hooks/queries/caseOrders';
+import { useProfileQuery } from '@/hooks/queries/profile';
+import { useRestaurantOfferBadges } from '@/hooks/use-restaurant-offers';
+import { useCart } from '@/hooks/use-cart';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { useUnreadNotificationCount } from '@/hooks/use-unread-notifications';
-import { useRestaurantOfferBadges } from '@/hooks/use-restaurant-offers';
-import { perfScreen } from '@/lib/perf';
+import { getCartDisplayTotal, getCartItemCount, getCartRestaurantName } from '@/lib/cartDisplay';
+import { getSelectedDeliveryPointName } from '@/lib/caseCheckout';
+import { CASE_CHECKOUT_ENABLED } from '@/config/features';
+import { fetchCaseMerchantMenu } from '@/services/case';
+import { fetchWallet } from '@/services/wallet';
+import { useAddToCartMutation } from '@/hooks/queries/cart';
 
-const CATEGORIES = [
-  { name: 'All', image: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=150&auto=format&fit=crop&q=80' },
-  { name: 'Pizza', image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=150&auto=format&fit=crop&q=80' },
-  { name: 'Cake', image: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=150&auto=format&fit=crop&q=80' },
-  { name: 'Burgers', image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=150&auto=format&fit=crop&q=80' },
-  { name: 'Biryani', image: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=150&auto=format&fit=crop&q=80' },
-  { name: 'Dessert', image: 'https://images.unsplash.com/photo-1551024601-bec78aea704b?w=150&auto=format&fit=crop&q=80' }
+const SCREEN_W = Dimensions.get('window').width;
+const PAD = 16;
+const PROMO_W = SCREEN_W - PAD * 2;
+const PAGE_BG = '#FBF7F2';
+
+const PROMOS = [
+  {
+    id: 'free-del',
+    title: 'Free delivery today',
+    sub: 'On every campus order above J$500',
+    cta: 'Start ordering',
+    image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=700&auto=format&fit=crop&q=80',
+    action: 'ALL' as CaseCategoryId,
+  },
+  {
+    id: 'pharmacy',
+    title: 'Pharmacy, dropped off',
+    sub: 'Rx & wellness essentials to your dorm',
+    cta: 'Shop pharmacy',
+    image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=700&auto=format&fit=crop&q=80',
+    action: 'PHARMACY' as CaseCategoryId,
+  },
+  {
+    id: 'grocery',
+    title: 'Fresh groceries, fast',
+    sub: 'Campus-essential staples in minutes',
+    cta: 'Browse grocery',
+    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=700&auto=format&fit=crop&q=80',
+    action: 'GROCERY' as CaseCategoryId,
+  },
 ];
 
-// const SORT_OPTIONS: { label: string; value: 'rating' | 'deliveryTime' | 'distance' | 'newest' }[] = [
-//   { label: 'Rating', value: 'rating' },
-//   { label: 'Time', value: 'deliveryTime' },
-//   { label: 'Distance', value: 'distance' },
-//   { label: 'Newest', value: 'newest' },
-// ];
+const GET_ANYTHING_IMG = require('../../../assets/flowimages/stitch_quickbite_food_delivery_app_user_panel/stitch_quickbite_food_delivery_app_user_panel/warm_flat_style_illustration_of_a_food_delivery_rider_on_a_scooter_driving/screen.png');
 
-// Fallback gourmet food images matching index
-const getRestaurantImage = (item: Restaurant, index: number) => {
-  const fromApi = item.bannerImages?.[0] || item.logo;
-  if (typeof fromApi === 'string' && fromApi.length > 0) return { uri: fromApi };
-  
-  const fallbacks = [
-    'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&auto=format&fit=crop&q=80',
-    'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&auto=format&fit=crop&q=80',
-    'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&auto=format&fit=crop&q=80'
-  ];
-  return { uri: fallbacks[index % fallbacks.length] };
-};
+const TERMINAL_STATUSES = new Set(['DELIVERED', 'CANCELLED', 'REJECTED']);
 
-interface RestaurantItemProps {
-  item: Restaurant;
-  index: number;
-  theme: any;
-  offerBadge?: string | null;
-  onPress: () => void;
+function greetingForHour(h: number) {
+  if (h < 5) return 'Still up';
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  if (h < 21) return 'Good evening';
+  return 'Good night';
 }
 
-const RestaurantItem = memo(({ item, index, theme, offerBadge, onPress }: RestaurantItemProps) => {
-  const rating = Number(item.averageRating ?? 0);
-  const ratingColor = rating >= 4.0 ? '#24963F' : (rating >= 3.0 ? '#9ACD32' : '#8A8D91');
-
-  const priceForTwo = (item.minimumOrderAmount && item.minimumOrderAmount > 0)
-    ? item.minimumOrderAmount
-    : 200;
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => (pressed ? { opacity: 0.94, transform: [{ scale: 0.992 }] } : undefined)}
-    >
-      <ThemedView type="backgroundElement" style={styles.rCard}>
-        {/* Restaurant Food Banner */}
-        <View style={styles.rHero}>
-          <Image
-            source={getRestaurantImage(item, index)}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
-            transition={200}
-          />
-          {/* Semi-transparent dark overlay to pop text & badges */}
-          <View style={styles.imageOverlay} />
-
-          <View style={styles.badgeContainer}>
-            {offerBadge ? (
-              <View style={[styles.promoBadge, { backgroundColor: theme.primary }]}>
-                <Text style={styles.promoBadgeText}>{offerBadge}</Text>
-              </View>
-            ) : null}
-            <View style={styles.glassBadge}>
-              <Text style={styles.glassBadgeText}>Free Delivery</Text>
-            </View>
-          </View>
-
-          <FavoriteHeart restaurantId={item._id} style={styles.favoriteButton} size={18} />
-
-          {/* Zomato-style Distance/Time Overlay Badge at bottom right of image */}
-          <View style={styles.timeDistancePill}>
-            <Text style={styles.timeDistanceText}>
-              {item.averageDeliveryTime ?? 30} min | {(item.distanceKm ?? 1.4).toFixed(1)} km
-            </Text>
-          </View>
-        </View>
-
-        {/* Zomato-style Card Body details */}
-        <View style={styles.rBody}>
-          <View style={styles.rTopRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rName, { color: theme.text }]}>{item.restaurantName}</Text>
-              <Text style={[styles.rCuisines, { color: theme.textSecondary }]} numberOfLines={1}>
-                {(item.cuisines ?? []).join(', ') || 'Fast Food, Snacks, Beverages'}
-              </Text>
-            </View>
-            
-            {/* Zomato Green/Grey Rating Pill */}
-            <View style={[styles.ratingPill, { backgroundColor: ratingColor }]}>
-              <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
-              <Text style={styles.ratingStar}>★</Text>
-            </View>
-          </View>
-
-          <View style={styles.rPriceRow}>
-            <Text style={[styles.rPriceText, { color: theme.textSecondary }]}>
-              ₹{priceForTwo} for two
-            </Text>
-          </View>
-
-          {/* Separator line */}
-          <View style={styles.cardSeparator} />
-
-          {/* Zomato safety / volume footer tag */}
-          <View style={styles.cardFooterTag}>
-            <Text style={styles.cardFooterIcon}>🛡️</Text>
-            <Text style={[styles.cardFooterText, { color: theme.textSecondary }]} numberOfLines={1}>
-              QuickBite delivery partner follows all safety protocols
-            </Text>
-          </View>
-        </View>
-      </ThemedView>
-    </Pressable>
-  );
-});
-
-RestaurantItem.displayName = 'RestaurantItem';
-
-/**
- * Wrapper that provides a stable onPress callback so React.memo on RestaurantItem
- * actually prevents re-renders when the parent HomeScreen re-renders.
- * (Hooks cannot be called inside renderItem callbacks, so a component is needed.)
- */
-interface RestaurantListItemProps {
-  item: Restaurant;
-  index: number;
-  theme: any;
-  offerBadges: Record<string, string | null>;
-  onPressRestaurant: (restaurantId: string) => void;
+function activeOrderCopy(status: string) {
+  const s = status.toUpperCase();
+  if (s === 'PREPARING') return { label: 'Being prepared', icon: 'flame-outline' as const };
+  if (['RIDER_ASSIGNED', 'PICKED_UP', 'ON_THE_WAY'].includes(s)) {
+    return { label: 'On the way to you', icon: 'bicycle-outline' as const };
+  }
+  if (s === 'CONFIRMED') return { label: 'Restaurant confirmed', icon: 'checkmark-circle-outline' as const };
+  return { label: 'Order in progress', icon: 'time-outline' as const };
 }
 
-const RestaurantListItem = memo(({ item, index, theme, offerBadges, onPressRestaurant }: RestaurantListItemProps) => {
-  const handlePress = useCallback(() => {
-    onPressRestaurant(item._id);
-  }, [item._id, onPressRestaurant]);
-
+function SectionHeader({
+  title,
+  subtitle,
+  actionLabel = 'See all',
+  onAction,
+  delay = 0,
+}: {
+  title: string;
+  subtitle?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  delay?: number;
+}) {
   return (
-    <RestaurantItem
-      item={item}
-      index={index}
-      theme={theme}
-      offerBadge={offerBadges[item._id] ?? null}
-      onPress={handlePress}
-    />
-  );
-});
-
-RestaurantListItem.displayName = 'RestaurantListItem';
-
-interface CategoryChipProps {
-  category: { name: string; image: string };
-  isSelected: boolean;
-  onSelect: (name: string) => void;
-  theme: any;
-}
-
-const CategoryChip = memo(({ category, isSelected, onSelect, theme }: CategoryChipProps) => {
-  const handlePress = useCallback(() => {
-    onSelect(category.name);
-  }, [category.name, onSelect]);
-
-  return (
-    <Pressable onPress={handlePress} style={styles.categoryItem}>
-      <View style={[
-        styles.categoryIcon,
-        { backgroundColor: theme.backgroundSelected },
-        isSelected && { borderColor: theme.primary, borderWidth: 2.5, backgroundColor: theme.primarySoft }
-      ]}>
-        <Image
-          source={{ uri: category.image }}
-          style={styles.categoryImage}
-          contentFit="cover"
-          transition={200}
-        />
+    <Animated.View entering={FadeInDown.delay(delay).duration(320)} style={styles.sectionHead}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
       </View>
-      <Text style={[
-        styles.categoryText,
-        { color: theme.text },
-        isSelected && { color: theme.primary, fontFamily: 'PlusJakartaSans_850ExtraBold', fontWeight: '800' }
-      ]}>
-        {category.name}
-      </Text>
-    </Pressable>
+      {onAction ? (
+        <PressableScale onPress={onAction} hitSlop={10} style={styles.seeAllBtn}>
+          <Text style={styles.seeAll}>{actionLabel}</Text>
+          <Ionicons name="chevron-forward" size={14} color={CaseUi.orange} />
+        </PressableScale>
+      ) : null}
+    </Animated.View>
   );
-});
+}
 
-CategoryChip.displayName = 'CategoryChip';
+function CategoryTile({
+  id,
+  selected,
+  onPress,
+  index,
+}: {
+  id: CaseCategoryId;
+  selected: boolean;
+  onPress: () => void;
+  index: number;
+}) {
+  const meta = CASE_CATEGORY_META[id];
+  return (
+    <Animated.View entering={FadeInRight.delay(60 + index * 35).duration(320)}>
+      <PressableScale
+        onPress={onPress}
+        style={styles.catItem}
+        scaleTo={0.92}
+      >
+        <View
+          style={[
+            styles.catTile,
+            { backgroundColor: selected ? CaseUi.orange : meta.color },
+          ]}
+        >
+          <Ionicons
+            name={meta.icon}
+            size={26}
+            color={selected ? '#FFFFFF' : CaseUi.ink}
+          />
+        </View>
+        <Text style={[styles.catLabel, selected && styles.catLabelOn]} numberOfLines={1}>
+          {meta.short}
+        </Text>
+      </PressableScale>
+    </Animated.View>
+  );
+}
+
+function ShopGrid({
+  shops,
+  onPress,
+}: {
+  shops: Parameters<typeof ShopCard>[0]['merchant'][];
+  onPress: (id: string) => void;
+}) {
+  return (
+    <View style={styles.grid}>
+      {shops.map((m, i) => (
+        <Animated.View
+          key={m.id}
+          entering={FadeInUp.delay(Math.min(i, 8) * 30).duration(280)}
+          style={styles.gridCell}
+        >
+          <ShopCard merchant={m} index={i} variant="compact" onPress={onPress} />
+        </Animated.View>
+      ))}
+    </View>
+  );
+}
 
 export default function HomeScreen() {
-  const theme = useTheme();
   const router = useRouter();
+  const tabBarHeight = useTabBarHeight();
   const { cart } = useCart();
-  const qc = useQueryClient();
+  const addToCart = useAddToCartMutation();
   const profileQ = useProfileQuery();
   const user = profileQ.data;
-  const unreadNotifications = useUnreadNotificationCount();
-
-  const defaultAddress = useMemo(() => {
-    const list = user?.addresses ?? [];
-    return list.find((a: any) => a.isDefault) ?? list[0];
-  }, [user?.addresses]);
-
-  const locationLocality = useMemo(() => {
-    if (!defaultAddress) return 'Connaught Place';
-    const firstPart = defaultAddress.fullAddress.split(',')[0]?.trim();
-    if (firstPart === 'Current location' && defaultAddress.fullAddress.split(',').length > 1) {
-      return defaultAddress.fullAddress.split(',')[1]?.trim();
-    }
-    return firstPart || defaultAddress.label || 'Connaught Place';
-  }, [defaultAddress]);
-
-  const [items, setItems] = useState<Restaurant[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const bootstrapQ = useCaseBootstrapQuery();
+  const allMerchantsQ = useCaseMerchantsQuery(null, { limit: 30 });
+  const ordersQ = useCaseOrdersQuery();
+  const unreadCount = useUnreadNotificationCount(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
-  // Search state
-  const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [pointName, setPointName] = useState<string | null>(null);
+  const [activeCat, setActiveCat] = useState<CaseCategoryId>('ALL');
+  const [promoIndex, setPromoIndex] = useState(0);
+  const promoRef = useRef<ScrollView>(null);
+  const promoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Pagination state
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-
-  // Active filters from Zustand Store
-  const {
-    activeSort,
-    activeMinRating,
-    activeOffers,
-    activeNearAndFast,
-    activeNoPackaging,
-    activeCuisine,
-    setActiveSort,
-    setActiveMinRating,
-    setActiveOffers,
-    setActiveNearAndFast,
-    setActiveNoPackaging,
-    setActiveCuisine,
-    resetFilters,
-  } = useFilterStore();
-
-  const handleSelectCuisine = useCallback((name: string) => {
-    setActiveCuisine(name === 'All' ? null : name);
-  }, [setActiveCuisine]);
-
-  const [recommendedItems, setRecommendedItems] = useState<Restaurant[]>([]);
-
-  const offerRestaurantIds = useMemo(
-    () => [...recommendedItems.map((r) => r._id), ...items.map((r) => r._id)],
-    [recommendedItems, items],
-  );
-  const offerBadges = useRestaurantOfferBadges(offerRestaurantIds);
-
-  // Filters Modal State
-  const [showFiltersModal, setShowFiltersModal] = useState(false);
-  const [activeModalTab, setActiveModalTab] = useState<'sort' | 'rating' | 'offers'>('sort');
-  
-  // Temp Modal states
-  const [tempSort, setTempSort] = useState<'rating' | 'deliveryTime' | 'distance' | 'newest'>('rating');
-  const [tempMinRating, setTempMinRating] = useState<number | null>(null);
-  const [tempOffers, setTempOffers] = useState(false);
-
-  // Animated Modal transitions
-  const [modalVisible, setModalVisible] = useState(false);
-  const fadeAnim = useMemo(() => new Animated.Value(0), []);
-  const slideAnim = useMemo(() => new Animated.Value(500), []);
+  const walletQ = useQuery({
+    queryKey: ['wallet'],
+    queryFn: fetchWallet,
+    retry: false,
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
-    if (showFiltersModal) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setModalVisible(true);
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 250,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 300,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 500,
-          duration: 250,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        setModalVisible(false);
+    void getSelectedDeliveryPointName().then(setPointName);
+  }, [bootstrapQ.dataUpdatedAt]);
+
+  useEffect(() => {
+    promoTimer.current = setInterval(() => {
+      setPromoIndex((i) => {
+        const next = (i + 1) % PROMOS.length;
+        promoRef.current?.scrollTo({ x: next * (PROMO_W + 12), animated: true });
+        return next;
       });
-    }
-  }, [showFiltersModal, fadeAnim, slideAnim]);
-
-
-  const cartCount = useMemo(() => getCartItemCount(cart), [cart]);
-  const cartTotal = useMemo(() => getCartDisplayTotal(cart), [cart]);
-  const cartRestaurantName = useMemo(() => getCartRestaurantName(cart), [cart]);
-  const tabBarHeight = useTabBarHeight();
-  const listBottomPadding = cartCount > 0 ? tabBarHeight + 88 : tabBarHeight + Spacing.four;
-  const cartBarBottom = tabBarHeight + 12;
-
-  // Debounce search query
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedQuery(query);
-    }, 450);
-    return () => clearTimeout(handler);
-  }, [query]);
-
-  // Load restaurants based on search, pagination, and filters
-  const fetchRestaurantsList = async (pageNumber: number, isInitial: boolean = false, isRefresh: boolean = false) => {
-    try {
-      if (pageNumber === 1) {
-        if (!isRefresh) setLoading(true);
-        setError(null);
-      } else {
-        setLoadingMore(true);
-      }
-
-      let fetchedRestaurants: Restaurant[] = [];
-      let totalPagesCount = 1;
-
-      // Check if text query is active
-      if (debouncedQuery.trim().length > 0) {
-        const qs = `?${new URLSearchParams({
-          q: debouncedQuery.trim(),
-          page: String(pageNumber),
-          limit: '10',
-        }).toString()}`;
-        const body = await apiFetch<{
-          success: true;
-          message: string;
-          data: { restaurants: Restaurant[]; pagination: PaginationMeta };
-        }>(`/restaurants/search${qs}`);
-        fetchedRestaurants = body.data.restaurants;
-        totalPagesCount = body.data.pagination.totalPages;
-      } else {
-        // Build params for the browse route
-        const params: any = {
-          page: pageNumber,
-          limit: 10,
-          sort: activeNearAndFast ? 'deliveryTime' : activeSort,
-        };
-
-        if (activeCuisine) {
-          params.cuisine = activeCuisine;
-        }
-        if (activeMinRating !== null) {
-          params.minRating = activeMinRating;
-        }
-
-        const data = await fetchRestaurants(params);
-        fetchedRestaurants = data.restaurants;
-        totalPagesCount = data.pagination.totalPages;
-      }
-
-      // Apply client-side "Near & Fast" logic (delivery time <= 35)
-      if (activeNearAndFast) {
-        fetchedRestaurants = fetchedRestaurants.filter(r => (r.averageDeliveryTime ?? 30) <= 35);
-      }
-
-      // Apply client-side "No packaging charges" logic (packagingCharge === 0)
-      if (activeNoPackaging) {
-        fetchedRestaurants = fetchedRestaurants.filter(r => !(r as any).packagingCharge || (r as any).packagingCharge === 0);
-      }
-
-      if (pageNumber === 1) {
-        setItems(fetchedRestaurants);
-      } else {
-        setItems(prev => [...prev, ...fetchedRestaurants]);
-      }
-
-      setPage(pageNumber);
-      setHasMore(pageNumber < totalPagesCount);
-    } catch (e: any) {
-      setError(e?.response?.data?.message ?? e?.message ?? 'Failed to load restaurants');
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  };
-
-  // Fetch recommended restaurants
-  const fetchRecommended = async () => {
-    try {
-      const data = await fetchRecommendedRestaurants();
-      setRecommendedItems(data);
-    } catch (e) {
-      console.log('Error fetching recommended:', e);
-    }
-  };
-
-  // Re-fetch on filter changes
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchRestaurantsList(1, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQuery, activeSort, activeMinRating, activeOffers, activeNearAndFast, activeNoPackaging, activeCuisine]);
-
-  // Fetch recommended items on mount
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchRecommended();
+    }, 4600);
+    return () => {
+      if (promoTimer.current) clearInterval(promoTimer.current);
+    };
   }, []);
 
-  // Pull-to-refresh handler
-  const onRefresh = async () => {
+  const deliveryPointName =
+    pointName ?? bootstrapQ.data?.deliveryPoints?.[0]?.name ?? 'Select delivery point';
+  const walletBalance = Number(walletQ.data?.balance ?? walletQ.data?.walletBalance ?? 0);
+  const deliveryMins = CASE_DEFAULT_DELIVERY_MINS;
+  const popularShops = useMemo(
+    () => allMerchantsQ.data?.items ?? [],
+    [allMerchantsQ.data?.items],
+  );
+  const loadingHome = allMerchantsQ.isLoading && popularShops.length === 0;
+
+  const firstName = user?.fullName?.trim()?.split(/\s+/)[0] || 'there';
+  const greet = greetingForHour(new Date().getHours());
+
+  const activeOrder = useMemo(() => {
+    const list = ordersQ.data ?? [];
+    return list.find((o) => !TERMINAL_STATUSES.has(String(o.orderStatus ?? '').toUpperCase())) ?? null;
+  }, [ordersQ.data]);
+
+  const shopsByType = useMemo(() => {
+    const map: Record<string, typeof popularShops> = {};
+    popularShops.forEach((m) => {
+      const t = (m.businessType ?? 'STORE').toUpperCase();
+      if (!map[t]) map[t] = [];
+      map[t].push(m);
+    });
+    return map;
+  }, [popularShops]);
+
+  const popularIds = useMemo(() => popularShops.slice(0, 12).map((m) => m.id), [popularShops]);
+  const offerBadges = useRestaurantOfferBadges(popularIds);
+
+  const productMenusQ = useQueries({
+    queries: popularShops.slice(0, 8).map((m) => ({
+      queryKey: caseKeys.menu(m.id),
+      queryFn: () => fetchCaseMerchantMenu(m.id),
+      enabled: popularShops.length > 0,
+      staleTime: 3 * 60_000,
+    })),
+  });
+
+  const productsWithRestaurant = useMemo(() => {
+    const out: (ProductCardItem & { restaurantId: string })[] = [];
+    productMenusQ.forEach((q, i) => {
+      const merchant = popularShops[i];
+      const menu = q.data;
+      if (!merchant || !menu?.items?.length) return;
+      menu.items.slice(0, 3).forEach((it) => {
+        const price = it.discountedPrice ?? it.price;
+        const original = it.discountedPrice ? it.price : null;
+        const pct =
+          original && original > price ? Math.round(((original - price) / original) * 100) : undefined;
+        out.push({
+          id: it.id,
+          restaurantId: merchant.id,
+          name: it.itemName,
+          price,
+          originalPrice: original,
+          image: it.images?.[0],
+          storeName: menu.restaurantName || merchant.restaurantName,
+          businessType: menu.businessType || merchant.businessType,
+          foodType: it.foodType,
+          attributes: (it as { attributes?: MenuItemAttributes }).attributes ?? null,
+          deliveryMins: merchant.averageDeliveryTime ?? deliveryMins,
+          discountPct: pct && pct > 0 ? pct : undefined,
+        });
+      });
+    });
+    return out.slice(0, 16);
+  }, [productMenusQ, popularShops, deliveryMins]);
+
+  const cartCount = getCartItemCount(cart);
+  const cartTotal = getCartDisplayTotal(cart);
+  const cartRestaurantName = getCartRestaurantName(cart);
+
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([
-      fetchRestaurantsList(1, false, true),
-      fetchRecommended(),
-      qc.invalidateQueries({ queryKey: cartKeys.all }),
-    ]);
+    await Promise.all([bootstrapQ.refetch(), allMerchantsQ.refetch(), walletQ.refetch(), ordersQ.refetch()]);
     setRefreshing(false);
+  }, [bootstrapQ, allMerchantsQ, walletQ, ordersQ]);
+
+  const openMerchant = useCallback(
+    (id: string) => router.push(`/restaurant/${id}`),
+    [router],
+  );
+
+  const openCategory = (id: CaseCategoryId) => {
+    setActiveCat(id);
+    if (id === 'GET_ANYTHING') {
+      router.push('/get-anything');
+      return;
+    }
+    router.push({ pathname: '/category/[businessType]', params: { businessType: id } });
   };
 
-  // Scroll to end (Load More)
-  const onLoadMore = () => {
-    if (hasMore && !loading && !loadingMore) {
-      void fetchRestaurantsList(page + 1);
+  const onAddProduct = async (item: ProductCardItem & { restaurantId: string }) => {
+    try {
+      await addToCart.mutateAsync({
+        restaurantId: item.restaurantId,
+        menuItemId: item.id,
+        quantity: 1,
+        itemName: item.name,
+        price: item.price,
+        restaurantName: item.storeName,
+      });
+    } catch {
+      router.push(`/restaurant/${item.restaurantId}`);
     }
   };
 
-  const openRestaurant = useCallback(
-    (restaurantId: string) => {
-      void qc.prefetchQuery({
-        queryKey: restaurantKeys.byId(restaurantId),
-        queryFn: () => fetchRestaurantById(restaurantId),
-        staleTime: 3 * 60 * 1000,
-      });
-      void qc.prefetchQuery({
-        queryKey: menuKeys.byRestaurant(restaurantId),
-        queryFn: () => fetchMenuItemsByRestaurant(restaurantId),
-        staleTime: 2 * 60 * 1000,
-      });
-      void qc.prefetchQuery({
-        queryKey: menuKeys.combos(restaurantId),
-        queryFn: () => fetchCombosByRestaurant(restaurantId),
-        staleTime: 2 * 60 * 1000,
-      });
-      router.push({
-        pathname: '/restaurant/[restaurantId]',
-        params: { restaurantId },
-      });
-    },
-    [qc, router],
-  );
-
-  const renderRestaurantItem = useCallback(({ item, index }: { item: Restaurant; index: number }) => (
-    <RestaurantListItem
-      item={item}
-      index={index}
-      theme={theme}
-      offerBadges={offerBadges}
-      onPressRestaurant={openRestaurant}
-    />
-  ), [theme, offerBadges, openRestaurant]);
-
-  // Filters Modal Helper functions
-  const openFiltersModal = () => {
-    setTempSort(activeSort);
-    setTempMinRating(activeMinRating);
-    setTempOffers(activeOffers);
-    setShowFiltersModal(true);
+  const onPromoScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const i = Math.round(x / (PROMO_W + 12));
+    if (i !== promoIndex && i >= 0 && i < PROMOS.length) setPromoIndex(i);
   };
-
-  const applyModalFilters = () => {
-    setActiveSort(tempSort);
-    setActiveMinRating(tempMinRating);
-    setActiveOffers(tempOffers);
-    setShowFiltersModal(false);
-  };
-
-  const clearModalFilters = () => {
-    setTempSort('rating');
-    setTempMinRating(null);
-    setTempOffers(false);
-  };
-
-  // Cycle sorting options
-  // (Unused helper; keep removed to satisfy lint)
-
-  // const currentSortLabel = SORT_OPTIONS.find(o => o.value === activeSort)?.label ?? 'Sort';
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        {!!error && (
-          <ThemedView type="backgroundElement" style={styles.errorCard}>
-            <ThemedText style={styles.errorText}>{error}</ThemedText>
-            <Pressable onPress={() => fetchRestaurantsList(1)} style={styles.retryBtn}>
-              <ThemedText style={[styles.retryText, { color: theme.primary }]}>Retry</ThemedText>
-            </Pressable>
-          </ThemedView>
-        )}
+    <ThemedView style={styles.root}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={['#241005', '#FF6A1A', PAGE_BG]}
+        locations={[0, 0.42, 1]}
+        style={styles.heroWash}
+      />
+      <View pointerEvents="none" style={styles.glowBig} />
+      <View pointerEvents="none" style={styles.glowSmall} />
 
-        <FlatList
-          data={activeOffers ? items.filter((r) => Boolean(offerBadges[r._id])) : items}
-          keyExtractor={(r) => r._id}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          onEndReached={onLoadMore}
-          onEndReachedThreshold={0.4}
-          contentContainerStyle={{ paddingBottom: listBottomPadding }}
-          initialNumToRender={6}
-          maxToRenderPerBatch={10}
-          windowSize={5}
-          removeClippedSubviews={Platform.OS === 'android'}
-          ListFooterComponent={
-            loadingMore ? (
-              <View style={styles.loaderFooter}>
-                <ActivityIndicator size="small" color={theme.primary} />
-                <Text style={[styles.loadingMoreText, { color: theme.textSecondary }]}>Loading more restaurants...</Text>
-              </View>
-            ) : null
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: tabBarHeight + (cartCount > 0 ? 80 : 20) }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CaseUi.orange} />
           }
-          ListEmptyComponent={
-            loading ? (
-              <View style={styles.emptyContainer}>
-                <ActivityIndicator size="large" color={theme.primary} />
-                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>Finding delicious options near you...</Text>
-              </View>
-            ) : (
-              <View style={styles.emptyContainer}>
-                <Text style={{ fontSize: 44 }}>🥪</Text>
-                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No restaurants match your search or filters.</Text>
-                <Pressable
-                  onPress={() => {
-                    setQuery('');
-                    resetFilters();
-                  }}
-                  style={[styles.clearBtn, { backgroundColor: theme.primary }]}
-                >
-                  <Text style={styles.clearBtnText}>Reset Filters</Text>
-                </Pressable>
-              </View>
-            )
-          }
-          ListHeaderComponent={
-            <View style={{ paddingTop: Spacing.one, paddingBottom: Spacing.two }}>
-              
-              {/* Delivering to (Zomato-style Header) */}
-              <View style={styles.topBar}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.deliveringLabel, { color: theme.textSecondary }]}>
-                    Delivering to
+        >
+          {/* Utility row */}
+          <Animated.View entering={FadeInDown.duration(360)} style={styles.utilityRow}>
+            <PressableScale
+              onPress={() =>
+                router.push(
+                  CASE_CHECKOUT_ENABLED ? '/(onboarding)/delivery-point' : '/(onboarding)/location',
+                )
+              }
+              style={styles.locPill}
+            >
+              <Ionicons name="location" size={13} color="#FFFFFF" />
+              <Text style={styles.locPillText} numberOfLines={1}>
+                {deliveryPointName}
+              </Text>
+              <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.85)" />
+            </PressableScale>
+
+            <View style={styles.utilityRight}>
+              <PressableScale
+                style={styles.walletPill}
+                onPress={() => router.push('/wallet')}
+                accessibilityLabel={`Wallet balance J$${walletBalance.toFixed(0)}`}
+              >
+                <Ionicons name="wallet" size={13} color={CaseUi.orange} />
+                <Text style={styles.walletAmt}>J${walletBalance.toFixed(0)}</Text>
+              </PressableScale>
+              <PressableScale
+                style={styles.iconBtn}
+                onPress={() => router.push('/notifications')}
+                accessibilityLabel="Notifications"
+              >
+                <Ionicons name="notifications-outline" size={17} color={CaseUi.ink} />
+                {unreadCount > 0 ? (
+                  <Animated.View entering={ZoomIn.duration(200)} style={styles.badge}>
+                    <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                  </Animated.View>
+                ) : null}
+              </PressableScale>
+              <PressableScale
+                style={styles.avatar}
+                onPress={() => router.push('/(tabs)/profile')}
+                accessibilityLabel="Profile"
+              >
+                {user?.profileImage ? (
+                  <Image
+                    source={{ uri: user.profileImage }}
+                    style={StyleSheet.absoluteFill}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <Text style={styles.avatarLetter}>
+                    {user?.fullName?.charAt(0)?.toUpperCase() ?? 'U'}
                   </Text>
-                  <Pressable onPress={() => router.push('/(onboarding)/location')} style={styles.locationRow}>
-                    <Text style={[styles.locationIcon, { color: theme.primary }]}>📍</Text>
-                    <Text style={[styles.locationText, { color: theme.text }]} numberOfLines={1}>
-                      {locationLocality}
-                    </Text>
-                    <Text style={[styles.locationChevron, { color: theme.textSecondary }]}>▼</Text>
-                  </Pressable>
+                )}
+              </PressableScale>
+            </View>
+          </Animated.View>
+
+          {/* Greeting headline */}
+          <Animated.View entering={FadeInDown.delay(40).duration(380)} style={styles.greetBlock}>
+            <Text style={styles.greetLine}>
+              {greet}, {firstName} <Text style={styles.greetWave}>👋</Text>
+            </Text>
+            <Text style={styles.greetSub}>
+              {activeOrder ? 'Your order is on its way' : 'What are you craving today?'}
+            </Text>
+          </Animated.View>
+
+          {/* Floating search bar */}
+          <Animated.View entering={FadeInDown.delay(80).duration(360)}>
+            <PressableScale
+              style={styles.search}
+              onPress={() => router.push('/search')}
+              scaleTo={0.985}
+            >
+              <View style={styles.searchIconWrap}>
+                <Ionicons name="search" size={18} color={CaseUi.orange} />
+              </View>
+              <Text style={styles.searchPh} numberOfLines={1}>
+                Search food, grocery, pharmacy…
+              </Text>
+              <View style={styles.micWrap}>
+                <Ionicons name="mic-outline" size={17} color={CaseUi.muted} />
+              </View>
+            </PressableScale>
+          </Animated.View>
+
+          {/* Active order tracker */}
+          {activeOrder ? (
+            <Animated.View entering={FadeInDown.delay(100).duration(340)}>
+              <PressableScale
+                style={styles.trackCard}
+                onPress={() => router.push({ pathname: '/order/track/[orderId]', params: { orderId: activeOrder.id } })}
+              >
+                <View style={styles.trackIconWrap}>
+                  <Ionicons name={activeOrderCopy(activeOrder.orderStatus).icon} size={20} color={CaseUi.orange} />
                 </View>
-                
-                {/* Notification Icon */}
-                <Pressable
-                  onPress={() => router.push('/notifications')}
-                  style={[styles.roundIcon, { backgroundColor: theme.backgroundSelected }]}
-                >
-                  <Ionicons name="notifications-outline" size={20} color={theme.text} />
-                  {unreadNotifications > 0 ? (
-                    <View style={styles.dot}>
-                      <Text style={styles.dotText}>
-                        {unreadNotifications > 9 ? '9+' : unreadNotifications}
-                      </Text>
-                    </View>
-                  ) : null}
-                </Pressable>
-                
-                {/* User Avatar with Orange Accent Border */}
-                <Pressable
-                  onPress={() => router.push('/(tabs)/profile')}
-                  style={[
-                    styles.avatar,
-                    {
-                      borderColor: theme.primary,
-                      overflow: 'hidden',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      backgroundColor: theme.backgroundSelected,
-                    },
-                  ]}
-                >
-                  {user?.profileImage ? (
-                    <Image
-                      source={{ uri: user.profileImage }}
-                      style={{ width: '100%', height: '100%' }}
-                      contentFit="cover"
-                      transition={200}
-                    />
-                  ) : (
-                    <View style={{ width: '100%', height: '100%', backgroundColor: theme.primary, justifyContent: 'center', alignItems: 'center' }}>
-                      <Text style={{ color: '#ffffff', fontSize: 13, fontFamily: 'PlusJakartaSans_800ExtraBold' }}>
-                        {user?.fullName?.charAt(0).toUpperCase() || 'U'}
-                      </Text>
-                    </View>
-                  )}
-                </Pressable>
-              </View>
-
-              {/* Zomato-style Search Bar & Filter button row */}
-              <View style={styles.searchRowContainer}>
-                <Pressable
-                  onPress={() => router.push('/(tabs)/explore')}
-                  style={[styles.searchBar, { backgroundColor: theme.backgroundSelected, flex: 1, marginTop: 0 }]}
-                >
-                  <Text style={styles.searchEmoji}>🔍</Text>
-                  <Text style={[styles.searchInput, { color: theme.textSecondary, paddingTop: Platform.OS === 'ios' ? 2 : 0 }]}>
-                    Search for restaurants, cuisines or dishes...
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.trackTitle}>{activeOrderCopy(activeOrder.orderStatus).label}</Text>
+                  <Text style={styles.trackSub} numberOfLines={1}>
+                    Order #{String(activeOrder.orderNumber ?? activeOrder.id).slice(-6).toUpperCase()}
+                    {activeOrder.deliveryPoint?.name ? ` · ${activeOrder.deliveryPoint.name}` : ''}
                   </Text>
-                </Pressable>
-                <Pressable 
-                  onPress={openFiltersModal}
-                  style={[styles.filterSearchBtn, { backgroundColor: theme.backgroundSelected }]}
-                >
-                  <Ionicons name="options-outline" size={22} color={theme.primary} />
-                </Pressable>
-              </View>
+                </View>
+                <View style={styles.trackCta}>
+                  <Text style={styles.trackCtaText}>Track</Text>
+                  <Ionicons name="arrow-forward" size={13} color="#FFFFFF" />
+                </View>
+              </PressableScale>
+            </Animated.View>
+          ) : null}
 
-              {/* Horizontal Scroll of Promo Offer Banners (Demo Offer Cards) */}
-              <View style={styles.promoRow}>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ gap: 14 }}
-                >
-                  {/* Offer Card 1: Orange/Red Brand Gradient Special */}
-                  <View style={[styles.promoCard, { backgroundColor: '#ff5a00' }]}>
-                    <View style={styles.promoContent}>
-                      <Text style={styles.promoTag}>FIRST ORDER SPECIAL</Text>
-                      <Text style={styles.promoTitle}>50% OFF</Text>
-                      <Text style={styles.promoSub}>Up to ₹150 on your first order</Text>
-                      <Pressable style={styles.promoBtn}>
-                        <Text style={[styles.promoBtnText, { color: '#ff5a00' }]}>Claim Now</Text>
-                      </Pressable>
-                    </View>
-                    <View style={styles.promoBgSymbol}>
-                      <Text style={{ fontSize: 90, color: 'rgba(255,255,255,0.15)' }}>🍲</Text>
-                    </View>
-                  </View>
-
-                  {/* Offer Card 2: Dark Grey QuickBite Pro */}
-                  <View style={[styles.promoCard, { backgroundColor: '#41484a' }]}>
-                    <View style={styles.promoContent}>
-                      <Text style={styles.promoTag}>QUICKBITE PRO</Text>
-                      <Text style={styles.promoTitle}>Free Delivery</Text>
-                      <Text style={styles.promoSub}>On all orders above ₹299</Text>
-                      <Pressable style={[styles.promoBtn, { backgroundColor: '#ff5a00' }]}>
-                        <Text style={[styles.promoBtnText, { color: '#ffffff' }]}>Join Pro</Text>
-                      </Pressable>
-                    </View>
-                    <View style={styles.promoBgSymbol}>
-                      <Text style={{ fontSize: 90, color: 'rgba(255,255,255,0.08)' }}>🛵</Text>
-                    </View>
-                  </View>
-                </ScrollView>
-              </View>
-
-              {/* What's on your mind? Section */}
-              <View style={styles.sectionRow}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>What&apos;s on your mind?</Text>
-                <Pressable onPress={() => Alert.alert('Cuisines', 'Scroll to explore dishes!')}>
-                  <Text style={[styles.seeAll, { color: theme.primary }]}>See all ›</Text>
-                </Pressable>
-              </View>
-
-              {/* Interactive Category Circles */}
-              <View style={styles.categoriesRow}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
-                  {CATEGORIES.map((c) => {
-                    const isSelected = c.name === 'All' ? activeCuisine === null : activeCuisine === c.name;
-                    return (
-                      <CategoryChip
-                        key={c.name}
-                        category={c}
-                        isSelected={isSelected}
-                        onSelect={handleSelectCuisine}
-                        theme={theme}
-                      />
-                    );
-                  })}
-                </ScrollView>
-              </View>
-
-              {/* Horizontal Scroll of Active Filter Chips positioned right above RECOMMENDED section */}
+          {loadingHome ? (
+            <HomeSkeleton />
+          ) : (
+            <>
+              {/* Categories */}
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterScroll}
-                style={styles.filterContainer}
+                contentContainerStyle={styles.catRow}
+                style={styles.catScroll}
               >
-                {/* Near & Fast */}
-                <Pressable
-                  onPress={() => setActiveNearAndFast(!activeNearAndFast)}
-                  style={[
-                    styles.filterChip,
-                    activeNearAndFast && [styles.filterChipActive, { borderColor: theme.primary, backgroundColor: theme.primarySoft }]
-                  ]}
-                >
-                  <Text style={[
-                    styles.filterChipText, 
-                    { color: theme.text },
-                    activeNearAndFast && { color: theme.primary, fontFamily: 'PlusJakartaSans_700Bold' }
-                  ]}>
-                    ⚡ Near & Fast {activeNearAndFast && '✕'}
-                  </Text>
-                </Pressable>
-
-                {/* No packaging charges */}
-                <Pressable
-                  onPress={() => setActiveNoPackaging(!activeNoPackaging)}
-                  style={[
-                    styles.filterChip,
-                    activeNoPackaging && [styles.filterChipActive, { borderColor: theme.primary, backgroundColor: theme.primarySoft }]
-                  ]}
-                >
-                  <Text style={[
-                    styles.filterChipText, 
-                    { color: theme.text },
-                    activeNoPackaging && { color: theme.primary, fontFamily: 'PlusJakartaSans_700Bold' }
-                  ]}>
-                    No packaging charges {activeNoPackaging && '✕'}
-                  </Text>
-                </Pressable>
-
-                {/* Quick Rating Chip */}
-                {activeMinRating !== null && (
-                  <Pressable
-                    onPress={() => setActiveMinRating(null)}
-                    style={[styles.filterChip, styles.filterChipActive, { borderColor: theme.primary, backgroundColor: theme.primarySoft }]}
-                  >
-                    <Text style={[styles.filterChipText, { color: theme.primary, fontFamily: 'PlusJakartaSans_700Bold' }]}>
-                      Rating {activeMinRating}+ ✕
-                    </Text>
-                  </Pressable>
-                )}
-
-                {/* Quick Offers Chip */}
-                {activeOffers && (
-                  <Pressable
-                    onPress={() => setActiveOffers(false)}
-                    style={[styles.filterChip, styles.filterChipActive, { borderColor: theme.primary, backgroundColor: theme.primarySoft }]}
-                  >
-                    <Text style={[styles.filterChipText, { color: theme.primary, fontFamily: 'PlusJakartaSans_700Bold' }]}>
-                      Offers ✕
-                    </Text>
-                  </Pressable>
-                )}
+                {CASE_HOME_CATEGORY_ROW.map((id, i) => (
+                  <CategoryTile
+                    key={id}
+                    id={id}
+                    index={i}
+                    selected={activeCat === id}
+                    onPress={() => openCategory(id)}
+                  />
+                ))}
               </ScrollView>
 
-              {/* RECOMMENDED FOR YOU Section */}
-              {recommendedItems.length > 0 && (
-                <View style={{ marginTop: Spacing.four, marginBottom: Spacing.two }}>
-                  <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 12 }]}>
-                    RECOMMENDED FOR YOU
+              {/* Promo carousel — full-bleed image cards */}
+              <Animated.View entering={FadeIn.delay(80).duration(400)} style={styles.promoBlock}>
+                <ScrollView
+                  ref={promoRef}
+                  horizontal
+                  decelerationRate="fast"
+                  snapToInterval={PROMO_W + 12}
+                  snapToAlignment="start"
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: PAD, gap: 12 }}
+                  onMomentumScrollEnd={onPromoScroll}
+                >
+                  {PROMOS.map((p) => (
+                    <PressableScale key={p.id} onPress={() => openCategory(p.action)} style={{ width: PROMO_W }}>
+                      <View style={styles.promo}>
+                        <Image source={{ uri: p.image }} style={styles.promoBg} contentFit="cover" />
+                        <LinearGradient
+                          colors={['transparent', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.86)']}
+                          locations={[0, 0.45, 1]}
+                          style={StyleSheet.absoluteFill}
+                        />
+                        <View style={styles.promoCopy}>
+                          <Text style={styles.promoEyebrow}>Campus offer</Text>
+                          <Text style={styles.promoTitle}>{p.title}</Text>
+                          <Text style={styles.promoSub}>{p.sub}</Text>
+                          <View style={styles.promoCta}>
+                            <Text style={styles.promoCtaText}>{p.cta}</Text>
+                            <Ionicons name="arrow-forward" size={13} color={CaseUi.ink} />
+                          </View>
+                        </View>
+                      </View>
+                    </PressableScale>
+                  ))}
+                </ScrollView>
+                <View style={styles.dots}>
+                  {PROMOS.map((p, i) => (
+                    <View key={p.id} style={[styles.dot, i === promoIndex && styles.dotOn]} />
+                  ))}
+                </View>
+              </Animated.View>
+
+              {popularShops.length === 0 ? (
+                <Animated.View entering={FadeInUp.duration(400)} style={styles.empty}>
+                  <View style={styles.emptyIcon}>
+                    <Ionicons name="storefront-outline" size={32} color={CaseUi.orange} />
+                  </View>
+                  <Text style={styles.emptyTitle}>No shops nearby yet</Text>
+                  <Text style={styles.emptySub}>
+                    Pick a campus delivery point — we’ll show food, grocery, pharmacy & stores.
                   </Text>
-                  
+                  <PressableScale
+                    style={styles.emptyCta}
+                    onPress={() =>
+                      router.push(
+                        CASE_CHECKOUT_ENABLED ? '/(onboarding)/delivery-point' : '/(onboarding)/location',
+                      )
+                    }
+                  >
+                    <Text style={styles.emptyCtaText}>Choose delivery point</Text>
+                  </PressableScale>
+                </Animated.View>
+              ) : (
+                <>
+                  <SectionHeader
+                    title="Popular near you"
+                    subtitle="Trending across campus right now"
+                    delay={120}
+                    onAction={() => openCategory('ALL')}
+                  />
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{ gap: 14, paddingRight: 16 }}
+                    contentContainerStyle={styles.hPad}
                   >
-                    {recommendedItems.map((item, index) => {
-                      const rating = Number(item.averageRating ?? 0);
-                      const ratingColor = rating >= 4.0 ? '#24963F' : (rating >= 3.0 ? '#9ACD32' : '#8A8D91');
-                      const discountText = offerBadges[item._id];
-                      
-                      return (
-                        <Pressable
-                          key={`rec-${item._id}`}
-                          onPress={() => openRestaurant(item._id)}
-                          style={styles.recCard}
-                        >
-                          <View style={styles.recHero}>
-                            <Image
-                              source={getRestaurantImage(item, index)}
-                              style={[StyleSheet.absoluteFill, { borderRadius: 12 }]}
-                              contentFit="cover"
-                              transition={200}
-                            />
-                            <View style={styles.imageOverlayRec} />
-                            
-                            {discountText ? (
-                              <View style={styles.recPromoBadge}>
-                                <Text style={styles.recPromoBadgeText}>{discountText}</Text>
-                              </View>
-                            ) : null}
-
-                            {/* Rating badge */}
-                            <View style={[styles.recRatingPill, { backgroundColor: ratingColor }]}>
-                              <Text style={styles.recRatingText}>★ {rating.toFixed(1)}</Text>
-                            </View>
-                          </View>
-
-                          {/* Details */}
-                          <View style={styles.recDetails}>
-                            <Text style={[styles.recName, { color: theme.text }]} numberOfLines={1}>
-                              {item.restaurantName}
-                            </Text>
-                            <View style={styles.recSubtitleRow}>
-                              <Text style={[styles.recSubtitleText, { color: theme.textSecondary }]}>
-                                ⚡ Near & Fast
-                              </Text>
-                            </View>
-                          </View>
-                        </Pressable>
-                      );
-                    })}
+                    {popularShops.slice(0, 12).map((m, i) => (
+                      <Animated.View key={m.id} entering={FadeInRight.delay(40 + i * 28).duration(300)}>
+                        <ShopCard
+                          merchant={m}
+                          index={i}
+                          width={156}
+                          offerBadge={offerBadges[m.id]}
+                          onPress={openMerchant}
+                        />
+                      </Animated.View>
+                    ))}
                   </ScrollView>
-                </View>
+
+                  {productsWithRestaurant.length > 0 ? (
+                    <>
+                      <SectionHeader
+                        title="Trending dishes"
+                        subtitle="Fresh picks, ready to order"
+                        delay={140}
+                        onAction={() => router.push('/search')}
+                      />
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.hPad}
+                      >
+                        {productsWithRestaurant.map((p, i) => (
+                          <Animated.View
+                            key={`${p.restaurantId}-${p.id}`}
+                            entering={FadeInRight.delay(30 + i * 24).duration(300)}
+                          >
+                            <ProductCard
+                              item={p}
+                              width={148}
+                              onPress={() => router.push(`/restaurant/${p.restaurantId}`)}
+                              onAdd={() => onAddProduct(p)}
+                            />
+                          </Animated.View>
+                        ))}
+                      </ScrollView>
+                    </>
+                  ) : null}
+
+                  {(shopsByType.RESTAURANT?.length ?? 0) > 0 ? (
+                    <>
+                      <SectionHeader
+                        title="Top-rated restaurants"
+                        subtitle="Highest rated by students like you"
+                        delay={160}
+                        onAction={() => openCategory('RESTAURANT')}
+                      />
+                      <View style={styles.listPad}>
+                        {shopsByType.RESTAURANT!.slice(0, 4).map((m, i) => (
+                          <ShopCard
+                            key={m.id}
+                            merchant={m}
+                            index={i}
+                            variant="list"
+                            offerBadge={offerBadges[m.id]}
+                            onPress={openMerchant}
+                          />
+                        ))}
+                      </View>
+                    </>
+                  ) : null}
+
+                  {(shopsByType.GROCERY?.length ?? 0) > 0 ? (
+                    <>
+                      <SectionHeader
+                        title="Groceries near you"
+                        subtitle="Campus-essential staples"
+                        delay={180}
+                        onAction={() => openCategory('GROCERY')}
+                      />
+                      <View style={styles.listPad}>
+                        <ShopGrid shops={shopsByType.GROCERY!.slice(0, 6)} onPress={openMerchant} />
+                      </View>
+                    </>
+                  ) : null}
+
+                  {(shopsByType.PHARMACY?.length ?? 0) > 0 ? (
+                    <>
+                      <SectionHeader
+                        title="Pharmacy essentials"
+                        subtitle="Health & wellness, delivered"
+                        delay={200}
+                        onAction={() => openCategory('PHARMACY')}
+                      />
+                      <View style={styles.listPad}>
+                        <ShopGrid shops={shopsByType.PHARMACY!.slice(0, 6)} onPress={openMerchant} />
+                      </View>
+                    </>
+                  ) : null}
+
+                  {(shopsByType.STORE?.length ?? 0) > 0 ? (
+                    <>
+                      <SectionHeader
+                        title="Campus stores"
+                        subtitle="Stationery, tech & more"
+                        delay={220}
+                        onAction={() => openCategory('STORE')}
+                      />
+                      <View style={styles.listPad}>
+                        <ShopGrid shops={shopsByType.STORE!.slice(0, 6)} onPress={openMerchant} />
+                      </View>
+                    </>
+                  ) : null}
+                </>
               )}
 
-              {/* Header for Restaurants list with filter chips above it */}
-              <View style={[styles.sectionRow, { marginTop: Spacing.three, marginBottom: Spacing.two }]}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                  Featured Restaurants
-                </Text>
-              </View>
-            </View>
-          }
-          renderItem={renderRestaurantItem}
+              <Animated.View entering={FadeInUp.delay(140).duration(400)}>
+                <PressableScale style={styles.getAnything} onPress={() => router.push('/get-anything')}>
+                  <LinearGradient
+                    colors={[CaseUi.orangeSoft, '#FFE4CC']}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <Image source={GET_ANYTHING_IMG} style={styles.getImg} contentFit="cover" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.getEyebrow}>Campus request</Text>
+                    <Text style={styles.getTitle}>Need something else?</Text>
+                    <Text style={styles.getSub}>Custom pickup & delivery anywhere on campus</Text>
+                  </View>
+                  <View style={styles.getCta}>
+                    <Ionicons name="arrow-forward" size={16} color={CaseUi.white} />
+                  </View>
+                </PressableScale>
+              </Animated.View>
+            </>
+          )}
+        </ScrollView>
+
+        <FloatingCartBar
+          visible={cartCount > 0}
+          itemCount={cartCount}
+          total={cartTotal}
+          restaurantName={cartRestaurantName}
+          onPress={() => router.push('/(tabs)/cart')}
+          bottom={tabBarHeight - 8}
         />
-
-        {/* Filters Bottom Sheet Modal */}
-        <Modal
-          visible={modalVisible}
-          animationType="none"
-          transparent={true}
-          onRequestClose={() => setShowFiltersModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            {/* Backdrop clickable overlay */}
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowFiltersModal(false)}>
-              <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)', opacity: fadeAnim }]} />
-            </Pressable>
-
-            {/* Slide up content container */}
-            <Animated.View style={[
-              styles.modalContent, 
-              { 
-                backgroundColor: theme.background,
-                transform: [{ translateY: slideAnim }] 
-              }
-            ]}>
-              
-              {/* Header */}
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Filters and sorting</Text>
-                <Pressable onPress={clearModalFilters}>
-                  <Text style={[styles.modalClearAll, { color: theme.primary }]}>Clear All</Text>
-                </Pressable>
-              </View>
-
-              {/* Body */}
-              <View style={styles.modalBody}>
-                {/* Left tab column */}
-                <View style={[styles.tabCol, { backgroundColor: theme.backgroundSelected }]}>
-                  
-                  {/* Sort By tab */}
-                  <Pressable 
-                    onPress={() => setActiveModalTab('sort')}
-                    style={[styles.tabBtn, activeModalTab === 'sort' && styles.tabBtnActive]}
-                  >
-                    {activeModalTab === 'sort' && <View style={[styles.indicatorLine, { backgroundColor: theme.primary }]} />}
-                    <Text style={[styles.tabText, { color: theme.text }, activeModalTab === 'sort' && { fontFamily: 'PlusJakartaSans_800ExtraBold', fontWeight: '800' }]}>
-                      Sort By
-                    </Text>
-                  </Pressable>
-
-                  {/* Rating tab */}
-                  <Pressable 
-                    onPress={() => setActiveModalTab('rating')}
-                    style={[styles.tabBtn, activeModalTab === 'rating' && styles.tabBtnActive]}
-                  >
-                    {activeModalTab === 'rating' && <View style={[styles.indicatorLine, { backgroundColor: theme.primary }]} />}
-                    <Text style={[styles.tabText, { color: theme.text }, activeModalTab === 'rating' && { fontFamily: 'PlusJakartaSans_800ExtraBold', fontWeight: '800' }]}>
-                      Rating
-                    </Text>
-                  </Pressable>
-
-                  {/* Offers tab */}
-                  <Pressable 
-                    onPress={() => setActiveModalTab('offers')}
-                    style={[styles.tabBtn, activeModalTab === 'offers' && styles.tabBtnActive]}
-                  >
-                    {activeModalTab === 'offers' && <View style={[styles.indicatorLine, { backgroundColor: theme.primary }]} />}
-                    <Text style={[styles.tabText, { color: theme.text }, activeModalTab === 'offers' && { fontFamily: 'PlusJakartaSans_800ExtraBold', fontWeight: '800' }]}>
-                      Offers
-                    </Text>
-                  </Pressable>
-
-                </View>
-
-                {/* Right content column */}
-                <View style={styles.contentCol}>
-                  {activeModalTab === 'sort' && (
-                    <View style={{ gap: 16 }}>
-                      {/* Relevance (rating desc) */}
-                      <Pressable onPress={() => setTempSort('rating')} style={styles.radioOption}>
-                        <View style={[styles.radioCircle, tempSort === 'rating' && { borderColor: theme.primary }]}>
-                          {tempSort === 'rating' && <View style={[styles.radioCircleSelected, { backgroundColor: theme.primary }]} />}
-                        </View>
-                        <Text style={[styles.optionText, { color: theme.text }]}>Relevance</Text>
-                      </Pressable>
-
-                      {/* Distance: Low to High */}
-                      <Pressable onPress={() => setTempSort('distance')} style={styles.radioOption}>
-                        <View style={[styles.radioCircle, tempSort === 'distance' && { borderColor: theme.primary }]}>
-                          {tempSort === 'distance' && <View style={[styles.radioCircleSelected, { backgroundColor: theme.primary }]} />}
-                        </View>
-                        <Text style={[styles.optionText, { color: theme.text }]}>Distance: Low to High</Text>
-                      </Pressable>
-
-                      {/* Rating: High to Low */}
-                      <Pressable onPress={() => setTempSort('rating')} style={styles.radioOption}>
-                        <View style={[styles.radioCircle, tempSort === 'rating' && { borderColor: theme.primary }]}>
-                          {tempSort === 'rating' && <View style={[styles.radioCircleSelected, { backgroundColor: theme.primary }]} />}
-                        </View>
-                        <Text style={[styles.optionText, { color: theme.text }]}>Rating: High to Low</Text>
-                      </Pressable>
-
-                      {/* Delivery Time: Low to High */}
-                      <Pressable onPress={() => setTempSort('deliveryTime')} style={styles.radioOption}>
-                        <View style={[styles.radioCircle, tempSort === 'deliveryTime' && { borderColor: theme.primary }]}>
-                          {tempSort === 'deliveryTime' && <View style={[styles.radioCircleSelected, { backgroundColor: theme.primary }]} />}
-                        </View>
-                        <Text style={[styles.optionText, { color: theme.text }]}>Delivery Time: Low to High</Text>
-                      </Pressable>
-
-                      {/* Newest */}
-                      <Pressable onPress={() => setTempSort('newest')} style={styles.radioOption}>
-                        <View style={[styles.radioCircle, tempSort === 'newest' && { borderColor: theme.primary }]}>
-                          {tempSort === 'newest' && <View style={[styles.radioCircleSelected, { backgroundColor: theme.primary }]} />}
-                        </View>
-                        <Text style={[styles.optionText, { color: theme.text }]}>Newest</Text>
-                      </Pressable>
-                    </View>
-                  )}
-
-                  {activeModalTab === 'rating' && (
-                    <View style={{ gap: 16 }}>
-                      {/* Rated 3.5+ */}
-                      <Pressable onPress={() => setTempMinRating(r => r === 3.5 ? null : 3.5)} style={styles.checkboxOption}>
-                        <View style={[styles.checkboxBox, tempMinRating === 3.5 && { backgroundColor: theme.primary, borderColor: theme.primary }]}>
-                          {tempMinRating === 3.5 && <Text style={styles.checkmark}>✓</Text>}
-                        </View>
-                        <Text style={[styles.optionText, { color: theme.text }]}>Rated 3.5+</Text>
-                      </Pressable>
-
-                      {/* Rated 4.0+ */}
-                      <Pressable onPress={() => setTempMinRating(r => r === 4.0 ? null : 4.0)} style={styles.checkboxOption}>
-                        <View style={[styles.checkboxBox, tempMinRating === 4.0 && { backgroundColor: theme.primary, borderColor: theme.primary }]}>
-                          {tempMinRating === 4.0 && <Text style={styles.checkmark}>✓</Text>}
-                        </View>
-                        <Text style={[styles.optionText, { color: theme.text }]}>Rated 4.0+</Text>
-                      </Pressable>
-                    </View>
-                  )}
-
-                  {activeModalTab === 'offers' && (
-                    <View style={{ gap: 16 }}>
-                      {/* Buy 1 Get 1 */}
-                      <Pressable onPress={() => setTempOffers(prev => !prev)} style={styles.checkboxOption}>
-                        <View style={[styles.checkboxBox, tempOffers && { backgroundColor: theme.primary, borderColor: theme.primary }]}>
-                          {tempOffers && <Text style={styles.checkmark}>✓</Text>}
-                        </View>
-                        <Text style={[styles.optionText, { color: theme.text }]}>Buy 1 Get 1 and more</Text>
-                      </Pressable>
-
-                      {/* Deals of the Day */}
-                      <Pressable onPress={() => setTempOffers(prev => !prev)} style={styles.checkboxOption}>
-                        <View style={[styles.checkboxBox, tempOffers && { backgroundColor: theme.primary, borderColor: theme.primary }]}>
-                          {tempOffers && <Text style={styles.checkmark}>✓</Text>}
-                        </View>
-                        <Text style={[styles.optionText, { color: theme.text }]}>Deals of the Day</Text>
-                      </Pressable>
-                    </View>
-                  )}
-                </View>
-              </View>
-
-              {/* Footer */}
-              <View style={[styles.modalFooter, { borderTopColor: theme.backgroundSelected }]}>
-                <Pressable onPress={() => setShowFiltersModal(false)} style={styles.closeBtn}>
-                  <Text style={[styles.closeBtnText, { color: theme.text }]}>Close</Text>
-                </Pressable>
-                <Pressable onPress={applyModalFilters} style={[styles.applyBtn, { backgroundColor: theme.primary }]}>
-                  <Text style={styles.applyBtnText}>Show results</Text>
-                </Pressable>
-              </View>
-
-            </Animated.View>
-          </View>
-        </Modal>
       </SafeAreaView>
-
-      <FloatingCartBar
-        visible={cartCount > 0}
-        itemCount={cartCount}
-        total={cartTotal}
-        restaurantName={cartRestaurantName}
-        onPress={() => router.push('/cart')}
-        bottom={cartBarBottom}
-      />
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 8 : 12,
-  },
-  errorCard: {
-    padding: Spacing.three,
-    borderRadius: 16,
-    marginBottom: Spacing.three,
-    borderWidth: 1,
-    borderColor: 'rgba(229,72,77,0.25)',
-  },
-  errorText: { color: '#E5484D' },
-  retryBtn: { marginTop: Spacing.two, alignSelf: 'flex-start' },
-  retryText: { fontFamily: 'PlusJakartaSans_700Bold' },
-
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
-  },
-  deliveringLabel: {
-    fontSize: 11,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  locationIcon: {
-    fontSize: 16,
-  },
-  locationText: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  locationChevron: {
-    fontSize: 10,
-    marginLeft: 2,
-  },
-  roundIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  dot: {
+  root: { flex: 1, backgroundColor: PAGE_BG },
+  heroWash: { position: 'absolute', top: 0, left: 0, right: 0, height: 320 },
+  glowBig: {
     position: 'absolute',
-    right: 4,
-    top: 4,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#ff5a00',
-    borderWidth: 1.5,
-    borderColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
+    top: -60,
+    right: -50,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
-  dotText: {
-    color: '#ffffff',
-    fontSize: 9,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    lineHeight: 11,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 2,
-  },
-
-  searchBar: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(127,127,127,0.12)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  searchEmoji: { fontSize: 16, opacity: 0.7 },
-  micIcon: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  searchInput: {
-    flex: 1,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 14,
-  },
-
-  // Promo Banners Row
-  promoRow: {
-    marginTop: 18,
-  },
-  promoCard: {
-    width: 290,
+  glowSmall: {
+    position: 'absolute',
+    top: 90,
+    left: -40,
+    width: 140,
     height: 140,
-    borderRadius: 16,
-    padding: 16,
-    position: 'relative',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
+    borderRadius: 70,
+    backgroundColor: 'rgba(255,255,255,0.07)',
   },
-  promoContent: {
-    zIndex: 2,
-    flex: 1,
-    justifyContent: 'center',
-  },
-  promoTag: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 10,
-    fontFamily: 'PlusJakartaSans_700Bold',
-    letterSpacing: 0.8,
-  },
-  promoTitle: {
-    color: '#ffffff',
-    fontSize: 26,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontWeight: '800',
-    marginTop: 3,
-    lineHeight: 30,
-  },
-  promoSub: {
-    color: 'rgba(255,255,255,0.85)',
-    marginTop: 3,
-    fontSize: 11,
-    fontFamily: 'PlusJakartaSans_500Medium',
-  },
-  promoBtn: {
-    marginTop: 10,
-    alignSelf: 'flex-start',
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  promoBtnText: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 11,
-  },
-  promoBgSymbol: {
-    position: 'absolute',
-    right: -10,
-    bottom: -10,
-    zIndex: 1,
-  },
-
-  // Filters scroll chips styling
-  filterContainer: {
-    marginTop: 10,
-    maxHeight: 44,
-    marginBottom: 6,
-  },
-  filterScroll: {
-    gap: 8,
-    paddingRight: 24,
-  },
-  filterChip: {
-    height: 34,
-    paddingHorizontal: 12,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(127,127,127,0.22)',
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterChipActive: {
-    borderWidth: 1,
-  },
-  filterChipText: {
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 12,
-  },
-
-  sectionRow: {
-    marginTop: 22,
+  safe: { flex: 1 },
+  utilityRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: PAD,
+    paddingTop: 4,
+    gap: 10,
+  },
+  locPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: SCREEN_W * 0.42,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+  },
+  locPillText: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 12,
+    color: '#FFFFFF',
+    flexShrink: 1,
+  },
+  utilityRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  walletPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: CaseUi.white,
+    ...CaseUi.softShadow,
+  },
+  walletAmt: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 12, color: CaseUi.ink },
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CaseUi.white,
+    ...CaseUi.softShadow,
+  },
+  badge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 3,
+    backgroundColor: CaseUi.orange,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: CaseUi.white,
+  },
+  badgeText: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 8,
+    color: CaseUi.white,
+  },
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    overflow: 'hidden',
+    backgroundColor: CaseUi.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.85)',
+  },
+  avatarLetter: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    color: CaseUi.orange,
+    fontSize: 14,
+  },
+  greetBlock: { paddingHorizontal: PAD, marginTop: 20 },
+  greetLine: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 28,
+    letterSpacing: -0.6,
+    color: '#FFFFFF',
+  },
+  greetWave: { fontSize: 24 },
+  greetSub: {
+    marginTop: 6,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
+  },
+  search: {
+    marginHorizontal: PAD,
+    marginTop: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: 54,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    backgroundColor: CaseUi.white,
+    ...CaseUi.cardShadow,
+  },
+  searchIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: CaseUi.orangeSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchPh: {
+    flex: 1,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 14,
+    color: CaseUi.muted,
+  },
+  micWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: CaseUi.field,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trackCard: {
+    marginHorizontal: PAD,
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: CaseUi.radius.lg,
+    backgroundColor: CaseUi.white,
+    borderWidth: 1,
+    borderColor: CaseUi.line,
+    ...CaseUi.softShadow,
+  },
+  trackIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: CaseUi.orangeSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trackTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: CaseUi.ink },
+  trackSub: { marginTop: 2, fontFamily: 'PlusJakartaSans_500Medium', fontSize: 11, color: CaseUi.muted },
+  trackCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: CaseUi.orange,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  trackCtaText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 11 },
+  catScroll: { marginTop: 20 },
+  catRow: { paddingHorizontal: PAD, gap: 16 },
+  catItem: { width: 68, alignItems: 'center' },
+  catTile: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  catLabel: {
+    marginTop: 7,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontSize: 11,
+    color: CaseUi.muted,
+    textAlign: 'center',
+  },
+  catLabelOn: {
+    color: CaseUi.ink,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+  },
+  promoBlock: { marginTop: 20 },
+  promo: {
+    height: 168,
+    borderRadius: 26,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
+  promoBg: { ...StyleSheet.absoluteFill },
+  promoCopy: { padding: 20 },
+  promoEyebrow: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.75)',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  promoTitle: {
+    marginTop: 6,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 22,
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+  },
+  promoSub: {
+    marginTop: 4,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.88)',
+  },
+  promoCta: {
+    marginTop: 14,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: CaseUi.white,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 12,
+  },
+  promoCtaText: {
+    color: CaseUi.ink,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 12,
+  },
+  dots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: CaseUi.line,
+  },
+  dotOn: {
+    width: 18,
+    backgroundColor: CaseUi.orange,
+  },
+  sectionHead: {
+    marginTop: 28,
+    marginHorizontal: PAD,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 10,
   },
   sectionTitle: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 18,
-    fontWeight: '700',
+    color: CaseUi.ink,
+    letterSpacing: -0.3,
   },
+  sectionSubtitle: {
+    marginTop: 2,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 12,
+    color: CaseUi.muted,
+  },
+  seeAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingBottom: 2 },
   seeAll: {
     fontFamily: 'PlusJakartaSans_700Bold',
     fontSize: 13,
+    color: CaseUi.orange,
   },
-  categoriesRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-  },
-  categoryItem: {
+  hPad: { paddingHorizontal: PAD, gap: 12, paddingBottom: 2 },
+  listPad: { paddingHorizontal: PAD },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
+  gridCell: { width: '50%', paddingHorizontal: 5 },
+  empty: {
+    marginHorizontal: PAD,
+    marginTop: 28,
     alignItems: 'center',
-    gap: 6,
-    width: 68,
-  },
-  categoryIcon: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(127,127,127,0.06)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  categoryText: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 11,
-    textAlign: 'center',
-  },
-  categoryImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 31,
-  },
-
-  // Zomato Card Styling
-  rCard: {
-    borderRadius: 18,
-    overflow: 'hidden',
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(127,127,127,0.1)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  rHero: {
-    height: 170,
-    width: '100%',
-    justifyContent: 'space-between',
-    padding: 12,
-    position: 'relative',
-  },
-  imageOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.12)',
-  },
-  badgeContainer: {
-    flexDirection: 'row',
-    gap: 6,
-    alignSelf: 'flex-start',
-    zIndex: 2,
-  },
-  promoBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  promoBadgeText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontWeight: '800',
-  },
-  glassBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
-  },
-  glassBadgeText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontWeight: '800',
-  },
-  favoriteButton: {
-    alignSelf: 'flex-end',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    zIndex: 2,
-  },
-  timeDistancePill: {
-    position: 'absolute',
-    right: 12,
-    bottom: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    zIndex: 2,
-  },
-  timeDistanceText: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 11,
-  },
-
-  rBody: {
-    padding: 14,
-  },
-  rTopRow: {
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'flex-start',
-  },
-  rName: {
-    fontFamily: 'PlusJakartaSans_850ExtraBold',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  rCuisines: {
-    marginTop: 3,
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_500Medium',
-  },
-  ratingPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  ratingText: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  ratingStar: {
-    color: '#ffffff',
-    fontSize: 11,
-  },
-  rPriceRow: {
-    marginTop: 6,
-  },
-  rPriceText: {
-    fontSize: 11,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-  },
-  cardSeparator: {
-    height: 1,
-    backgroundColor: 'rgba(127,127,127,0.08)',
-    marginVertical: 10,
-  },
-  cardFooterTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  cardFooterIcon: {
-    fontSize: 12,
-  },
-  cardFooterText: {
-    fontSize: 10.5,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    flex: 1,
-  },
-
-  // Pagination loading styles
-  loaderFooter: {
-    paddingVertical: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  loadingMoreText: {
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 50,
-    paddingHorizontal: 24,
-    gap: 12,
-  },
-  emptyText: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  clearBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginTop: 4,
-  },
-  clearBtnText: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 12,
-  },
-
-  // Sticky Cart
-  cartBar: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 20,
-    height: 56,
-    borderRadius: 16,
+    paddingVertical: 36,
     paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 6,
+    borderRadius: 24,
+    backgroundColor: CaseUi.field,
   },
-  cartLeft: {
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    backgroundColor: CaseUi.orangeSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  emptyTitle: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 17,
+    color: CaseUi.ink,
+  },
+  emptySub: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 13,
+    lineHeight: 19,
+    color: CaseUi.muted,
+  },
+  emptyCta: {
+    marginTop: 18,
+    backgroundColor: CaseUi.orange,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  emptyCtaText: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 13,
+    color: CaseUi.white,
+  },
+  getAnything: {
+    marginHorizontal: PAD,
+    marginTop: 28,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    padding: 16,
+    borderRadius: 22,
+    overflow: 'hidden',
   },
-  cartCount: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
+  getImg: { width: 56, height: 56, borderRadius: 16 },
+  getEyebrow: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 10,
+    color: CaseUi.orangeDeep,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
-  cartCountText: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  cartLabel: {
-    color: '#ffffff',
+  getTitle: {
+    marginTop: 2,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 15,
+    color: CaseUi.ink,
   },
-  cartTotal: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  recCard: {
-    width: 140,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  recHero: {
-    height: 120,
-    width: 140,
-    justifyContent: 'space-between',
-    padding: 8,
-    position: 'relative',
-  },
-  imageOverlayRec: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.1)',
-    borderRadius: 12,
-  },
-  recPromoBadge: {
-    backgroundColor: '#3b82f6',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-    zIndex: 2,
-  },
-  recPromoBadgeText: {
-    color: '#ffffff',
-    fontSize: 9,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontWeight: '800',
-  },
-  recRatingPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-    position: 'absolute',
-    bottom: 8,
-    left: 8,
-    zIndex: 2,
-  },
-  recRatingText: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 9.5,
-    fontWeight: '800',
-  },
-  recDetails: {
-    paddingVertical: 8,
-    paddingHorizontal: 2,
-  },
-  recName: {
-    fontFamily: 'PlusJakartaSans_750Bold',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  recSubtitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  getSub: {
     marginTop: 2,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 11,
+    color: CaseUi.muted,
   },
-  recSubtitleText: {
-    fontSize: 10,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-  },
-  searchRowContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 12,
-  },
-  filterSearchBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+  getCta: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(127,127,127,0.12)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    height: '60%',
-    display: 'flex',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(127,127,127,0.08)',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontWeight: '800',
-  },
-  modalClearAll: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontWeight: '700',
-  },
-  modalBody: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  tabCol: {
-    width: '35%',
-    height: '100%',
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(127,127,127,0.08)',
-  },
-  contentCol: {
-    width: '65%',
-    height: '100%',
-    padding: 20,
-  },
-  tabBtn: {
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  tabBtnActive: {
-    backgroundColor: '#ffffff',
-  },
-  tabText: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-  },
-  indicatorLine: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-  },
-  radioOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 6,
-  },
-  radioCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#8A8D91',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioCircleSelected: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  checkboxOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 6,
-  },
-  checkboxBox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: '#8A8D91',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkmark: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  optionText: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderTopWidth: 1,
-  },
-  closeBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(127,127,127,0.3)',
-  },
-  closeBtnText: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_700Bold',
-  },
-  applyBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 36,
-    borderRadius: 10,
-  },
-  applyBtnText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontWeight: '800',
+    backgroundColor: CaseUi.orange,
   },
 });

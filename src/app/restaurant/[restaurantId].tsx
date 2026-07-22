@@ -12,12 +12,14 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { Blinkit, CaseUi } from '@/constants/caseUi';
 import { type MenuItem, type ComboItem } from '@/services/menu';
 import { type Coupon } from '@/services/coupons';
 import { useTheme } from '@/hooks/use-theme';
@@ -25,8 +27,10 @@ import { useAddToCartMutation } from '@/hooks/queries/cart';
 import { useMenuByRestaurantQuery, useCombosByRestaurantQuery } from '@/hooks/queries/menu';
 import { useRestaurantByIdQuery } from '@/hooks/queries/restaurants';
 import { useCouponsByRestaurantQuery } from '@/hooks/queries/coupons';
+import { useCaseMerchantMenuQuery } from '@/hooks/queries/case';
 import { FavoriteHeart } from '@/components/favorite-heart';
 import { FloatingCartBar } from '@/components/floating-cart-bar';
+import { StoreDetailSkeleton } from '@/components/skeleton';
 import { useRestaurantReviewsQuery } from '@/hooks/queries/reviews';
 import { useCart } from '@/hooks/use-cart';
 import { getCartDisplayTotal, getCartItemCount, getCartRestaurantName } from '@/lib/cartDisplay';
@@ -100,9 +104,9 @@ function MenuItemAddColumn({
           hitSlop={8}
         >
           {busy ? (
-            <ActivityIndicator size="small" color="#ff5a00" />
+            <ActivityIndicator size="small" color={CaseUi.orange} />
           ) : (
-            <ThemedText style={styles.addBtnText}>ADD +</ThemedText>
+            <ThemedText style={styles.addBtnText}>ADD</ThemedText>
           )}
         </Pressable>
         {hasAddons ? (
@@ -137,9 +141,9 @@ const MenuItemRow = memo(function MenuItemRow({
           </View>
         ) : null}
         <View style={styles.priceRow}>
-          <ThemedText style={styles.price}>₹{item.discountedPrice ?? item.price}</ThemedText>
+          <ThemedText style={styles.price}>J${item.discountedPrice ?? item.price}</ThemedText>
           {!!item.discountedPrice ? (
-            <ThemedText style={styles.originalPrice}>₹{item.price}</ThemedText>
+            <ThemedText style={styles.originalPrice}>J${item.price}</ThemedText>
           ) : null}
         </View>
         {!!item.shortDescription ? (
@@ -163,6 +167,7 @@ export default function RestaurantDetailScreen() {
   const rid = restaurantId ?? '';
   const restaurantQ = useRestaurantByIdQuery(rid);
   const menuQ = useMenuByRestaurantQuery(rid);
+  const caseMenuQ = useCaseMerchantMenuQuery(rid);
   const combosQ = useCombosByRestaurantQuery(rid);
   const menuReady = Boolean(menuQ.data);
   const reviewsQ = useRestaurantReviewsQuery(rid, 5, menuReady);
@@ -172,6 +177,9 @@ export default function RestaurantDetailScreen() {
   const restaurantLoading = restaurantQ.isLoading && !restaurantQ.data;
   const menuLoading = menuQ.isLoading && !menuQ.data;
   const restaurant: any = restaurantQ.data ?? null;
+  const isCatalogVertical = Boolean(
+    restaurant?.businessType && restaurant.businessType.toUpperCase() !== 'RESTAURANT',
+  );
   const items = useMemo(() => (menuQ.data ?? []) as MenuItem[], [menuQ.data]);
   const combosData = useMemo(() => (combosQ.data ?? []) as ComboItem[], [combosQ.data]);
   const coupons: Coupon[] = (couponsQ.data?.coupons ?? []) as Coupon[];
@@ -243,11 +251,23 @@ export default function RestaurantDetailScreen() {
     });
   }, [combosData, selectedFoodType]);
 
+  // categoryId often arrives as a bare id string (case-server menu payload);
+  // resolve real names from the case menu's separate categories list.
+  const categoryNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    (caseMenuQ.data?.categories ?? []).forEach((c) => {
+      map[c.id] = c.name;
+    });
+    return map;
+  }, [caseMenuQ.data]);
+
   // Group by Category
   const groupedItems = useMemo(() => {
     const groups: Record<string, { categoryName: string; items: MenuItem[] }> = {};
     filteredItems.forEach((it) => {
-      const catName = (it as any).categoryId?.categoryName ?? 'Menu';
+      const rawCategory = (it as any).categoryId;
+      const catName =
+        rawCategory?.categoryName ?? categoryNameMap[String(rawCategory ?? '')] ?? 'Menu';
       if (!groups[catName]) {
         groups[catName] = {
           categoryName: catName,
@@ -257,7 +277,7 @@ export default function RestaurantDetailScreen() {
       groups[catName].items.push(it);
     });
     return Object.values(groups);
-  }, [filteredItems]);
+  }, [filteredItems, categoryNameMap]);
 
   const handleAddToCart = useCallback(async (item: MenuItem) => {
     if (!item._id || !rid || addingItemId) return;
@@ -416,26 +436,202 @@ export default function RestaurantDetailScreen() {
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={{ paddingBottom: scrollBottomPadding }}>
-          <View style={[styles.sheet, { backgroundColor: theme.background }]}>
-            {restaurantLoading ? (
-              <View style={{ alignItems: 'center', marginTop: 32 }}>
-                <ActivityIndicator size="large" color={theme.primary} />
-                <ThemedText themeColor="textSecondary" style={{ marginTop: 12 }}>Loading restaurant…</ThemedText>
+        {restaurantLoading ? (
+          <StoreDetailSkeleton />
+        ) : error ? (
+          <ThemedView type="backgroundElement" style={[styles.errorCard, { margin: Spacing.three }]}>
+            <ThemedText style={styles.errorText}>{error}</ThemedText>
+            <Pressable
+              onPress={() => {
+                void Promise.all([restaurantQ.refetch(), menuQ.refetch()]);
+              }}
+              style={styles.retryBtn}
+            >
+              <ThemedText style={styles.retryText}>Retry</ThemedText>
+            </Pressable>
+          </ThemedView>
+        ) : isCatalogVertical ? (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: scrollBottomPadding }}
+          >
+            <View style={styles.catalogHero}>
+              {restaurant?.bannerImages?.[0] || restaurant?.logo ? (
+                <Image
+                  source={{ uri: restaurant.bannerImages?.[0] ?? restaurant.logo }}
+                  style={StyleSheet.absoluteFill}
+                  contentFit="cover"
+                  transition={200}
+                />
+              ) : (
+                <View style={[StyleSheet.absoluteFill, styles.catalogHeroPlaceholder]}>
+                  <Ionicons name="storefront-outline" size={44} color={Blinkit.muted} />
+                </View>
+              )}
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.28)']}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
+            </View>
+
+            <View style={styles.catalogVendorBar}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <ThemedText style={styles.catalogStoreName}>
+                  {restaurant?.restaurantName}
+                </ThemedText>
+                <View style={[styles.infoRow, { marginTop: 8 }]}>
+                  <Ionicons name="star" size={14} color={CaseUi.orange} />
+                  <ThemedText style={styles.catalogMeta}>
+                    {Number(restaurant?.averageRating ?? 0).toFixed(1)}
+                    {restaurant?.totalRatings ? ` (${restaurant.totalRatings})` : ''}
+                  </ThemedText>
+                  <View style={styles.metaDot} />
+                  <Ionicons name="time-outline" size={14} color={CaseUi.muted} />
+                  <ThemedText style={styles.catalogMeta}>
+                    {restaurant?.averageDeliveryTime ?? 25} mins
+                  </ThemedText>
+                </View>
+                <View style={[styles.infoRow, { marginTop: 10 }]}>
+                  <View
+                    style={[
+                      styles.catalogStatusBadge,
+                      {
+                        backgroundColor:
+                          restaurant?.isOpen === false ? '#FEE2E2' : CaseUi.successSoft,
+                      },
+                    ]}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.catalogStatusText,
+                        {
+                          color: restaurant?.isOpen === false ? '#B91C1C' : CaseUi.success,
+                        },
+                      ]}
+                    >
+                      {restaurant?.isOpen === false ? 'Closed' : 'Open'}
+                    </ThemedText>
+                  </View>
+                  {restaurant?.minimumOrderAmount ? (
+                    <ThemedText style={[styles.catalogMeta, { marginLeft: 10 }]}>
+                      Min. J${restaurant.minimumOrderAmount}
+                    </ThemedText>
+                  ) : null}
+                </View>
               </View>
-            ) : error ? (
-              <ThemedView type="backgroundElement" style={styles.errorCard}>
-                <ThemedText style={styles.errorText}>{error}</ThemedText>
-                <Pressable
-                  onPress={() => {
-                    void Promise.all([restaurantQ.refetch(), menuQ.refetch()]);
-                  }}
-                  style={styles.retryBtn}
+              <FavoriteHeart restaurantId={rid} variant="header" size={24} />
+            </View>
+
+            <Pressable onPress={() => setShowOffersModal(true)} style={styles.catalogOfferBanner}>
+              <View style={styles.offerIconCircle}>
+                <Ionicons name="pricetag" size={14} color={CaseUi.orange} />
+              </View>
+              <ThemedText style={styles.catalogOfferText}>
+                {showOffersModal && couponCount > 0
+                  ? `${couponCount} offer${couponCount > 1 ? 's' : ''} available`
+                  : 'Tap to view offers'}
+              </ThemedText>
+              <Ionicons name="chevron-forward" size={16} color={CaseUi.orange} />
+            </Pressable>
+
+            {/* Popular products strip — fills empty store preview */}
+            {!menuLoading && filteredItems.length > 0 ? (
+              <View style={{ marginTop: 8 }}>
+                <ThemedText style={[styles.catalogSectionTitle, { marginHorizontal: 16 }]}>
+                  Popular products
+                </ThemedText>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: 16, gap: 10, paddingBottom: 8 }}
                 >
-                  <ThemedText style={styles.retryText}>Retry</ThemedText>
-                </Pressable>
-              </ThemedView>
-            ) : (
+                  {filteredItems.slice(0, 10).map((it) => {
+                    const price = it.discountedPrice ?? it.price;
+                    return (
+                      <Pressable
+                        key={it._id}
+                        style={styles.catalogProductCard}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/product-detail',
+                            params: { restaurantId: rid, itemId: it._id },
+                          })
+                        }
+                      >
+                        {it.images?.[0] ? (
+                          <Image
+                            source={{ uri: it.images[0] }}
+                            style={styles.catalogProductImg}
+                            contentFit="cover"
+                          />
+                        ) : (
+                          <View style={[styles.catalogProductImg, styles.catalogHeroPlaceholder]}>
+                            <Ionicons name="cube-outline" size={22} color={CaseUi.muted} />
+                          </View>
+                        )}
+                        <ThemedText style={styles.catalogProductName} numberOfLines={2}>
+                          {it.itemName}
+                        </ThemedText>
+                        <ThemedText style={styles.catalogProductPrice}>
+                          J${Math.round(price)}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            ) : null}
+
+            <View style={styles.catalogCategoriesSection}>
+              <ThemedText style={styles.catalogSectionTitle}>Categories</ThemedText>
+              {menuLoading ? (
+                <View style={{ alignItems: 'center', paddingVertical: 28 }}>
+                  <ActivityIndicator size="small" color={CaseUi.orange} />
+                </View>
+              ) : groupedItems.length === 0 ? (
+                <ThemedText style={styles.catalogEmpty}>
+                  This store hasn&apos;t listed any products yet.
+                </ThemedText>
+              ) : (
+                <View style={styles.catalogListCard}>
+                  {groupedItems.map((group, idx) => (
+                    <Pressable
+                      key={group.categoryName}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/store-category',
+                          params: { restaurantId: rid, category: group.categoryName },
+                        })
+                      }
+                      style={[
+                        styles.catalogCategoryRow,
+                        idx === groupedItems.length - 1 && { borderBottomWidth: 0 },
+                      ]}
+                    >
+                      <View style={styles.catalogCategoryIcon}>
+                        <ThemedText style={styles.catalogCategoryIconText}>
+                          {group.categoryName.charAt(0).toUpperCase()}
+                        </ThemedText>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <ThemedText style={styles.catalogCategoryName}>
+                          {group.categoryName}
+                        </ThemedText>
+                        <ThemedText style={styles.catalogCategoryCount}>
+                          {group.items.length} item{group.items.length === 1 ? '' : 's'}
+                        </ThemedText>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color="#C4C4C4" />
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          </ScrollView>
+        ) : (
+          <ScrollView contentContainerStyle={{ paddingBottom: scrollBottomPadding }}>
+            <View style={[styles.sheet, { backgroundColor: theme.background }]}>
               <>
                 {/* Zomato Restaurant Detail Card */}
                 <View style={[styles.restaurantCard, { backgroundColor: theme.backgroundElement }]}>
@@ -662,7 +858,7 @@ export default function RestaurantDetailScreen() {
 
                                 <View style={styles.priceRow}>
                                   <ThemedText style={[styles.price, { color: theme.text }]}>
-                                    ₹{it.discountedPrice ?? it.price}
+                                    J${it.discountedPrice ?? it.price}
                                   </ThemedText>
                                 </View>
                               </View>
@@ -718,7 +914,7 @@ export default function RestaurantDetailScreen() {
                                   </ThemedText>
                                 </View>
                                 <View style={styles.comboFooter}>
-                                  <ThemedText style={styles.comboPrice}>₹{combo.price}</ThemedText>
+                                  <ThemedText style={styles.comboPrice}>J${combo.price}</ThemedText>
                                   <Pressable
                                     onPress={() => {
                                       if (combo.mainItem) {
@@ -727,7 +923,7 @@ export default function RestaurantDetailScreen() {
                                     }}
                                     style={styles.comboAddBtn}
                                   >
-                                    <ThemedText style={styles.comboAddBtnText}>ADD +</ThemedText>
+                                    <ThemedText style={styles.comboAddBtnText}>ADD</ThemedText>
                                   </Pressable>
                                 </View>
                               </View>
@@ -813,9 +1009,9 @@ export default function RestaurantDetailScreen() {
                   )}
                 </View>
               </>
-            )}
-          </View>
-        </ScrollView>
+            </View>
+          </ScrollView>
+        )}
       </SafeAreaView>
 
       {/* Zomato Customize Addons Drawer Modal */}
@@ -881,7 +1077,7 @@ export default function RestaurantDetailScreen() {
                           />
                           <ThemedText style={styles.addonName}>{displayName}</ThemedText>
                         </View>
-                        <ThemedText style={[styles.addonPrice, { color: theme.text }]}>₹{displayPrice}</ThemedText>
+                        <ThemedText style={[styles.addonPrice, { color: theme.text }]}>J${displayPrice}</ThemedText>
                       </Pressable>
                     );
                   })}
@@ -907,7 +1103,7 @@ export default function RestaurantDetailScreen() {
                           />
                           <ThemedText style={styles.addonName}>{addon.name}</ThemedText>
                         </View>
-                        <ThemedText style={styles.addonPrice}>+₹{addon.price}</ThemedText>
+                        <ThemedText style={styles.addonPrice}>+J${addon.price}</ThemedText>
                       </Pressable>
                     );
                   })}
@@ -937,7 +1133,7 @@ export default function RestaurantDetailScreen() {
                 style={styles.addCustomBtn}
               >
                 <ThemedText style={styles.addCustomBtnText}>
-                  Add item - ₹{customizedTotalPrice}
+                  Add item - J${customizedTotalPrice}
                 </ThemedText>
               </Pressable>
             </View>
@@ -980,11 +1176,11 @@ export default function RestaurantDetailScreen() {
                 coupons.map((coupon) => {
                   const discountLabel =
                     coupon.discountType === 'FLAT'
-                      ? `₹${coupon.discountValue} OFF`
+                      ? `J$${coupon.discountValue} OFF`
                       : `${coupon.discountValue}% OFF`;
                   const maxLabel =
                     coupon.discountType === 'PERCENTAGE' && coupon.maximumDiscount
-                      ? ` up to ₹${coupon.maximumDiscount}`
+                      ? ` up to J$${coupon.maximumDiscount}`
                       : '';
                   const expiryDate = new Date(coupon.validTo).toLocaleDateString('en-IN', {
                     day: 'numeric', month: 'short', year: 'numeric',
@@ -1027,7 +1223,7 @@ export default function RestaurantDetailScreen() {
                       {/* Footer */}
                       <View style={styles.couponFooter}>
                         <ThemedText themeColor="textSecondary" style={styles.couponFooterText}>
-                          Min. order ₹{coupon.minimumOrderAmount}
+                          Min. order J${coupon.minimumOrderAmount}
                         </ThemedText>
                         <ThemedText themeColor="textSecondary" style={styles.couponFooterText}>
                           Valid till {expiryDate}
@@ -1062,9 +1258,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f3f3',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: CaseUi.line,
     gap: 8,
+    backgroundColor: CaseUi.white,
   },
   headerBackBtn: {
     padding: 4,
@@ -1073,10 +1270,12 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f3f3f3',
+    backgroundColor: CaseUi.field,
     borderRadius: 999,
+    borderWidth: 1,
+    borderColor: CaseUi.line,
     paddingHorizontal: 12,
-    height: 36,
+    height: 40,
   },
   headerSearchInput: {
     flex: 1,
@@ -1318,28 +1517,29 @@ const styles = StyleSheet.create({
     width: 84,
     height: 34,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ff5a00',
+    borderWidth: 1.5,
+    borderColor: CaseUi.orange,
     backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 3,
   },
   addBtnText: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',
-    color: '#ff5a00',
-    fontSize: 12,
+    color: CaseUi.orange,
+    fontSize: 13,
+    letterSpacing: 0.3,
   },
   customisableText: {
     marginTop: 5,
     fontSize: 10,
     lineHeight: 13,
     fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: '#ff5a00',
+    color: CaseUi.orange,
     textAlign: 'center',
   },
   badgeContainer: {
@@ -1361,6 +1561,170 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(229,72,77,0.25)',
+  },
+  catalogHero: {
+    width: '100%',
+    height: 180,
+    backgroundColor: CaseUi.field,
+  },
+  catalogHeroPlaceholder: {
+    backgroundColor: CaseUi.field,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  catalogHeroShade: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+  },
+  catalogVendorBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 14,
+    backgroundColor: CaseUi.white,
+  },
+  catalogStoreName: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 22,
+    color: CaseUi.ink,
+    letterSpacing: -0.3,
+  },
+  catalogMeta: {
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 13,
+    color: CaseUi.muted,
+    marginLeft: 4,
+  },
+  metaDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#D0D0D0',
+    marginHorizontal: 8,
+  },
+  catalogStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  catalogStatusText: {
+    fontSize: 11,
+    fontFamily: 'PlusJakartaSans_700Bold',
+  },
+  catalogOfferBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: CaseUi.orangeSoft,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginHorizontal: 16,
+    marginTop: 4,
+    gap: 10,
+  },
+  offerIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: CaseUi.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  catalogOfferText: {
+    flex: 1,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 13,
+    color: CaseUi.orangeDeep,
+  },
+  catalogCategoriesSection: {
+    paddingHorizontal: 16,
+    paddingTop: 22,
+    paddingBottom: 8,
+  },
+  catalogSectionTitle: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 18,
+    color: CaseUi.ink,
+    marginBottom: 12,
+  },
+  catalogEmpty: {
+    textAlign: 'center',
+    marginTop: 24,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: CaseUi.muted,
+  },
+  catalogListCard: {
+    backgroundColor: CaseUi.white,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: CaseUi.line,
+    overflow: 'hidden',
+  },
+  catalogCategoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: CaseUi.line,
+  },
+  catalogCategoryIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: CaseUi.successSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  catalogCategoryIconText: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 17,
+    color: CaseUi.success,
+  },
+  catalogCategoryName: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 15,
+    color: CaseUi.ink,
+  },
+  catalogCategoryCount: {
+    fontSize: 12,
+    marginTop: 2,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: CaseUi.muted,
+  },
+  catalogProductCard: {
+    width: 112,
+    backgroundColor: CaseUi.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: CaseUi.line,
+    padding: 8,
+  },
+  catalogProductImg: {
+    width: '100%',
+    height: 88,
+    borderRadius: 10,
+    backgroundColor: CaseUi.field,
+  },
+  catalogProductName: {
+    marginTop: 6,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 11,
+    color: CaseUi.ink,
+    minHeight: 28,
+  },
+  catalogProductPrice: {
+    marginTop: 2,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 12,
+    color: CaseUi.orange,
   },
   errorText: { color: '#E5484D' },
   retryBtn: { marginTop: 8, alignSelf: 'flex-start' },
@@ -1550,16 +1914,16 @@ const styles = StyleSheet.create({
   },
   comboAddBtn: {
     borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#ff5a00',
+    borderWidth: 1.5,
+    borderColor: '#0C831F',
     backgroundColor: '#ffffff',
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
   comboAddBtnText: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
-    color: '#ff5a00',
+    color: '#0C831F',
   },
 
   // Offers Bottom Sheet

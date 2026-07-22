@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isAndroidEmulator } from '@/lib/device';
 import { handlePushNotificationData } from '@/lib/notificationNavigation';
 import { registerDeviceToken, unregisterDeviceToken } from '@/services/notifications';
+import { registerCasePushToken } from '@/services/caseOrders';
 import { queryClient } from '@/lib/queryClient';
 
 const PUSH_TOKEN_TIMEOUT_MS = 8000;
@@ -66,7 +67,13 @@ export async function registerForPushNotifications(): Promise<string | null> {
     const token = tokenData.data;
 
     await AsyncStorage.setItem(PUSH_TOKEN_KEY, token);
-    await registerDeviceToken(token, Platform.OS === 'ios' ? 'ios' : 'android');
+    const platform = Platform.OS === 'ios' ? 'ios' : 'android';
+    await registerDeviceToken(token, platform);
+    try {
+      await registerCasePushToken(token, platform);
+    } catch (err) {
+      console.warn('[Push] CASE token register failed:', err);
+    }
 
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {

@@ -13,12 +13,15 @@ import {
   Keyboard,
   Animated,
 } from 'react-native';
+import Reanimated, { FadeInDown, FadeIn } from 'react-native-reanimated';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { apiFetch } from '@/lib/apiFetch';
 import { saveAuthFromResponse } from '@/lib/auth';
 import { getApiUrl } from '@/config/env';
-import { useTheme } from '@/hooks/use-theme';
+import { CaseUi } from '@/constants/caseUi';
+import { PressableScale } from '@/components/pressable-scale';
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   const err = error as { message?: string; data?: { message?: string } };
@@ -28,7 +31,6 @@ function extractErrorMessage(error: unknown, fallback: string): string {
 export default function LoginScreen() {
   const { width, height } = useWindowDimensions();
   const router = useRouter();
-  const theme = useTheme();
 
   const [email, setEmail] = useState(__DEV__ ? 'enganzalshaikh@gmail.com' : '');
   const [fullName] = useState('');
@@ -141,21 +143,11 @@ export default function LoginScreen() {
     } catch (e: unknown) {
       const status = (e as { status?: number })?.status;
       if (status === 404) {
-        try {
-          if (__DEV__) console.log('📨 [AUTH] send-otp (signup)', { email: emailTrim, purpose: 'signup' });
-          await apiFetch('/auth/send-otp', {
-            method: 'POST',
-            body: JSON.stringify({ email: emailTrim, purpose: 'signup' }),
-          });
-          setMode('signup');
-          setStep('otp');
-          setResendTimer(60);
-          requestAnimationFrame(() => inputRefs.current[0]?.focus());
-        } catch (signupError: unknown) {
-          const msg = extractErrorMessage(signupError, 'Failed to send OTP');
-          setError(msg);
-          Alert.alert('Error', msg);
-        }
+        setError('No account found. Please sign up first.');
+        Alert.alert('Account required', 'You need to create an account before logging in.', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign up', onPress: () => router.push('/(auth)/register') },
+        ]);
       } else {
         const msg = extractErrorMessage(e, 'Failed to send OTP — check backend is running at ' + getApiUrl());
         setError(msg);
@@ -237,21 +229,15 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={styles.container}>
       <StatusBar style="light" />
 
       {/* Top-Right Skip Button */}
       <View style={styles.skipContainer}>
-        <Pressable
-          onPress={handleContinueAsGuest}
-          style={({ pressed }) => [
-            styles.skipButton,
-            pressed && { opacity: 0.8, transform: [{ scale: 0.96 }] },
-          ]}
-        >
+        <PressableScale onPress={handleContinueAsGuest} style={styles.skipButton}>
           <Text style={styles.skipText}>Skip</Text>
-          <Text style={{ color: '#FFFFFF', fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', marginLeft: 4, marginTop: -2 }}>›</Text>
-        </Pressable>
+          <Text style={styles.skipChevron}>›</Text>
+        </PressableScale>
       </View>
 
       {/* Full-screen Image */}
@@ -269,10 +255,8 @@ export default function LoginScreen() {
           style={[
             styles.bottomPanel,
             {
-              backgroundColor: theme.backgroundElement,
               minHeight: height * 0.32,
               transform: [{ translateY: panelTranslateY }],
-              borderTopColor: `${theme.primary}22`,
             },
           ]}
         >
@@ -282,113 +266,99 @@ export default function LoginScreen() {
             keyboardShouldPersistTaps="handled"
           >
             {/* Header */}
-            <View style={styles.headerContainer}>
-              <Text style={[styles.title, { color: theme.text }]}>
+            <Reanimated.View entering={FadeInDown.duration(340)} style={styles.headerContainer}>
+              <Text style={styles.title}>
                 {step === 'input' ? 'Welcome to QuickBite' : 'Verify OTP'}
               </Text>
-              <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+              <Text style={styles.subtitle}>
                 {step === 'input'
                   ? 'Enter your email to continue'
                   : `Enter the 6-digit code sent to ${email}`}
               </Text>
               {step === 'input' && (
-                <Text style={[styles.helperText, { color: theme.textSecondary }]}>
+                <Text style={styles.helperText}>
                   We&apos;ll log you in or create a new account automatically
                 </Text>
               )}
-            </View>
+            </Reanimated.View>
 
             {error ? (
-              <Text style={[styles.errorText, { color: '#e53935' }]}>{error}</Text>
+              <Reanimated.Text entering={FadeIn.duration(200)} style={styles.errorText}>
+                {error}
+              </Reanimated.Text>
             ) : null}
 
             {step === 'input' ? (
-              <View style={styles.inputSection}>
+              <Reanimated.View entering={FadeInDown.delay(60).duration(340)} style={styles.inputSection}>
                 {/* Email Input */}
-                <View style={[styles.phoneInputContainer, { backgroundColor: theme.backgroundSelected, borderColor: 'rgba(127,127,127,0.15)' }]}>
+                <View style={styles.phoneInputContainer}>
                   <View style={styles.countryCodeContainer}>
-                    <Text style={{ fontSize: 16, fontFamily: 'PlusJakartaSans_700Bold', color: theme.textSecondary }}>@</Text>
+                    <Text style={styles.atSymbol}>@</Text>
                   </View>
                   <View style={styles.inputDivider} />
                   <TextInput
-                    style={[styles.phoneInput, { color: theme.text }]}
+                    style={styles.phoneInput}
                     placeholder="Enter email address"
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor={CaseUi.muted}
                     value={email}
                     onChangeText={setEmail}
                     keyboardType="email-address"
                     autoCapitalize="none"
-                    cursorColor={theme.primary}
+                    cursorColor={CaseUi.orange}
                   />
                 </View>
 
                 {/* Primary CTA */}
-                <Pressable
+                <PressableScale
                   disabled={busy}
                   onPress={handleSendOtp}
-                  style={({ pressed }) => [
-                    styles.primaryBtn,
-                    { backgroundColor: theme.primary },
-                    pressed && { opacity: 0.8 },
-                    busy && { opacity: 0.65 }
-                  ]}
+                  style={[styles.primaryBtn, busy && { opacity: 0.65 }]}
                 >
-                  <Text style={styles.primaryBtnText}>
-                    {busy ? 'Sending...' : 'Send OTP'}
+                  <Text style={styles.primaryBtnText}>{busy ? 'Sending...' : 'Send OTP'}</Text>
+                </PressableScale>
+
+                <Pressable onPress={() => router.push('/(auth)/forgot-password')} style={styles.resetLinkWrap}>
+                  <Text style={styles.resetLinkText}>
+                    Prefer password login? <Text style={styles.resetLinkAccent}>Reset here</Text>
                   </Text>
                 </Pressable>
 
-                <Pressable onPress={() => router.push('/(auth)/forgot-password')} style={{ alignSelf: 'center', marginTop: 10 }}>
-                  <Text style={{ color: theme.primary, fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 13 }}>
-                    Forgot password?
-                  </Text>
-                </Pressable>
+                <PressableScale onPress={() => router.push('/(auth)/register')} style={styles.signupBtn}>
+                  <Text style={styles.signupBtnLabel}>New here? Create your account first</Text>
+                  <Text style={styles.signupBtnAccent}>Sign up → then login with OTP</Text>
+                </PressableScale>
 
                 {/* Social Login Icons */}
                 <View style={styles.socialContainer}>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.socialButton,
-                      { backgroundColor: theme.backgroundElement, borderColor: 'rgba(127,127,127,0.15)' },
-                      pressed && styles.socialButtonPressed,
-                    ]}
+                  <PressableScale
+                    style={styles.socialButton}
                     onPress={() => Alert.alert('Google', 'Google login is coming next. Backend social login is currently a stub (501).')}
                   >
-                    <Text style={{ fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#EA4335' }}>G</Text>
-                  </Pressable>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.socialButton,
-                      { backgroundColor: theme.backgroundElement, borderColor: 'rgba(127,127,127,0.15)' },
-                      pressed && styles.socialButtonPressed,
-                    ]}
+                    <Text style={styles.socialG}>G</Text>
+                  </PressableScale>
+                  <PressableScale
+                    style={styles.socialButton}
                     onPress={() => Alert.alert('Apple', 'Apple login is coming next.')}
                   >
-                    <Text style={{ fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: theme.text }}></Text>
-                  </Pressable>
+                    <Ionicons name="logo-apple" size={22} color={CaseUi.ink} />
+                  </PressableScale>
                 </View>
 
                 {/* Terms and Policies */}
                 <View style={styles.legalSection}>
-                  <Text style={[styles.legalTextBase, { color: theme.textSecondary }]}>
-                    By continuing, you agree to our
-                  </Text>
+                  <Text style={styles.legalTextBase}>By continuing, you agree to our</Text>
                   <View style={styles.legalLinksRow}>
                     <Pressable>
-                      <Text style={[styles.legalLabel, { color: theme.primary }]}>
-                        Terms of Service
-                      </Text>
+                      <Text style={styles.legalLabel}>Terms of Service</Text>
                     </Pressable>
                     <Pressable>
-                      <Text style={[styles.legalLabel, { color: theme.primary }]}>
-                        Privacy Policy
-                      </Text>
+                      <Text style={styles.legalLabel}>Privacy Policy</Text>
                     </Pressable>
                   </View>
                 </View>
-              </View>
+              </Reanimated.View>
             ) : (
-              <View style={styles.inputSection}>
+              <Reanimated.View entering={FadeInDown.delay(60).duration(340)} style={styles.inputSection}>
                 {/* OTP Boxes */}
                 <View style={styles.otpContainer}>
                   {otp.map((digit, index) => (
@@ -397,77 +367,40 @@ export default function LoginScreen() {
                       ref={(ref) => {
                         inputRefs.current[index] = ref;
                       }}
-                      style={[
-                        styles.otpBox,
-                        {
-                          backgroundColor: theme.backgroundSelected,
-                          borderColor: 'rgba(127,127,127,0.15)',
-                          color: theme.text,
-                        },
-                        digit ? {
-                          borderColor: theme.primary,
-                          backgroundColor: theme.primarySoft,
-                        } : null,
-                      ]}
+                      style={[styles.otpBox, digit ? styles.otpBoxFilled : null]}
                       value={digit}
                       onChangeText={(value) => handleOtpChange(value, index)}
                       onKeyPress={(e) => handleKeyPress(e, index)}
                       keyboardType="number-pad"
                       selectTextOnFocus
                       autoFocus={index === 0}
-                      cursorColor={theme.primary}
+                      cursorColor={CaseUi.orange}
                     />
                   ))}
                 </View>
 
                 {/* Resend Timer block */}
                 <View style={styles.resendSection}>
-                  <Text style={[styles.resendText, { color: theme.textSecondary }]}>
-                    Didn&apos;t receive the code?
-                  </Text>
+                  <Text style={styles.resendText}>Didn&apos;t receive the code?</Text>
                   <Pressable onPress={handleResendOtp} disabled={!canResend}>
-                    <Text
-                      style={[
-                        styles.resendLink,
-                        { color: canResend ? theme.primary : '#9CA3AF' },
-                      ]}
-                    >
+                    <Text style={[styles.resendLink, !canResend && styles.resendLinkDisabled]}>
                       {canResend ? 'Resend Now' : `Resend in ${resendTimer}s`}
                     </Text>
                   </Pressable>
                 </View>
 
-                <Pressable
+                <PressableScale
                   disabled={busy}
                   onPress={handleVerifyOtp}
-                  style={({ pressed }) => [
-                    styles.primaryBtn,
-                    { backgroundColor: theme.primary },
-                    pressed && { opacity: 0.8 },
-                    busy && { opacity: 0.65 }
-                  ]}
+                  style={[styles.primaryBtn, busy && { opacity: 0.65 }]}
                 >
-                  <Text style={styles.primaryBtnText}>
-                    {busy ? 'Verifying...' : 'Verify & Continue'}
-                  </Text>
-                </Pressable>
+                  <Text style={styles.primaryBtnText}>{busy ? 'Verifying...' : 'Verify & Continue'}</Text>
+                </PressableScale>
 
-                <Pressable
-                  onPress={handleChangeInput}
-                  style={styles.changePhoneButton}
-                >
-                  <Text style={[styles.changePhoneText, { color: theme.textSecondary }]}>
-                    Change email address
-                  </Text>
+                <Pressable onPress={handleChangeInput} style={styles.changePhoneButton}>
+                  <Text style={styles.changePhoneText}>Change email address</Text>
                 </Pressable>
-              </View>
-            )}
-
-            {/* Error Message */}
-            {!!error && (
-              <Text style={[styles.error, { color: '#E5484D' }]}>
-                {error}
-              </Text>
+              </Reanimated.View>
             )}
 
             <View style={styles.spacer} />
@@ -481,6 +414,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: CaseUi.ink,
   },
   skipContainer: {
     position: 'absolute',
@@ -501,8 +435,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontFamily: 'PlusJakartaSans_700Bold',
-    fontWeight: '700',
     letterSpacing: 0.3,
+  },
+  skipChevron: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    marginLeft: 4,
+    marginTop: -2,
   },
   topSection: {
     position: 'absolute',
@@ -515,9 +455,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   bottomPanel: {
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    backgroundColor: CaseUi.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 1,
+    borderTopColor: CaseUi.line,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.08,
@@ -536,17 +478,19 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontWeight: '900',
     letterSpacing: -0.2,
+    color: CaseUi.ink,
   },
   subtitle: {
     fontSize: 15,
     fontFamily: 'PlusJakartaSans_500Medium',
+    color: CaseUi.muted,
   },
   helperText: {
     fontSize: 13,
     fontFamily: 'PlusJakartaSans_500Medium',
     marginTop: 2,
+    color: CaseUi.muted,
   },
   inputSection: {
     gap: 16,
@@ -556,14 +500,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
+    borderColor: CaseUi.line,
     borderRadius: 14,
     height: 54,
     paddingHorizontal: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
+    backgroundColor: CaseUi.field,
   },
   countryCodeContainer: {
     flexDirection: 'row',
@@ -571,10 +512,15 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingRight: 12,
   },
+  atSymbol: {
+    fontSize: 16,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    color: CaseUi.muted,
+  },
   inputDivider: {
     width: 1,
     height: 24,
-    backgroundColor: '#D1D5DB',
+    backgroundColor: CaseUi.line,
     marginRight: 16,
   },
   phoneInput: {
@@ -582,6 +528,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'PlusJakartaSans_500Medium',
     height: '100%',
+    color: CaseUi.ink,
   },
   primaryBtn: {
     height: 54,
@@ -589,12 +536,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
+    backgroundColor: CaseUi.orange,
   },
   primaryBtnText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontFamily: 'PlusJakartaSans_700Bold',
-    fontWeight: '700',
+  },
+  resetLinkWrap: { alignSelf: 'center', marginTop: 10 },
+  resetLinkText: {
+    color: CaseUi.muted,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 12,
+  },
+  resetLinkAccent: {
+    color: CaseUi.orange,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+  },
+  signupBtn: {
+    alignSelf: 'stretch',
+    marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: CaseUi.orange,
+    alignItems: 'center',
+  },
+  signupBtnLabel: {
+    color: CaseUi.muted,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 13,
+  },
+  signupBtnAccent: {
+    color: CaseUi.orange,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 14,
+    marginTop: 2,
   },
   socialContainer: {
     flexDirection: 'row',
@@ -608,17 +585,21 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     borderWidth: 1,
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.white,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    ...CaseUi.softShadow,
   },
-  socialButtonPressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.95 }],
+  socialG: {
+    fontSize: 18,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    color: '#EA4335',
+  },
+  socialApple: {
+    fontSize: 18,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    color: CaseUi.ink,
   },
   legalSection: {
     marginTop: 4,
@@ -629,6 +610,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'PlusJakartaSans_500Medium',
     textAlign: 'center',
+    color: CaseUi.muted,
   },
   legalLinksRow: {
     flexDirection: 'row',
@@ -640,6 +622,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'PlusJakartaSans_600SemiBold',
     textDecorationLine: 'underline',
+    color: CaseUi.orange,
   },
   otpContainer: {
     flexDirection: 'row',
@@ -655,6 +638,13 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontFamily: 'PlusJakartaSans_700Bold',
     textAlign: 'center',
+    backgroundColor: CaseUi.field,
+    borderColor: CaseUi.line,
+    color: CaseUi.ink,
+  },
+  otpBoxFilled: {
+    borderColor: CaseUi.orange,
+    backgroundColor: CaseUi.orangeSoft,
   },
   resendSection: {
     flexDirection: 'row',
@@ -666,10 +656,15 @@ const styles = StyleSheet.create({
   resendText: {
     fontSize: 14,
     fontFamily: 'PlusJakartaSans_500Medium',
+    color: CaseUi.muted,
   },
   resendLink: {
     fontSize: 14,
     fontFamily: 'PlusJakartaSans_700Bold',
+    color: CaseUi.orange,
+  },
+  resendLinkDisabled: {
+    color: '#9CA3AF',
   },
   changePhoneButton: {
     alignItems: 'center',
@@ -679,20 +674,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'PlusJakartaSans_500Medium',
     textDecorationLine: 'underline',
+    color: CaseUi.muted,
   },
   spacer: {
     height: 20,
   },
-  error: {
-    marginTop: 10,
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    textAlign: 'center',
-  },
   errorText: {
     marginBottom: 10,
     fontSize: 13,
-    fontFamily: 'PlusJakartaSans_500Medium',
+    fontFamily: 'PlusJakartaSans_600SemiBold',
     textAlign: 'center',
+    color: CaseUi.danger,
   },
 });

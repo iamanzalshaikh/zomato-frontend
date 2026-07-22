@@ -1,30 +1,35 @@
 import { useCallback, useEffect, useMemo, useState, memo } from 'react';
 import {
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
+  Text,
   TextInput,
   View,
   ScrollView,
   Alert,
-  ActivityIndicator,
   Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { storageGetItem, storageSetItem, storageRemoveItem } from '@/lib/storage';
 
-import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { PressableScale } from '@/components/pressable-scale';
+import { SkeletonBlock } from '@/components/skeleton';
+import { EmptyState } from '@/components/state-views';
+import { CaseUi } from '@/constants/caseUi';
+import { CASE_CATEGORY_META, CASE_SHOP_CATEGORIES } from '@/constants/caseHome';
 import { useGlobalSearchQuery, useTrendingSearchesQuery } from '@/hooks/queries/search';
 import { useRecommendedRestaurantsQuery } from '@/hooks/queries/restaurants';
+import { useProfileQuery } from '@/hooks/queries/profile';
 import { cartKeys, useAddToCartMutation } from '@/hooks/queries/cart';
+import { fetchWallet } from '@/services/wallet';
+import { toast } from '@/lib/toast';
 
 type SearchRestaurant = {
   _id: string;
@@ -35,6 +40,7 @@ type SearchRestaurant = {
   averageDeliveryTime?: number;
   distanceKm?: number;
   minimumOrderAmount?: number;
+  isOpen?: boolean;
 };
 
 type SearchFood = {
@@ -67,13 +73,13 @@ const POPULAR_CRAVINGS = [
 
 interface RestaurantSearchItemProps {
   item: SearchRestaurant;
-  theme: any;
+  index: number;
   onPress: () => void;
 }
 
-const RestaurantSearchItem = memo(({ item, theme, onPress }: RestaurantSearchItemProps) => (
-  <Pressable onPress={onPress}>
-    <ThemedView type="backgroundElement" style={styles.restaurantRowCard}>
+const RestaurantSearchItem = memo(({ item, index, onPress }: RestaurantSearchItemProps) => (
+  <Animated.View entering={FadeInDown.delay(Math.min(index, 8) * 30).duration(240)}>
+    <PressableScale onPress={onPress} style={[styles.restaurantRowCard, item.isOpen === false && styles.dimmed]}>
       <Image
         source={item.logo && item.logo.length > 0
           ? { uri: item.logo }
@@ -81,73 +87,83 @@ const RestaurantSearchItem = memo(({ item, theme, onPress }: RestaurantSearchIte
         }
         style={styles.restaurantRowImage}
         transition={200}
+        contentFit="cover"
       />
       <View style={{ flex: 1, gap: 4 }}>
-        <ThemedText style={styles.restaurantRowName}>{item.restaurantName}</ThemedText>
-        <ThemedText themeColor="textSecondary" style={styles.restaurantRowSub}>
-          {(item.cuisines ?? []).slice(0, 3).join(' • ') || 'Indian • Fast Food'}
-        </ThemedText>
+        <Text style={styles.restaurantRowName} numberOfLines={1}>{item.restaurantName}</Text>
+        <Text style={styles.restaurantRowSub} numberOfLines={1}>
+          {(item.cuisines ?? []).slice(0, 3).join(' • ') || 'Multi-cuisine'}
+        </Text>
         <View style={styles.restaurantMetadataRow}>
           <View style={styles.badgeRatingPill}>
-            <ThemedText style={styles.badgeRatingText}>⭐ {(item.averageRating ?? 4.4).toFixed(1)}</ThemedText>
+            <Ionicons name="star" size={10} color="#FFFFFF" />
+            <Text style={styles.badgeRatingText}>{(item.averageRating ?? 4.4).toFixed(1)}</Text>
           </View>
-          <ThemedText themeColor="textSecondary" style={styles.restaurantMetadataText}>
-            {item.averageDeliveryTime ?? 30} mins • {item.distanceKm ? `${item.distanceKm.toFixed(1)} km` : '1.2 km'}
-          </ThemedText>
+          <Text style={styles.restaurantMetadataText}>
+            {item.averageDeliveryTime ?? 30} mins{item.distanceKm ? ` · ${item.distanceKm.toFixed(1)} km` : ''}
+          </Text>
         </View>
-        <View style={styles.promoOfferRow}>
-          <ThemedText style={[styles.promoOfferText, { color: theme.primary }]}>
-            🏷️ FLAT 50% OFF | Use code FIRST50
-          </ThemedText>
-        </View>
+        {item.isOpen === false ? (
+          <Text style={styles.closedText}>Currently closed</Text>
+        ) : null}
       </View>
-    </ThemedView>
-  </Pressable>
+      <Ionicons name="chevron-forward" size={16} color={CaseUi.muted} />
+    </PressableScale>
+  </Animated.View>
 ));
 RestaurantSearchItem.displayName = 'RestaurantSearchItem';
 
 interface FoodSearchItemProps {
   item: SearchFood;
-  theme: any;
+  index: number;
   onAddPress: () => void;
   onRestaurantPress: () => void;
 }
 
-const FoodSearchItem = memo(({ item, theme, onAddPress, onRestaurantPress }: FoodSearchItemProps) => (
-  <ThemedView type="backgroundElement" style={styles.foodRowCard}>
-    <Image
-      source={item.images && item.images.length > 0 && item.images[0]
-        ? { uri: item.images[0] }
-        : { uri: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=150&auto=format&fit=crop&q=80' }
-      }
-      style={styles.foodRowImage}
-      transition={200}
-    />
-    <View style={{ flex: 1, gap: 4 }}>
-      <View style={styles.foodTitleRow}>
-        <View style={[styles.typeDot, { borderColor: item.foodType === 'veg' ? '#0f8a5f' : '#e23744' }]}>
-          <View style={[styles.typeDotInner, { backgroundColor: item.foodType === 'veg' ? '#0f8a5f' : '#e23744' }]} />
+const FoodSearchItem = memo(({ item, index, onAddPress, onRestaurantPress }: FoodSearchItemProps) => {
+  const isClosed = item.restaurantId?.isOpen === false;
+  return (
+    <Animated.View entering={FadeInDown.delay(Math.min(index, 8) * 30).duration(240)}>
+      <View style={[styles.foodRowCard, isClosed && styles.dimmed]}>
+        <Image
+          source={item.images && item.images.length > 0 && item.images[0]
+            ? { uri: item.images[0] }
+            : { uri: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=150&auto=format&fit=crop&q=80' }
+          }
+          style={styles.foodRowImage}
+          transition={200}
+          contentFit="cover"
+        />
+        <View style={{ flex: 1, gap: 4 }}>
+          <View style={styles.foodTitleRow}>
+            <View style={[styles.typeDot, { borderColor: item.foodType === 'veg' ? CaseUi.success : CaseUi.danger }]}>
+              <View style={[styles.typeDotInner, { backgroundColor: item.foodType === 'veg' ? CaseUi.success : CaseUi.danger }]} />
+            </View>
+            <Text style={styles.foodRowName} numberOfLines={1}>{item.itemName}</Text>
+          </View>
+          <Text style={styles.foodRowPrice}>J${Math.round(item.price)}</Text>
+          <PressableScale onPress={onRestaurantPress}>
+            <Text style={styles.foodSellerText} numberOfLines={1}>
+              by {item.restaurantId.restaurantName} · {(item.restaurantId.averageRating ?? 4.4).toFixed(1)} ★
+            </Text>
+          </PressableScale>
         </View>
-        <ThemedText style={styles.foodRowName} numberOfLines={1}>{item.itemName}</ThemedText>
+        <PressableScale
+          onPress={onAddPress}
+          disabled={isClosed}
+          style={[styles.addBtn, isClosed && styles.addBtnDisabled]}
+        >
+          <Text style={[styles.addBtnText, isClosed && styles.addBtnTextDisabled]}>
+            {isClosed ? 'CLOSED' : 'ADD'}
+          </Text>
+        </PressableScale>
       </View>
-      <ThemedText style={styles.foodRowPrice}>₹{item.price}</ThemedText>
-      <Pressable onPress={onRestaurantPress}>
-        <ThemedText style={[styles.foodSellerText, { color: theme.primary }]}>
-          by {item.restaurantId.restaurantName} ★ {(item.restaurantId.averageRating ?? 4.4).toFixed(1)} ›
-        </ThemedText>
-      </Pressable>
-    </View>
-    <View style={styles.addBtnContainer}>
-      <Pressable onPress={onAddPress} style={[styles.addBtn, { borderColor: theme.primary, backgroundColor: theme.primarySoft }]}>
-        <ThemedText style={[styles.addBtnText, { color: theme.primary }]}>ADD +</ThemedText>
-      </Pressable>
-    </View>
-  </ThemedView>
-));
+    </Animated.View>
+  );
+});
 FoodSearchItem.displayName = 'FoodSearchItem';
 
 export default function SearchScreen() {
-  const theme = useTheme();
   const router = useRouter();
   const qc = useQueryClient();
   const addMutation = useAddToCartMutation();
@@ -156,6 +172,16 @@ export default function SearchScreen() {
   const [debounced, setDebounced] = useState('');
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'restaurants' | 'dishes'>('restaurants');
+
+  const profileQ = useProfileQuery();
+  const user = profileQ.data;
+  const walletQ = useQuery({
+    queryKey: ['wallet'],
+    queryFn: fetchWallet,
+    retry: false,
+    staleTime: 60 * 1000,
+  });
+  const walletBalance = Number(walletQ.data?.balance ?? walletQ.data?.walletBalance ?? 0);
 
   // Filters State
   const [vegOnly, setVegOnly] = useState(false);
@@ -254,6 +280,10 @@ export default function SearchScreen() {
   const error = (searchQuery.error as any)?.message ?? null;
 
   const handleAddFoodDirect = async (item: SearchFood) => {
+    if (item.restaurantId?.isOpen === false) {
+      toast.warning('This restaurant is currently closed.', 'Closed');
+      return;
+    }
     const hasSizesOrAddons = item.addons && item.addons.length > 0;
     if (hasSizesOrAddons) {
       Alert.alert(
@@ -280,72 +310,104 @@ export default function SearchScreen() {
         restaurantId: item.restaurantId._id,
         menuItemId: item._id,
         quantity: 1,
+        itemName: item.itemName,
+        price: Number(item.price ?? 0),
+        restaurantName: item.restaurantId.restaurantName,
       });
       await qc.invalidateQueries({ queryKey: cartKeys.all });
-      Alert.alert('Added', `${item.itemName} added to your cart.`);
+      toast.success(`${item.itemName} added to your cart`, 'Added');
     } catch (e: any) {
-      Alert.alert('Oops', e?.response?.data?.message ?? e?.message ?? 'Failed to add item');
+      toast.error(e?.response?.data?.message ?? e?.message ?? 'Failed to add item');
     }
   };
 
-  const getFoodImage = (item: SearchFood) => {
-    if (item.images && item.images.length > 0 && item.images[0]) {
-      return { uri: item.images[0] };
-    }
-    return { uri: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=150&auto=format&fit=crop&q=80' };
-  };
-
-  const getRestaurantImage = (item: SearchRestaurant) => {
-    if (item.logo && item.logo.length > 0) {
-      return { uri: item.logo };
-    }
-    return { uri: 'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=150&auto=format&fit=crop&q=80' };
-  };
-
-  const renderRestaurantItem = useCallback(({ item }: { item: SearchRestaurant }) => (
+  const renderRestaurantItem = useCallback(({ item, index }: { item: SearchRestaurant; index: number }) => (
     <RestaurantSearchItem
       item={item}
-      theme={theme}
+      index={index}
       onPress={() => router.push({ pathname: '/restaurant/[restaurantId]', params: { restaurantId: item._id } })}
     />
-  ), [theme, router]);
+  ), [router]);
 
-  const renderFoodItem = useCallback(({ item }: { item: SearchFood }) => (
+  const renderFoodItem = useCallback(({ item, index }: { item: SearchFood; index: number }) => (
     <FoodSearchItem
       item={item}
-      theme={theme}
+      index={index}
       onAddPress={() => handleAddFoodDirect(item)}
       onRestaurantPress={() => router.push({ pathname: '/restaurant/[restaurantId]', params: { restaurantId: item.restaurantId._id } })}
     />
-  ), [theme, router, handleAddFoodDirect]);
+  ), [router, handleAddFoodDirect]);
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
+    <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        {/* Dynamic craver title header */}
-        <View style={styles.header}>
-          <ThemedText style={styles.cravingTitle}>What are you craving today? 🍕</ThemedText>
-        </View>
+        {/* Header: back, title, wallet, notifications, avatar */}
+        <Animated.View entering={FadeInDown.duration(280)} style={styles.headerRow}>
+          <PressableScale onPress={() => router.back()} style={styles.headerBackBtn}>
+            <Ionicons name="arrow-back" size={20} color={CaseUi.ink} />
+          </PressableScale>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cravingTitle}>Search</Text>
+            <Text style={styles.headerSub}>Find stores, products or anything</Text>
+          </View>
+          <PressableScale onPress={() => router.push('/wallet')} style={styles.walletPill}>
+            <Ionicons name="wallet-outline" size={13} color={CaseUi.orange} />
+            <Text style={styles.walletPillText}>J${walletBalance.toFixed(0)}</Text>
+          </PressableScale>
+          <PressableScale onPress={() => router.push('/notifications')} style={styles.headerIconBtn}>
+            <Ionicons name="notifications-outline" size={19} color={CaseUi.ink} />
+          </PressableScale>
+          <PressableScale onPress={() => router.push('/(tabs)/profile')} style={styles.avatar}>
+            {user?.profileImage ? (
+              <Image source={{ uri: user.profileImage }} style={StyleSheet.absoluteFill} contentFit="cover" />
+            ) : (
+              <Text style={styles.avatarLetter}>{user?.fullName?.charAt(0).toUpperCase() ?? 'U'}</Text>
+            )}
+          </PressableScale>
+        </Animated.View>
+
+        {/* Category quick filters */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryFilterRow}
+        >
+          {CASE_SHOP_CATEGORIES.map((catId) => {
+            const meta = CASE_CATEGORY_META[catId];
+            return (
+              <PressableScale
+                key={catId}
+                onPress={() =>
+                  router.push({ pathname: '/category/[businessType]', params: { businessType: catId } })
+                }
+                style={styles.categoryFilterChip}
+              >
+                <Ionicons name={meta.icon} size={15} color={CaseUi.ink} />
+                <Text style={styles.categoryFilterText}>{meta.label}</Text>
+              </PressableScale>
+            );
+          })}
+        </ScrollView>
 
         {/* Search Bar with Magnifier, Voice mic & Clear */}
-        <View style={[styles.searchBar, { backgroundColor: theme.backgroundSelected }]}>
-          <Ionicons name="search-outline" size={18} color={theme.textSecondary} />
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={17} color={CaseUi.muted} />
           <TextInput
             value={q}
             onChangeText={setQ}
             placeholder="Search restaurants, cuisines, or dishes..."
-            placeholderTextColor={theme.textSecondary}
-            style={[styles.searchInput, { color: theme.text }]}
+            placeholderTextColor={CaseUi.muted}
+            style={styles.searchInput}
             returnKeyType="search"
           />
           {q.length > 0 ? (
-            <Pressable onPress={() => setQ('')} style={styles.iconPadding}>
-              <Ionicons name="close-circle" size={18} color={theme.textSecondary} />
-            </Pressable>
+            <PressableScale onPress={() => setQ('')} style={styles.iconPadding} hitSlop={6}>
+              <Ionicons name="close-circle" size={18} color={CaseUi.muted} />
+            </PressableScale>
           ) : (
-            <Pressable onPress={() => Alert.alert('Voice Search', 'Listening feature coming soon!')} style={styles.iconPadding}>
-              <Ionicons name="mic-outline" size={18} color={theme.primary} />
-            </Pressable>
+            <PressableScale onPress={() => toast.info('Listening feature coming soon!', 'Voice search')} style={styles.iconPadding} hitSlop={6}>
+              <Ionicons name="mic-outline" size={18} color={CaseUi.orange} />
+            </PressableScale>
           )}
         </View>
 
@@ -357,38 +419,39 @@ export default function SearchScreen() {
             style={styles.filterContainer}
             contentContainerStyle={styles.filterScroll}
           >
-            <Pressable
+            <PressableScale
               onPress={() => setVegOnly(!vegOnly)}
-              style={[styles.filterChip, vegOnly && [styles.filterChipActive, { borderColor: theme.primary, backgroundColor: theme.primarySoft }]]}
+              style={[styles.filterChip, vegOnly && styles.filterChipActive]}
             >
-              <ThemedText style={[styles.filterText, vegOnly && { color: theme.primary }]}>
-                🟢 Veg Only {vegOnly && '✕'}
-              </ThemedText>
-            </Pressable>
-            <Pressable
+              <Text style={[styles.filterText, vegOnly && styles.filterTextActive]}>
+                Veg Only {vegOnly && '✕'}
+              </Text>
+            </PressableScale>
+            <PressableScale
               onPress={() => setTopRated(!topRated)}
-              style={[styles.filterChip, topRated && [styles.filterChipActive, { borderColor: theme.primary, backgroundColor: theme.primarySoft }]]}
+              style={[styles.filterChip, topRated && styles.filterChipActive]}
             >
-              <ThemedText style={[styles.filterText, topRated && { color: theme.primary }]}>
+              <Text style={[styles.filterText, topRated && styles.filterTextActive]}>
                 ⭐ 4.0+ Rating {topRated && '✕'}
-              </ThemedText>
-            </Pressable>
-            <Pressable
+              </Text>
+            </PressableScale>
+            <PressableScale
               onPress={() => setHasOffers(!hasOffers)}
-              style={[styles.filterChip, hasOffers && [styles.filterChipActive, { borderColor: theme.primary, backgroundColor: theme.primarySoft }]]}
+              style={[styles.filterChip, hasOffers && styles.filterChipActive]}
             >
-              <ThemedText style={[styles.filterText, hasOffers && { color: theme.primary }]}>
+              <Text style={[styles.filterText, hasOffers && styles.filterTextActive]}>
                 🏷️ Flat Offers {hasOffers && '✕'}
-              </ThemedText>
-            </Pressable>
+              </Text>
+            </PressableScale>
           </ScrollView>
         )}
 
         {/* Global error card */}
         {!!error && (
-          <ThemedView type="backgroundElement" style={styles.errorCard}>
-            <ThemedText style={styles.errorText}>{error}</ThemedText>
-          </ThemedView>
+          <View style={styles.errorCard}>
+            <Ionicons name="alert-circle" size={16} color={CaseUi.danger} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
         )}
 
         {/* CONDITIONAL LAYOUT STATES */}
@@ -397,16 +460,16 @@ export default function SearchScreen() {
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
             {/* Recent Searches */}
             {recentSearches.length > 0 && (
-              <View style={styles.sectionContainer}>
+              <Animated.View entering={FadeInDown.delay(40).duration(260)} style={styles.sectionContainer}>
                 <View style={styles.sectionHeaderRow}>
-                  <ThemedText style={styles.sectionTitle}>Recent Searches</ThemedText>
-                  <Pressable onPress={clearRecentSearches}>
-                    <ThemedText style={styles.clearBtnText}>Clear All</ThemedText>
-                  </Pressable>
+                  <Text style={styles.sectionTitle}>Recent Searches</Text>
+                  <PressableScale onPress={clearRecentSearches}>
+                    <Text style={styles.clearBtnText}>Clear All</Text>
+                  </PressableScale>
                 </View>
                 <View style={styles.recentList}>
                   {recentSearches.map((term, i) => (
-                    <Pressable
+                    <PressableScale
                       key={`recent-${i}`}
                       onPress={() => {
                         setQ(term);
@@ -414,75 +477,75 @@ export default function SearchScreen() {
                       }}
                       style={styles.recentItemRow}
                     >
-                      <Ionicons name="time-outline" size={16} color={theme.textSecondary} style={{ marginRight: 10 }} />
-                      <ThemedText style={styles.recentItemText}>{term}</ThemedText>
-                    </Pressable>
+                      <Ionicons name="time-outline" size={16} color={CaseUi.muted} style={{ marginRight: 10 }} />
+                      <Text style={styles.recentItemText}>{term}</Text>
+                    </PressableScale>
                   ))}
                 </View>
-              </View>
+              </Animated.View>
             )}
 
             {/* Popular Cravings Grid */}
-            <View style={styles.sectionContainer}>
-              <ThemedText style={styles.sectionTitle}>Popular Cravings</ThemedText>
+            <Animated.View entering={FadeInDown.delay(80).duration(260)} style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>Popular Cravings</Text>
               <View style={styles.gridContainer}>
                 {POPULAR_CRAVINGS.map((item) => (
-                  <Pressable
+                  <PressableScale
                     key={item.name}
                     onPress={() => {
                       setQ(item.name);
                       setDebounced(item.name);
                     }}
-                    style={[styles.gridCard, { backgroundColor: theme.backgroundSelected }]}
+                    style={styles.gridCard}
                   >
-                    <ThemedText style={styles.gridCardText}>{item.display}</ThemedText>
-                    <Image source={{ uri: item.image }} style={styles.gridCardImage} transition={200} />
-                  </Pressable>
+                    <Text style={styles.gridCardText}>{item.display}</Text>
+                    <Image source={{ uri: item.image }} style={styles.gridCardImage} transition={200} contentFit="cover" />
+                  </PressableScale>
                 ))}
               </View>
-            </View>
+            </Animated.View>
 
             {/* Trending Search Tags */}
-            <View style={styles.sectionContainer}>
-              <ThemedText style={styles.sectionTitle}>Trending Searches</ThemedText>
+            <Animated.View entering={FadeInDown.delay(120).duration(260)} style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>Trending Searches</Text>
               <View style={styles.tagsContainer}>
                 {trendingList.length > 0 ? (
                   trendingList.slice(0, 8).map((t, idx) => (
-                    <Pressable
+                    <PressableScale
                       key={`trend-${idx}`}
                       onPress={() => {
                         setQ(t.query);
                         setDebounced(t.query);
                       }}
-                      style={[styles.tagChip, { backgroundColor: theme.backgroundSelected }]}
+                      style={styles.tagChip}
                     >
-                      <ThemedText style={styles.tagChipText}>🔥 {t.query}</ThemedText>
-                    </Pressable>
+                      <Text style={styles.tagChipText}>🔥 {t.query}</Text>
+                    </PressableScale>
                   ))
                 ) : (
                   // Fallbacks if no search trending scores yet
                   ['Biryani', 'Margherita', 'Garlic Bread', 'Smoothie', 'Protein Bowl'].map((name) => (
-                    <Pressable
+                    <PressableScale
                       key={`fallback-${name}`}
                       onPress={() => {
                         setQ(name);
                         setDebounced(name);
                       }}
-                      style={[styles.tagChip, { backgroundColor: theme.backgroundSelected }]}
+                      style={styles.tagChip}
                     >
-                      <ThemedText style={styles.tagChipText}>🔥 {name}</ThemedText>
-                    </Pressable>
+                      <Text style={styles.tagChipText}>🔥 {name}</Text>
+                    </PressableScale>
                   ))
                 )}
               </View>
-            </View>
+            </Animated.View>
 
             {recommended.length > 0 ? (
-              <View style={styles.sectionContainer}>
-                <ThemedText style={styles.sectionTitle}>Recommended for you</ThemedText>
+              <Animated.View entering={FadeInDown.delay(160).duration(260)} style={styles.sectionContainer}>
+                <Text style={styles.sectionTitle}>Recommended for you</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recScroll}>
                   {recommended.slice(0, 8).map((r: any) => (
-                    <Pressable
+                    <PressableScale
                       key={r._id}
                       onPress={() =>
                         router.push({
@@ -490,83 +553,77 @@ export default function SearchScreen() {
                           params: { restaurantId: String(r._id) },
                         })
                       }
-                      style={[styles.recCard, { backgroundColor: theme.backgroundSelected }]}
+                      style={styles.recCard}
                     >
                       {r.logo ? (
-                        <Image source={{ uri: r.logo }} style={styles.recImage} transition={200} />
+                        <Image source={{ uri: r.logo }} style={styles.recImage} transition={200} contentFit="cover" />
                       ) : (
                         <View style={[styles.recImage, styles.recImagePlaceholder]}>
-                          <Ionicons name="restaurant" size={28} color={theme.textSecondary} />
+                          <Ionicons name="restaurant" size={28} color={CaseUi.muted} />
                         </View>
                       )}
-                      <ThemedText style={styles.recName} numberOfLines={1}>
+                      <Text style={styles.recName} numberOfLines={1}>
                         {r.restaurantName}
-                      </ThemedText>
-                      <ThemedText themeColor="textSecondary" style={styles.recMeta} numberOfLines={1}>
+                      </Text>
+                      <Text style={styles.recMeta} numberOfLines={1}>
                         ⭐ {Number(r.averageRating ?? 0).toFixed(1)} · {r.averageDeliveryTime ?? 30} min
-                      </ThemedText>
-                    </Pressable>
+                      </Text>
+                    </PressableScale>
                   ))}
                 </ScrollView>
-              </View>
+              </Animated.View>
             ) : null}
           </ScrollView>
         ) : (
           // STATE B & C: RESULTS LIST
           <View style={{ flex: 1 }}>
             {/* Custom Tab Selector */}
-            <View style={[styles.tabsContainer, { borderBottomColor: theme.backgroundSelected }]}>
-              <Pressable
+            <View style={styles.tabsContainer}>
+              <PressableScale
                 onPress={() => setActiveTab('restaurants')}
-                style={[styles.tabButton, activeTab === 'restaurants' && [styles.tabButtonActive, { borderBottomColor: theme.primary }]]}
+                style={[styles.tabButton, activeTab === 'restaurants' && styles.tabButtonActive]}
               >
-                <ThemedText
-                  style={[
-                    styles.tabButtonText,
-                    activeTab === 'restaurants' && [styles.tabButtonTextActive, { color: theme.primary }],
-                  ]}
-                >
+                <Text style={[styles.tabButtonText, activeTab === 'restaurants' && styles.tabButtonTextActive]}>
                   Restaurants ({filteredRestaurants.length})
-                </ThemedText>
-              </Pressable>
-              <Pressable
+                </Text>
+              </PressableScale>
+              <PressableScale
                 onPress={() => setActiveTab('dishes')}
-                style={[styles.tabButton, activeTab === 'dishes' && [styles.tabButtonActive, { borderBottomColor: theme.primary }]]}
+                style={[styles.tabButton, activeTab === 'dishes' && styles.tabButtonActive]}
               >
-                <ThemedText
-                  style={[
-                    styles.tabButtonText,
-                    activeTab === 'dishes' && [styles.tabButtonTextActive, { color: theme.primary }],
-                  ]}
-                >
+                <Text style={[styles.tabButtonText, activeTab === 'dishes' && styles.tabButtonTextActive]}>
                   Dishes ({filteredFoods.length})
-                </ThemedText>
-              </Pressable>
+                </Text>
+              </PressableScale>
             </View>
 
             {/* Main results list */}
             {busy ? (
-              <View style={styles.emptyResultsState}>
-                <ActivityIndicator size="large" color={theme.primary} />
-                <ThemedText themeColor="textSecondary" style={{ marginTop: 12 }}>
-                  Searching menus and kitchens...
-                </ThemedText>
+              <View style={styles.skeletonList}>
+                {[0, 1, 2, 3].map((i) => (
+                  <View key={i} style={styles.skeletonRow}>
+                    <SkeletonBlock width={70} height={70} radius={12} />
+                    <View style={{ flex: 1, gap: 8 }}>
+                      <SkeletonBlock width="70%" height={15} />
+                      <SkeletonBlock width="45%" height={11} />
+                      <SkeletonBlock width="30%" height={11} />
+                    </View>
+                  </View>
+                ))}
               </View>
             ) : activeTab === 'restaurants' ? (
               // RESTAURANT RESULTS
               <FlatList
                 data={filteredRestaurants}
                 keyExtractor={(r) => r._id}
-                contentContainerStyle={{ paddingBottom: 60 }}
-                refreshControl={<RefreshControl refreshing={busy} onRefresh={() => searchQuery.refetch()} />}
+                contentContainerStyle={{ padding: 4, paddingBottom: 60 }}
+                refreshControl={<RefreshControl refreshing={busy} onRefresh={() => searchQuery.refetch()} tintColor={CaseUi.orange} />}
                 initialNumToRender={6}
                 maxToRenderPerBatch={10}
                 windowSize={5}
                 removeClippedSubviews={Platform.OS === 'android'}
                 ListEmptyComponent={
-                  <View style={styles.emptyResultsState}>
-                    <ThemedText themeColor="textSecondary">No restaurants match your search.</ThemedText>
-                  </View>
+                  <EmptyState icon="restaurant-outline" title="No restaurants found" subtitle="Try a different search term." />
                 }
                 renderItem={renderRestaurantItem}
               />
@@ -575,16 +632,14 @@ export default function SearchScreen() {
               <FlatList
                 data={filteredFoods}
                 keyExtractor={(f) => f._id}
-                contentContainerStyle={{ paddingBottom: 60 }}
-                refreshControl={<RefreshControl refreshing={busy} onRefresh={() => searchQuery.refetch()} />}
+                contentContainerStyle={{ padding: 4, paddingBottom: 60 }}
+                refreshControl={<RefreshControl refreshing={busy} onRefresh={() => searchQuery.refetch()} tintColor={CaseUi.orange} />}
                 initialNumToRender={6}
                 maxToRenderPerBatch={10}
                 windowSize={5}
                 removeClippedSubviews={Platform.OS === 'android'}
                 ListEmptyComponent={
-                  <View style={styles.emptyResultsState}>
-                    <ThemedText themeColor="textSecondary">No dishes match your search.</ThemedText>
-                  </View>
+                  <EmptyState icon="fast-food-outline" title="No dishes found" subtitle="Try a different search term." />
                 }
                 renderItem={renderFoodItem}
               />
@@ -597,43 +652,119 @@ export default function SearchScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: { flex: 1, paddingHorizontal: Spacing.four, paddingTop: Spacing.three },
-  header: { marginBottom: Spacing.two },
+  container: { flex: 1, backgroundColor: CaseUi.white },
+  safeArea: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  headerBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CaseUi.field,
+  },
   cravingTitle: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 20,
-    letterSpacing: -0.3,
+    fontSize: 19,
+    color: CaseUi.ink,
+  },
+  headerSub: {
+    fontSize: 11,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: CaseUi.muted,
+    marginTop: 1,
+  },
+  walletPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: CaseUi.orangeSoft,
+  },
+  walletPillText: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 12,
+    color: CaseUi.orange,
+  },
+  headerIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CaseUi.field,
+  },
+  avatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CaseUi.orangeSoft,
+  },
+  avatarLetter: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 14,
+    color: CaseUi.orange,
+  },
+  categoryFilterRow: {
+    gap: 8,
+    paddingBottom: 12,
+  },
+  categoryFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.white,
+  },
+  categoryFilterText: {
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontSize: 12,
+    color: CaseUi.ink,
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 6,
+    height: 48,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(228,190,177,0.25)',
-    marginBottom: Spacing.two,
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.field,
+    marginBottom: 12,
   },
   searchInput: {
     flex: 1,
     fontFamily: 'PlusJakartaSans_600SemiBold',
     fontSize: 14,
-    paddingVertical: 4,
+    color: CaseUi.ink,
+    height: '100%',
   },
   iconPadding: { padding: 4 },
 
   // Filters
   filterContainer: {
-    marginTop: 8,
-    maxHeight: 40,
     marginBottom: 8,
+    maxHeight: 40,
     flexGrow: 0,
   },
   filterScroll: {
     gap: 10,
-    paddingRight: Spacing.four,
+    paddingRight: 16,
     alignItems: 'center',
   },
   filterChip: {
@@ -641,27 +772,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(228,190,177,0.25)',
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.white,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  filterChipActive: { borderWidth: 1 },
-  filterText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  filterChipActive: { borderColor: CaseUi.orange, backgroundColor: CaseUi.orangeSoft },
+  filterText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: CaseUi.muted },
+  filterTextActive: { color: CaseUi.orange },
 
   // Sections
-  sectionContainer: { marginTop: Spacing.two, marginBottom: Spacing.three },
+  sectionContainer: { marginTop: 8, marginBottom: 16 },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.two,
+    marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 15,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
+    color: CaseUi.ink,
     marginBottom: 8,
   },
-  clearBtnText: { fontSize: 12, color: '#ff5a00', fontFamily: 'PlusJakartaSans_700Bold' },
+  clearBtnText: { fontSize: 12, color: CaseUi.orange, fontFamily: 'PlusJakartaSans_700Bold' },
 
   // Recent searches layout
   recentList: { gap: 10 },
@@ -670,7 +804,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 4,
   },
-  recentItemText: { fontSize: 14, color: '#313535', fontFamily: 'PlusJakartaSans_500Medium' },
+  recentItemText: { fontSize: 14, color: CaseUi.ink, fontFamily: 'PlusJakartaSans_500Medium' },
 
   // Popular cravings grid layout
   gridContainer: {
@@ -689,11 +823,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(228,190,177,0.15)',
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.white,
+    ...CaseUi.softShadow,
   },
   gridCardText: {
     fontSize: 13,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
+    color: CaseUi.ink,
     maxWidth: '60%',
   },
   gridCardImage: {
@@ -714,9 +851,10 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(228,190,177,0.15)',
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.field,
   },
-  tagChipText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  tagChipText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: CaseUi.ink },
 
   recScroll: { gap: 12, paddingTop: 8, paddingRight: 4 },
   recCard: {
@@ -724,75 +862,85 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 10,
     borderWidth: 1,
-    borderColor: 'rgba(228,190,177,0.2)',
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.white,
+    ...CaseUi.softShadow,
   },
-  recImage: { width: '100%', height: 80, borderRadius: 10, marginBottom: 8 },
+  recImage: { width: '100%', height: 80, borderRadius: 10, marginBottom: 8, backgroundColor: CaseUi.field },
   recImagePlaceholder: {
-    backgroundColor: 'rgba(228,190,177,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  recName: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13 },
-  recMeta: { marginTop: 4, fontSize: 11 },
+  recName: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: CaseUi.ink },
+  recMeta: { marginTop: 4, fontSize: 11, color: CaseUi.muted },
 
   // Tab View selectors
   tabsContainer: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    marginBottom: Spacing.three,
+    borderBottomColor: CaseUi.line,
+    marginBottom: 12,
   },
   tabButton: {
     flex: 1,
     alignItems: 'center',
     paddingVertical: 12,
-    borderBottomWidth: 2,
+    borderBottomWidth: 2.5,
     borderBottomColor: 'transparent',
   },
-  tabButtonActive: { borderBottomWidth: 2.5 },
+  tabButtonActive: { borderBottomColor: CaseUi.orange },
   tabButtonText: {
     fontSize: 14,
     fontFamily: 'PlusJakartaSans_600SemiBold',
-    color: '#8A8D91',
+    color: CaseUi.muted,
   },
-  tabButtonTextActive: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontWeight: '800' },
+  tabButtonTextActive: { fontFamily: 'PlusJakartaSans_800ExtraBold', color: CaseUi.orange },
 
   // Results Layout
   restaurantRowCard: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
-    padding: Spacing.three,
-    borderRadius: 16,
-    marginBottom: Spacing.two,
+    padding: 12,
+    borderRadius: CaseUi.radius.lg,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: 'rgba(228,190,177,0.2)',
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.white,
+    ...CaseUi.softShadow,
   },
-  restaurantRowImage: { width: 70, height: 70, borderRadius: 10, backgroundColor: '#f0f0f0' },
-  restaurantRowName: { fontSize: 15, fontFamily: 'PlusJakartaSans_800ExtraBold' },
-  restaurantRowSub: { fontSize: 11, marginTop: -2 },
+  dimmed: { opacity: 0.65 },
+  restaurantRowImage: { width: 68, height: 68, borderRadius: 12, backgroundColor: CaseUi.field },
+  restaurantRowName: { fontSize: 14, fontFamily: 'PlusJakartaSans_800ExtraBold', color: CaseUi.ink },
+  restaurantRowSub: { fontSize: 11, marginTop: -2, color: CaseUi.muted, fontFamily: 'PlusJakartaSans_500Medium' },
   restaurantMetadataRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
   badgeRatingPill: {
-    backgroundColor: '#24963F',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: CaseUi.success,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
   },
-  badgeRatingText: { color: '#ffffff', fontSize: 10, fontFamily: 'PlusJakartaSans_800ExtraBold' },
-  restaurantMetadataText: { fontSize: 11, fontFamily: 'PlusJakartaSans_500Medium' },
-  promoOfferRow: { marginTop: 4 },
-  promoOfferText: { fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold' },
+  badgeRatingText: { color: '#FFFFFF', fontSize: 10, fontFamily: 'PlusJakartaSans_800ExtraBold' },
+  restaurantMetadataText: { fontSize: 11, fontFamily: 'PlusJakartaSans_500Medium', color: CaseUi.muted },
+  closedText: { marginTop: 4, fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: CaseUi.danger },
 
   // Dishes rows
   foodRowCard: {
     flexDirection: 'row',
     gap: 12,
-    padding: Spacing.three,
-    borderRadius: 16,
-    marginBottom: Spacing.two,
+    padding: 12,
+    borderRadius: CaseUi.radius.lg,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: 'rgba(228,190,177,0.2)',
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.white,
     alignItems: 'center',
+    ...CaseUi.softShadow,
   },
-  foodRowImage: { width: 64, height: 64, borderRadius: 10, backgroundColor: '#f0f0f0' },
+  foodRowImage: { width: 64, height: 64, borderRadius: 12, backgroundColor: CaseUi.field },
   foodTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   typeDot: {
     width: 12,
@@ -803,34 +951,37 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   typeDotInner: { width: 6, height: 6, borderRadius: 999 },
-  foodRowName: { fontSize: 14, fontFamily: 'PlusJakartaSans_800ExtraBold', flex: 1 },
-  foodRowPrice: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold' },
-  foodSellerText: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold' },
-  addBtnContainer: { justifyContent: 'center', alignItems: 'center', minWidth: 70 },
+  foodRowName: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', color: CaseUi.ink, flex: 1 },
+  foodRowPrice: { fontSize: 13, fontFamily: 'PlusJakartaSans_800ExtraBold', color: CaseUi.orange },
+  foodSellerText: { fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', color: CaseUi.muted },
   addBtn: {
+    width: 56,
+    height: 34,
+    borderRadius: 10,
     borderWidth: 1.5,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderColor: CaseUi.orange,
+    backgroundColor: CaseUi.orangeSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addBtnText: { fontSize: 11, fontFamily: 'PlusJakartaSans_800ExtraBold', fontWeight: '800' },
+  addBtnDisabled: { borderColor: CaseUi.line, backgroundColor: CaseUi.field },
+  addBtnText: { fontSize: 11, fontFamily: 'PlusJakartaSans_800ExtraBold', color: CaseUi.orange },
+  addBtnTextDisabled: { color: CaseUi.muted },
 
-  emptyResultsState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 80,
-  },
+  skeletonList: { padding: 4, gap: 10 },
+  skeletonRow: { flexDirection: 'row', gap: 12, alignItems: 'center', marginBottom: 4 },
 
   // Error Card
   errorCard: {
-    padding: Spacing.three,
-    borderRadius: 16,
-    marginBottom: Spacing.three,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 14,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(229,72,77,0.25)',
+    borderColor: 'rgba(220,38,38,0.25)',
+    backgroundColor: '#FEF2F2',
   },
-  errorText: { color: '#E5484D', fontSize: 13 },
+  errorText: { color: CaseUi.danger, fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', flex: 1 },
 });

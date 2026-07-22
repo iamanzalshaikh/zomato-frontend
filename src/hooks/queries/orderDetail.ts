@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { CASE_CHECKOUT_ENABLED } from '@/config/features';
+import { fetchCaseOrderById } from '@/services/caseOrders';
 import { fetchOrderById, trackOrder } from '@/services/orders';
 import { perfQuery } from '@/lib/perf';
 
@@ -8,12 +10,24 @@ export const orderDetailKeys = {
   track: (orderId: string) => ['orders', 'track', orderId] as const,
 };
 
+async function fetchOrderPreferCase(orderId: string) {
+  if (CASE_CHECKOUT_ENABLED) {
+    try {
+      return await fetchCaseOrderById(orderId);
+    } catch {
+      /* fall through to classic */
+    }
+  }
+  return fetchOrderById(orderId);
+}
+
 export function useOrderByIdQuery(orderId: string) {
   const q = useQuery({
     queryKey: orderDetailKeys.byId(orderId),
-    queryFn: () => fetchOrderById(orderId),
+    queryFn: () => fetchOrderPreferCase(orderId),
     enabled: Boolean(orderId),
-    staleTime: 30_000,           // 30s — order detail can change (status updates)
+    staleTime: 30_000,
+    refetchInterval: CASE_CHECKOUT_ENABLED ? 15_000 : false,
   });
   perfQuery(`OrderById(${orderId})`, q.isFetching, q.dataUpdatedAt);
   return q;
@@ -23,10 +37,9 @@ export function useOrderTrackQuery(orderId: string) {
   const q = useQuery({
     queryKey: orderDetailKeys.track(orderId),
     queryFn: () => trackOrder(orderId),
-    enabled: Boolean(orderId),
+    enabled: Boolean(orderId) && !CASE_CHECKOUT_ENABLED,
     staleTime: 120_000,
   });
   perfQuery(`TrackOrder(${orderId})`, q.isFetching, q.dataUpdatedAt);
   return q;
 }
-

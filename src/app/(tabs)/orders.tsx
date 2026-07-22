@@ -1,12 +1,13 @@
-import { FlatList, Pressable, RefreshControl, StyleSheet, View, Image } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, View, Text, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { PressableScale } from '@/components/pressable-scale';
+import { SkeletonBlock } from '@/components/skeleton';
+import { EmptyState, ErrorState } from '@/components/state-views';
+import { CaseUi } from '@/constants/caseUi';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { useOrderHistoryQuery } from '@/hooks/queries/orders';
 import {
@@ -20,21 +21,47 @@ import type { Order } from '@/services/orders';
 function formatDate(dateStr?: string) {
   if (!dateStr) return '';
   const date = new Date(dateStr);
-  const options: Intl.DateTimeFormatOptions = {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  };
-  const timeOptions: Intl.DateTimeFormatOptions = {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  };
+  const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
+  const timeOptions: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
   return `${date.toLocaleDateString(undefined, options)} at ${date.toLocaleTimeString(undefined, timeOptions)}`;
 }
 
+function getStatusConfig(status?: string) {
+  const s = (status ?? 'PENDING').toUpperCase();
+  switch (s) {
+    case 'DELIVERED':
+      return { label: 'Delivered', color: CaseUi.success, icon: 'checkmark-circle' as const };
+    case 'CANCELLED':
+      return { label: 'Cancelled', color: CaseUi.danger, icon: 'close-circle' as const };
+    case 'PENDING':
+      return { label: 'Awaiting acceptance', color: '#F59E0B', icon: 'hourglass' as const };
+    case 'CONFIRMED':
+      return { label: 'Accepted', color: CaseUi.orange, icon: 'checkmark-circle' as const };
+    case 'PREPARING':
+      return { label: 'Preparing', color: CaseUi.orange, icon: 'restaurant' as const };
+    case 'READY_FOR_PICKUP':
+      return { label: 'Ready for Pickup', color: CaseUi.orange, icon: 'gift' as const };
+    case 'RIDER_ASSIGNED':
+    case 'PICKED_UP':
+    case 'ON_THE_WAY':
+      return { label: 'Out for Delivery', color: CaseUi.orange, icon: 'bicycle' as const };
+    default:
+      return { label: s, color: CaseUi.muted, icon: 'information-circle' as const };
+  }
+}
+
+function isActiveOrder(status?: string) {
+  const s = (status ?? '').toUpperCase();
+  return s !== 'DELIVERED' && s !== 'CANCELLED';
+}
+
+const PAYMENT_TONE_COLORS: Record<string, string> = {
+  failed: CaseUi.danger,
+  pending: '#F59E0B',
+  paid: CaseUi.success,
+};
+
 export default function OrdersScreen() {
-  const theme = useTheme();
   const router = useRouter();
   const tabBarHeight = useTabBarHeight();
   const q = useOrderHistoryQuery();
@@ -42,300 +69,169 @@ export default function OrdersScreen() {
   const loading = q.isLoading || q.isFetching;
   const error = (q.error as any)?.message ?? null;
 
-  const getStatusConfig = (status?: string) => {
-    const s = (status ?? 'PENDING').toUpperCase();
-    switch (s) {
-      case 'DELIVERED':
-        return { label: 'Delivered', color: '#0f8a5f', icon: 'checkmark-circle' as const };
-      case 'CANCELLED':
-        return { label: 'Cancelled', color: '#e23744', icon: 'close-circle' as const };
-      case 'PENDING':
-        return { label: 'Awaiting acceptance', color: '#f59e0b', icon: 'hourglass' as const };
-      case 'CONFIRMED':
-        return { label: 'Accepted', color: '#ff5a00', icon: 'checkmark-circle' as const };
-      case 'PREPARING':
-        return { label: 'Preparing', color: '#ff5a00', icon: 'restaurant' as const };
-      case 'READY_FOR_PICKUP':
-        return { label: 'Ready for Pickup', color: '#ff5a00', icon: 'gift' as const };
-      case 'RIDER_ASSIGNED':
-      case 'PICKED_UP':
-      case 'ON_THE_WAY':
-        return { label: 'Out for Delivery', color: '#ff5a00', icon: 'bicycle' as const };
-      default:
-        return { label: s, color: '#65696f', icon: 'information-circle' as const };
-    }
-  };
-
-  const isActiveOrder = (status?: string) => {
-    const s = (status ?? '').toUpperCase();
-    return s !== 'DELIVERED' && s !== 'CANCELLED';
-  };
-
   return (
-    <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        {/* Header */}
-        <View style={styles.header}>
-          <ThemedText style={styles.headerTitle}>My Orders</ThemedText>
-          <ThemedText style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
-            Your order history & active tracking
-          </ThemedText>
-        </View>
+        <Animated.View entering={FadeInDown.duration(300)} style={styles.header}>
+          <Text style={styles.headerTitle}>My Orders</Text>
+          <Text style={styles.headerSubtitle}>Track ongoing and past campus deliveries</Text>
+        </Animated.View>
 
         {!!error && (
-          <ThemedView type="backgroundElement" style={styles.errorCard}>
-            <Ionicons name="alert-circle-outline" size={20} color="#e23744" />
-            <View style={{ flex: 1 }}>
-              <ThemedText style={styles.errorText}>{error}</ThemedText>
-            </View>
-            <Pressable onPress={() => q.refetch()} style={styles.retryBtn}>
-              <ThemedText style={styles.retryText}>Retry</ThemedText>
-            </Pressable>
-          </ThemedView>
+          <ErrorState title="Couldn't load your orders" subtitle={error} actionLabel="Retry" onAction={() => q.refetch()} />
         )}
 
-        <FlatList
-          data={items}
-          keyExtractor={(o) => o._id}
-          contentContainerStyle={[styles.listContainer, { paddingBottom: tabBarHeight + 16 }]}
-          refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} />}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="receipt-outline" size={60} color={theme.backgroundSelected} />
-              <ThemedText style={[styles.emptyText, { color: theme.textSecondary }]}>
-                {loading ? 'Fetching your orders...' : 'No orders found.'}
-              </ThemedText>
-            </View>
-          }
-          renderItem={({ item }) => {
-            const statusConfig = getStatusConfig(item.orderStatus);
-            const isOrderActive = isActiveOrder(item.orderStatus);
-            const paymentInfo = getPaymentStatusDisplay(item);
-            const unpaidOnline = needsOnlinePayment(item);
-            const paymentFailed = isPaymentFailed(item);
-            const showTrack = isOrderActive && canTrackOrder(item);
-            const itemsList = item.orderItems?.map((it) => `${it.quantity} x ${it.itemName}`).join(', ') || '';
+        {loading && !items.length && !error ? (
+          <View style={styles.listContainer}>
+            {[0, 1, 2].map((i) => (
+              <View key={i} style={styles.skeletonCard}>
+                <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                  <SkeletonBlock width={38} height={38} radius={19} />
+                  <View style={{ flex: 1, gap: 6 }}>
+                    <SkeletonBlock width="55%" height={14} />
+                    <SkeletonBlock width="35%" height={11} />
+                  </View>
+                </View>
+                <SkeletonBlock width="100%" height={40} radius={10} style={{ marginTop: 14 }} />
+              </View>
+            ))}
+          </View>
+        ) : (
+          <FlatList
+            data={items}
+            keyExtractor={(o) => o._id}
+            contentContainerStyle={[styles.listContainer, { paddingBottom: tabBarHeight + 16 }]}
+            refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor={CaseUi.orange} />}
+            ListEmptyComponent={
+              !error ? <EmptyState icon="receipt-outline" title="No orders yet" subtitle="Your campus orders will show up here." /> : null
+            }
+            renderItem={({ item, index }) => {
+              const statusConfig = getStatusConfig(item.orderStatus);
+              const isOrderActive = isActiveOrder(item.orderStatus);
+              const paymentInfo = getPaymentStatusDisplay(item);
+              const unpaidOnline = needsOnlinePayment(item);
+              const paymentFailed = isPaymentFailed(item);
+              const showTrack = isOrderActive && canTrackOrder(item);
+              const itemsList = item.orderItems?.map((it) => `${it.quantity} x ${it.itemName}`).join(', ') || '';
+              const paymentToneColor = PAYMENT_TONE_COLORS[paymentInfo.tone] ?? CaseUi.muted;
 
-            const openOrder = () =>
-              router.push({
-                pathname: '/order/[orderId]',
-                params: { orderId: item._id },
-              });
+              const openOrder = () => router.push({ pathname: '/order/[orderId]', params: { orderId: item._id } });
 
-            const payOrRetry = (e?: { stopPropagation?: () => void }) => {
-              e?.stopPropagation?.();
-              router.push({
-                pathname: '/payment/razorpay',
-                params: {
-                  orderId: item._id,
-                  restaurantName: item.restaurantId?.restaurantName ?? '',
-                },
-              });
-            };
+              const payOrRetry = () => {
+                router.push({
+                  pathname: '/payment/razorpay',
+                  params: { orderId: item._id, restaurantName: item.restaurantId?.restaurantName ?? '' },
+                });
+              };
 
-            return (
-              <Pressable
-                onPress={openOrder}
-                style={({ pressed }) => [
-                  styles.cardWrapper,
-                  pressed && { opacity: 0.95 },
-                ]}
-              >
-                <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.backgroundSelected }]}>
-                  {/* Restaurant Row */}
-                  <View style={styles.restaurantRow}>
-                    <View style={styles.restaurantLeft}>
-                      <View style={[styles.restaurantIconCircle, { backgroundColor: theme.backgroundSelected }]}>
-                        {item.restaurantId?.logo ? (
-                          <Image source={{ uri: item.restaurantId.logo }} style={styles.restaurantLogo} />
-                        ) : (
-                          <Ionicons name="restaurant" size={16} color={theme.primary} />
-                        )}
+              return (
+                <Animated.View entering={FadeInDown.delay(Math.min(index, 6) * 40).duration(280)}>
+                  <PressableScale onPress={openOrder} style={styles.card}>
+                    <View style={styles.restaurantRow}>
+                      <View style={styles.restaurantLeft}>
+                        <View style={styles.restaurantIconCircle}>
+                          {item.restaurantId?.logo ? (
+                            <Image source={{ uri: item.restaurantId.logo }} style={styles.restaurantLogo} />
+                          ) : (
+                            <Ionicons name="restaurant" size={16} color={CaseUi.orange} />
+                          )}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.restaurantName}>{item.restaurantId?.restaurantName || 'Restaurant'}</Text>
+                          <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
+                        </View>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <ThemedText style={[styles.restaurantName, { color: theme.text }]}>
-                          {item.restaurantId?.restaurantName || 'Restaurant'}
-                        </ThemedText>
-                        <ThemedText style={[styles.orderDate, { color: theme.textSecondary }]}>
-                          {formatDate(item.createdAt)}
-                        </ThemedText>
+                      <Ionicons name="chevron-forward" size={18} color={CaseUi.muted} />
+                    </View>
+
+                    <View style={styles.chipRow}>
+                      <View style={[styles.statusBadge, { backgroundColor: `${statusConfig.color}18` }]}>
+                        <Ionicons name={statusConfig.icon} size={10} color={statusConfig.color} style={{ marginRight: 4 }} />
+                        <Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
+                      </View>
+                      <View style={[styles.statusBadge, { backgroundColor: `${paymentToneColor}18` }]}>
+                        <Text style={[styles.statusText, { color: paymentToneColor }]}>{paymentInfo.label}</Text>
                       </View>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color={theme.textSecondary} />
-                  </View>
 
-                  {/* Status chips */}
-                  <View style={styles.chipRow}>
-                    <View style={[styles.statusBadge, { backgroundColor: `${statusConfig.color}15` }]}>
-                      <Ionicons name={statusConfig.icon} size={10} color={statusConfig.color} style={{ marginRight: 4 }} />
-                      <ThemedText style={[styles.statusText, { color: statusConfig.color }]}>
-                        {statusConfig.label}
-                      </ThemedText>
+                    <View style={styles.divider} />
+
+                    <View style={styles.itemsSummaryRow}>
+                      <Text style={styles.itemsListText} numberOfLines={2}>
+                        {itemsList}
+                      </Text>
+                      <Text style={styles.totalAmount}>J${item.grandTotal ?? 0}</Text>
                     </View>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        {
-                          backgroundColor:
-                            paymentInfo.tone === 'failed'
-                              ? 'rgba(226,55,68,0.12)'
-                              : paymentInfo.tone === 'pending'
-                                ? 'rgba(245,158,11,0.12)'
-                                : paymentInfo.tone === 'paid'
-                                  ? 'rgba(15,138,95,0.12)'
-                                  : theme.backgroundSelected,
-                        },
-                      ]}
-                    >
-                      <ThemedText
-                        style={[
-                          styles.statusText,
-                          {
-                            color:
-                              paymentInfo.tone === 'failed'
-                                ? '#e23744'
-                                : paymentInfo.tone === 'pending'
-                                  ? '#f59e0b'
-                                  : paymentInfo.tone === 'paid'
-                                    ? '#0f8a5f'
-                                    : theme.textSecondary,
-                          },
-                        ]}
-                      >
-                        {paymentInfo.label}
-                      </ThemedText>
-                    </View>
-                  </View>
 
-                  <View style={[styles.divider, { backgroundColor: theme.backgroundSelected }]} />
-
-                  {/* Items list summary */}
-                  <View style={styles.itemsSummaryRow}>
-                    <ThemedText style={[styles.itemsListText, { color: theme.textSecondary }]} numberOfLines={2}>
-                      {itemsList}
-                    </ThemedText>
-                    <ThemedText style={[styles.totalAmount, { color: theme.text }]}>
-                      ₹{item.grandTotal ?? 0}
-                    </ThemedText>
-                  </View>
-
-                  {/* Quick actions */}
-                  {(unpaidOnline || showTrack) && (
-                    <View style={styles.footerActionRow}>
-                      {unpaidOnline && (
-                        <Pressable
-                          onPress={payOrRetry}
-                          style={[
-                            styles.actionBtn,
-                            {
-                              backgroundColor: paymentFailed ? 'rgba(226,55,68,0.1)' : theme.primarySoft,
-                              borderColor: paymentFailed ? '#e23744' : theme.primary,
-                              flex: showTrack ? 1 : undefined,
-                            },
-                          ]}
-                        >
-                          <Ionicons
-                            name="card-outline"
-                            size={14}
-                            color={paymentFailed ? '#e23744' : theme.primary}
-                          />
-                          <ThemedText
+                    {(unpaidOnline || showTrack) && (
+                      <View style={styles.footerActionRow}>
+                        {unpaidOnline && (
+                          <PressableScale
+                            onPress={payOrRetry}
                             style={[
-                              styles.actionBtnText,
-                              { color: paymentFailed ? '#e23744' : theme.primary },
+                              styles.actionBtn,
+                              paymentFailed ? styles.actionBtnDanger : styles.actionBtnPrimary,
+                              { flex: showTrack ? 1 : undefined },
                             ]}
                           >
-                            {paymentFailed ? 'Retry payment' : 'Pay now'}
-                          </ThemedText>
-                        </Pressable>
-                      )}
-                      {showTrack && (
-                        <Pressable
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            router.push({
-                              pathname: '/order/track/[orderId]',
-                              params: { orderId: item._id },
-                            });
-                          }}
-                          style={[
-                            styles.actionBtn,
-                            {
-                              backgroundColor: theme.primarySoft,
-                              borderColor: theme.primary,
-                              flex: unpaidOnline ? 1 : undefined,
-                            },
-                          ]}
-                        >
-                          <Ionicons name="bicycle-outline" size={14} color={theme.primary} />
-                          <ThemedText style={[styles.actionBtnText, { color: theme.primary }]}>
-                            Track live
-                          </ThemedText>
-                        </Pressable>
-                      )}
-                    </View>
-                  )}
-                </ThemedView>
-              </Pressable>
-            );
-          }}
-        />
+                            <Ionicons name="card-outline" size={14} color={paymentFailed ? CaseUi.danger : CaseUi.orange} />
+                            <Text style={[styles.actionBtnText, { color: paymentFailed ? CaseUi.danger : CaseUi.orange }]}>
+                              {paymentFailed ? 'Retry payment' : 'Pay now'}
+                            </Text>
+                          </PressableScale>
+                        )}
+                        {showTrack && (
+                          <PressableScale
+                            onPress={() => router.push({ pathname: '/order/track/[orderId]', params: { orderId: item._id } })}
+                            style={[styles.actionBtn, styles.actionBtnPrimary, { flex: unpaidOnline ? 1 : undefined }]}
+                          >
+                            <Ionicons name="bicycle-outline" size={14} color={CaseUi.orange} />
+                            <Text style={[styles.actionBtnText, { color: CaseUi.orange }]}>Track live</Text>
+                          </PressableScale>
+                        )}
+                      </View>
+                    )}
+                  </PressableScale>
+                </Animated.View>
+              );
+            }}
+          />
+        )}
       </SafeAreaView>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: CaseUi.white },
   safeArea: { flex: 1 },
   header: {
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(127,127,127,0.08)',
+    borderBottomColor: CaseUi.line,
   },
-  headerTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 22,
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    marginTop: 4,
-  },
-  listContainer: {
-    padding: 16,
-    paddingBottom: 40,
-    gap: 14,
-  },
-  cardWrapper: {
+  headerTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 24, color: CaseUi.ink, letterSpacing: -0.5 },
+  headerSubtitle: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 4, color: CaseUi.muted },
+  listContainer: { padding: 16, paddingBottom: 40, gap: 14 },
+  skeletonCard: {
     borderRadius: 16,
-    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: CaseUi.line,
+    padding: 14,
+    marginBottom: 14,
   },
   card: {
     borderRadius: 16,
     borderWidth: 1,
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.white,
     padding: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 3,
-    elevation: 2,
+    ...CaseUi.softShadow,
   },
-  restaurantRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  restaurantLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 12,
-  },
+  restaurantRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  restaurantLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
   restaurantIconCircle: {
     width: 38,
     height: 38,
@@ -343,67 +239,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
+    backgroundColor: CaseUi.field,
   },
-  restaurantLogo: {
-    width: '100%',
-    height: '100%',
-  },
-  restaurantName: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 14.5,
-  },
-  orderDate: {
-    fontSize: 10.5,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    marginTop: 2,
-  },
-  restaurantRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 10,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  statusText: {
-    fontSize: 10,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
-  divider: {
-    height: 1,
-    marginVertical: 12,
-  },
-  itemsSummaryRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 16,
-  },
-  itemsListText: {
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    flex: 1,
-    lineHeight: 17,
-  },
-  totalAmount: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 14,
-  },
-  footerActionRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-    gap: 8,
-  },
+  restaurantLogo: { width: '100%', height: '100%' },
+  restaurantName: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14.5, color: CaseUi.ink },
+  orderDate: { fontSize: 10.5, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 2, color: CaseUi.muted },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  statusText: { fontSize: 10, fontFamily: 'PlusJakartaSans_800ExtraBold' },
+  divider: { height: 1, marginVertical: 12, backgroundColor: CaseUi.line },
+  itemsSummaryRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 },
+  itemsListText: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', flex: 1, lineHeight: 17, color: CaseUi.muted },
+  totalAmount: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, color: CaseUi.ink },
+  footerActionRow: { marginTop: 12, flexDirection: 'row', gap: 8 },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -413,43 +261,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
   },
-  actionBtnText: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 11,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    gap: 12,
-  },
-  emptyText: {
-    fontSize: 12.5,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-  },
-  errorCard: {
-    margin: 16,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(226,55,68,0.2)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  errorText: {
-    color: '#e23744',
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-  },
-  retryBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  retryText: {
-    color: '#ff5a00',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 12,
-  },
+  actionBtnPrimary: { backgroundColor: CaseUi.orangeSoft, borderColor: CaseUi.orange },
+  actionBtnDanger: { backgroundColor: '#FEE2E2', borderColor: CaseUi.danger },
+  actionBtnText: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 11 },
 });

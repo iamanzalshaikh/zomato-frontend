@@ -52,7 +52,7 @@ export function FloatingCartBar({
         </View>
 
         <View style={styles.right}>
-          <Text style={styles.total}>₹{Math.round(total)}</Text>
+          <Text style={styles.total}>J${Math.round(total)}</Text>
           <View style={styles.chevron}>
             <Ionicons name="chevron-forward" size={14} color="#ffffff" />
           </View>

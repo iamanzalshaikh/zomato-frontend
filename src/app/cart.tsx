@@ -1,53 +1,79 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
   StyleSheet,
   TextInput,
   View,
-  Image,
+  Text,
   ScrollView,
   ActivityIndicator,
   Platform,
+  Modal,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeGradient } from '@/components/safe-gradient';
 
-import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useTheme } from '@/hooks/use-theme';
+import { CaseUi } from '@/constants/caseUi';
 import { useCart } from '@/hooks/use-cart';
 import { toast } from '@/lib/toast';
 import {
-  useApplyCouponMutation,
   useClearCartMutation,
   useRemoveCartItemMutation,
   useUpdateCartItemMutation,
-  useRemoveCouponMutation,
   useAddToCartMutation,
   useUpdateCartPreferencesMutation,
 } from '@/hooks/queries/cart';
+import { useCaseQuoteQuery } from '@/hooks/queries/caseOrders';
+import {
+  getSelectedCouponCode,
+  getSelectedDeliveryPointId,
+  getSelectedDeliveryPointName,
+  getSelectedPaymentMethod,
+  mapCartToCaseItems,
+  setSelectedCouponCode,
+  setSelectedPaymentMethod,
+  type CasePaymentMethod,
+} from '@/lib/caseCheckout';
 import { fetchMenuItemsByRestaurant, type MenuItem } from '@/services/menu';
-import { storageGetItem, storageSetItem } from '@/lib/storage';
-import { V1_WALLET_ENABLED } from '@/config/features';
 import { useCouponsByRestaurantQuery } from '@/hooks/queries/coupons';
 import { formatCouponDescription, pickPrimaryCoupon } from '@/lib/offerDisplay';
 
-type PaymentMethod = 'COD' | 'ONLINE';
-
-function getDeliveryTimeLabel(restaurant?: { averageDeliveryTime?: number }) {
-  if (restaurant?.averageDeliveryTime) {
-    const avg = restaurant.averageDeliveryTime;
-    const minTime = Math.max(5, avg - 10);
-    return `${minTime}-${avg} mins`;
-  }
-  return '15-20 mins';
+function isLikelyNonVeg(itemName: string) {
+  const lower = itemName.toLowerCase();
+  return ['chicken', 'mutton', 'egg', 'fish', 'kabab', 'kebab', 'meat', 'tikka', 'tandoori'].some(
+    (kw) => lower.includes(kw),
+  );
 }
-                               
+
+function FoodTypeDot({ itemName }: { itemName: string }) {
+  const nonVeg = isLikelyNonVeg(itemName);
+  return (
+    <View style={[styles.foodTypeBorder, { borderColor: nonVeg ? CaseUi.danger : CaseUi.success }]}>
+      {nonVeg ? (
+        <View style={[styles.nonVegTriangle, { borderBottomColor: CaseUi.danger }]} />
+      ) : (
+        <View style={[styles.vegDotInner, { backgroundColor: CaseUi.success }]} />
+      )}
+    </View>
+  );
+}
+
+function Row({ label, value, color, bold }: { label: string; value: string; color: string; bold?: boolean }) {
+  return (
+    <View style={styles.billRow}>
+      <Text style={[styles.billLabel, bold && styles.billLabelBold, { color: bold ? CaseUi.ink : color }]}>
+        {label}
+      </Text>
+      <Text style={[styles.billValue, bold && styles.billValueBold, { color }]}>{value}</Text>
+    </View>
+  );
+}
+
 export default function CartScreen() {
-  const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { cart, loading } = useCart();
@@ -57,25 +83,24 @@ export default function CartScreen() {
 
   const updateLine = useUpdateCartItemMutation();
   const removeLine = useRemoveCartItemMutation();
-  const clear = useClearCartMutation();
-  const apply = useApplyCouponMutation();
-  const removeCoupon = useRemoveCouponMutation();
+  const clearCart = useClearCartMutation();
   const addToCartMut = useAddToCartMutation();
   const updatePrefs = useUpdateCartPreferencesMutation();
 
-  const [couponCode, setCouponCode] = useState('');                       
   const [note, setNote] = useState('');
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [noCutlery, setNoCutlery] = useState(true);
   const [recommendations, setRecommendations] = useState<MenuItem[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('COD');
-                                                                                   
+  const [couponCode, setCouponCode] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<CasePaymentMethod>('COD');
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [deliveryPointId, setDeliveryPointId] = useState<string | null>(null);
+  const [deliveryPointName, setDeliveryPointName] = useState('Select drop-off');
+
   const mutating =
     updateLine.isPending ||
     removeLine.isPending ||
-    clear.isPending ||
-    apply.isPending ||
-    removeCoupon.isPending ||
+    clearCart.isPending ||
     addToCartMut.isPending ||
     updatePrefs.isPending;
 
@@ -88,9 +113,24 @@ export default function CartScreen() {
         : '';
   const couponsQ = useCouponsByRestaurantQuery(restaurantId);
   const suggestedCoupon = pickPrimaryCoupon(couponsQ.data?.coupons ?? []);
-  const deliveryTimeStr = getDeliveryTimeLabel(restaurant);
 
-  // Sync preferences from backend cart object
+  // Hydrate the shared coupon/payment/delivery-point selections so this
+  // screen and Checkout always agree, instead of drifting independently.
+  useEffect(() => {
+    void (async () => {
+      const [code, method, pointId, pointName] = await Promise.all([
+        getSelectedCouponCode(),
+        getSelectedPaymentMethod(),
+        getSelectedDeliveryPointId(),
+        getSelectedDeliveryPointName(),
+      ]);
+      setCouponCode(code);
+      setPaymentMethod(method);
+      setDeliveryPointId(pointId);
+      if (pointName) setDeliveryPointName(pointName);
+    })();
+  }, []);
+
   useEffect(() => {
     if (cart) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- sync local draft fields from server cart snapshot
@@ -99,48 +139,42 @@ export default function CartScreen() {
     }
   }, [cart]);
 
-  // Fetch recommendations from this restaurant's menu
   useEffect(() => {
     if (restaurant?._id) {
       fetchMenuItemsByRestaurant(restaurant._id)
         .then((items) => {
-          // Filter out items already in the cart and take first 5
           const inCartIds = new Set(cart?.items.map((it) => it.menuItemId) ?? []);
-          const filtered = items.filter((it) => !inCartIds.has(it._id)).slice(0, 5);
-          setRecommendations(filtered);
+          setRecommendations(items.filter((it) => !inCartIds.has(it._id)).slice(0, 5));
         })
-        .catch((err) => console.log('Error fetching recs', err));
+        .catch((err) => console.log('Error fetching recommendations', err));
     }
   }, [restaurant?._id, cart?.items]);
 
-  useEffect(() => {
-    async function loadPayment() {
-      const saved = await storageGetItem('paymentMethod');
-      if (saved === 'ONLINE' || saved === 'COD') {
-        setPaymentMethod(saved);
-      }
-    }
-    loadPayment();
-  }, []);
+  const caseItems = useMemo(() => mapCartToCaseItems(cart), [cart]);
+  const quoteInput = useMemo(() => {
+    if (!caseItems.length) return null;
+    return {
+      lines: caseItems.map((i) => ({
+        merchantId: i.restaurantId ?? null,
+        quantity: i.quantity,
+        unitPrice: i.price,
+      })),
+      deliveryPointId: deliveryPointId ?? undefined,
+      couponCode: couponCode.trim() || undefined,
+    };
+  }, [caseItems, deliveryPointId, couponCode]);
+  const quoteQ = useCaseQuoteQuery(quoteInput, caseItems.length > 0);
+  const quote = quoteQ.data;
 
-  const selectPaymentMethod = () => {
-    Alert.alert('Payment method', 'Choose how you want to pay', [
-      {
-        text: 'Cash on Delivery',
-        onPress: async () => {
-          setPaymentMethod('COD');
-          await storageSetItem('paymentMethod', 'COD');
-        },
-      },
-      {
-        text: 'Online Payment',
-        onPress: async () => {
-          setPaymentMethod('ONLINE');
-          await storageSetItem('paymentMethod', 'ONLINE');
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+  const handleSelectPayment = async (method: CasePaymentMethod) => {
+    setPaymentMethod(method);
+    await setSelectedPaymentMethod(method);
+    setShowPaymentModal(false);
+  };
+
+  const applyCouponCode = async (code: string) => {
+    setCouponCode(code);
+    await setSelectedCouponCode(code.trim());
   };
 
   const handleAddRecommendation = async (item: MenuItem) => {
@@ -150,7 +184,9 @@ export default function CartScreen() {
         restaurantId: restaurant._id,
         menuItemId: item._id,
         quantity: 1,
-        addons: [],
+        itemName: item.itemName,
+        price: item.discountedPrice ?? item.price,
+        restaurantName: restaurant?.restaurantName,
       });
       toast.success(`Added ${item.itemName}`, 'Added to cart');
     } catch (e: any) {
@@ -158,63 +194,46 @@ export default function CartScreen() {
     }
   };
 
-  const getFoodTypeIcon = (itemName: string) => {
-    const lower = itemName.toLowerCase();
-    const isNonVeg =
-      lower.includes('chicken') ||
-      lower.includes('mutton') ||
-      lower.includes('egg') ||
-      lower.includes('fish') ||
-      lower.includes('kabab') ||
-      lower.includes('kebab') ||
-      lower.includes('meat') ||
-      lower.includes('tikka') ||
-      lower.includes('tandoori');
-
-    return (
-      <View
-        style={[
-          styles.foodTypeBorder,
-          { borderColor: isNonVeg ? '#e23744' : '#0f8a5f' },
-        ]}
-      >
-        {isNonVeg ? (
-          <View style={[styles.nonVegTriangle, { borderBottomColor: '#e23744' }]} />
-        ) : (
-          <View style={[styles.vegDotInner, { backgroundColor: '#0f8a5f' }]} />
-        )}
-      </View>
-    );
+  const handleClearCart = () => {
+    Alert.alert('Clear cart?', 'This removes every item in your cart.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear',
+        style: 'destructive',
+        onPress: async () => {
+          await clearCart.mutateAsync();
+          toast.info('Cart cleared');
+        },
+      },
+    ]);
   };
 
   if (loading && !cart) {
     return (
-      <ThemedView style={[styles.container, styles.center, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="large" color={theme.primary} />
-        <ThemedText style={{ color: theme.textSecondary, marginTop: 12 }}>Loading your cart...</ThemedText>
+      <ThemedView style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color={CaseUi.orange} />
+        <Text style={styles.loadingText}>Loading your cart...</Text>
       </ThemedView>
     );
   }
 
   if (!cart || cart.items.length === 0) {
     return (
-      <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
+      <ThemedView style={styles.container}>
         <SafeAreaView style={styles.safeArea}>
-          <View style={[styles.headerRow, { backgroundColor: theme.background, borderBottomColor: theme.backgroundSelected }]}>
-            <Pressable onPress={() => router.back()} style={[styles.iconCircle, { backgroundColor: theme.backgroundSelected }]}>
-              <Ionicons name="arrow-back" size={20} color={theme.text} />
+          <View style={styles.headerRow}>
+            <Pressable onPress={() => router.back()} style={styles.iconCircle}>
+              <Ionicons name="arrow-back" size={20} color={CaseUi.ink} />
             </Pressable>
-            <ThemedText style={[styles.headerTitle, { color: theme.text }]}>Cart</ThemedText>
+            <Text style={styles.headerTitle}>Your Cart</Text>
             <View style={{ width: 36 }} />
           </View>
           <View style={[styles.center, { flex: 1 }]}>
-            <Ionicons name="cart-outline" size={80} color={theme.backgroundSelected} />
-            <ThemedText style={[styles.emptyTitle, { color: theme.text }]}>Your cart is empty</ThemedText>
-            <ThemedText style={[styles.emptySubtitle, { color: theme.textSecondary }]}>
-              Add items from a restaurant to start your order!
-            </ThemedText>
-            <Pressable onPress={() => router.push('/(tabs)')} style={[styles.shopBtn, { backgroundColor: theme.primary }]}>
-              <ThemedText style={styles.shopBtnText}>Browse Restaurants</ThemedText>
+            <Ionicons name="cart-outline" size={80} color={CaseUi.line} />
+            <Text style={styles.emptyTitle}>Your cart is empty</Text>
+            <Text style={styles.emptySubtitle}>Add items from a store to start your order!</Text>
+            <Pressable onPress={() => router.push('/(tabs)')} style={styles.shopBtn}>
+              <Text style={styles.shopBtnText}>Browse Stores</Text>
             </Pressable>
           </View>
         </SafeAreaView>
@@ -222,44 +241,34 @@ export default function CartScreen() {
     );
   }
 
-  // Calculate fees and totals with fallbacks
-  const subtotal = cart.subtotal ?? 0;
-  const deliveryFee = cart.deliveryFee ?? 0;
-  const platformFee = (cart as any).platformFee ?? 0;
-  const taxAmount = (cart as any).taxAmount ?? 0;
-  const couponDiscount = (cart as any).couponDiscount ?? 0;
-  const appliedCoupon = cart.appliedCouponId as any;
-  const grandTotal = Math.max(0, (cart as any).grandTotal);
+  const subtotal = quote?.subtotal ?? cart.subtotal ?? 0;
+  const total = quote?.totalJmd ?? cart.grandTotal ?? subtotal;
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
+    <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        {/* Header */}
-        <View style={[styles.headerRow, { backgroundColor: theme.background, borderBottomColor: theme.backgroundSelected }]}>
+        <View style={styles.headerRow}>
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}>
-            <Pressable onPress={() => router.back()} style={[styles.iconCircle, { backgroundColor: theme.backgroundSelected }]}>
-              <Ionicons name="arrow-back" size={20} color={theme.text} />
+            <Pressable onPress={() => router.back()} style={styles.iconCircle}>
+              <Ionicons name="arrow-back" size={20} color={CaseUi.ink} />
             </Pressable>
-            <View>
-              <ThemedText style={[styles.headerTitle, { color: theme.text }]}>
-                {restaurant?.restaurantName || 'Hotel Nukkad'}
-              </ThemedText>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.headerTitle} numberOfLines={1}>
+                {restaurant?.restaurantName || 'Your order'}
+              </Text>
               <Pressable
-                onPress={() => router.push('/(onboarding)/location')}
+                onPress={() => router.push('/(onboarding)/delivery-point')}
                 style={styles.locationSelector}
               >
-                <ThemedText style={[styles.locationText, { color: theme.textSecondary }]} numberOfLines={1}>
-                  <ThemedText style={{ color: theme.primary, fontFamily: 'PlusJakartaSans_700Bold' }}>
-                    {deliveryTimeStr}
-                  </ThemedText>{' '}
-                  to Home | Connaught Place
-                </ThemedText>
-                <Ionicons name="chevron-down" size={12} color={theme.textSecondary} />
+                <Text style={styles.locationText} numberOfLines={1}>
+                  Deliver to <Text style={styles.locationTextStrong}>{deliveryPointName}</Text>
+                </Text>
+                <Ionicons name="chevron-down" size={12} color={CaseUi.muted} />
               </Pressable>
             </View>
           </View>
-          <Pressable style={[styles.iconCircle, { backgroundColor: theme.backgroundSelected }]}>
-            <Ionicons name="share-social-outline" size={18} color={theme.text} />
+          <Pressable onPress={handleClearCart} style={styles.iconCircle}>
+            <Ionicons name="trash-outline" size={18} color={CaseUi.danger} />
           </Pressable>
         </View>
 
@@ -267,22 +276,23 @@ export default function CartScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.scrollBody, { paddingBottom: checkoutBarHeight + 16 }]}
         >
-          {/* Cart Items List */}
-          <View style={[styles.itemsCard, { backgroundColor: theme.backgroundElement, borderColor: theme.backgroundSelected }]}>
+          {/* Cart items */}
+          <View style={styles.itemsCard}>
             {cart.items.map((it) => {
               const portionName =
                 it.addons && it.addons.length > 0
                   ? it.addons.map((a: { name: string }) => a.name.replace('Portion: ', '')).join(', ')
-                  : 'Half';
+                  : null;
 
               return (
-                <View key={it._id} style={[styles.cartItemRow, { borderBottomColor: theme.backgroundSelected }]}>
-                  {/* Left Column: Food Type Dot & Name */}
+                <View key={it._id} style={styles.cartItemRow}>
                   <View style={{ flexDirection: 'row', flex: 1, gap: 10 }}>
-                    <View style={{ marginTop: 3 }}>{getFoodTypeIcon(it.itemName)}</View>
+                    <View style={{ marginTop: 3 }}>
+                      <FoodTypeDot itemName={it.itemName} />
+                    </View>
                     <View style={{ flex: 1 }}>
-                      <ThemedText style={[styles.itemNameText, { color: theme.text }]}>{it.itemName}</ThemedText>
-                      <ThemedText style={[styles.itemPortionText, { color: theme.textSecondary }]}>{portionName}</ThemedText>
+                      <Text style={styles.itemNameText}>{it.itemName}</Text>
+                      {portionName ? <Text style={styles.itemPortionText}>{portionName}</Text> : null}
                       <Pressable
                         onPress={() =>
                           router.push({
@@ -292,15 +302,14 @@ export default function CartScreen() {
                         }
                         style={styles.editItemBtn}
                       >
-                        <ThemedText style={[styles.editItemText, { color: theme.primary }]}>Edit</ThemedText>
-                        <Ionicons name="caret-forward" size={10} color={theme.primary} />
+                        <Text style={styles.editItemText}>Edit</Text>
+                        <Ionicons name="caret-forward" size={10} color={CaseUi.orange} />
                       </Pressable>
                     </View>
                   </View>
 
-                  {/* Right Column: Qty & Price */}
                   <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                    <View style={[styles.quantityContainer, { backgroundColor: theme.primary }]}>
+                    <View style={styles.quantityContainer}>
                       <Pressable
                         disabled={mutating}
                         onPress={async () => {
@@ -317,51 +326,38 @@ export default function CartScreen() {
                               },
                             ]);
                           } else {
-                            await updateLine.mutateAsync({
-                              itemId: it._id,
-                              quantity: it.quantity - 1,
-                            });
+                            await updateLine.mutateAsync({ itemId: it._id, quantity: it.quantity - 1 });
                           }
                         }}
                         style={styles.qtyBtn}
                       >
-                        <Ionicons name="remove" size={14} color="#ffffff" />
+                        <Ionicons name="remove" size={14} color="#FFFFFF" />
                       </Pressable>
-                      <ThemedText style={styles.qtyValueText}>{it.quantity}</ThemedText>
+                      <Text style={styles.qtyValueText}>{it.quantity}</Text>
                       <Pressable
                         disabled={mutating}
-                        onPress={() =>
-                          updateLine.mutateAsync({
-                            itemId: it._id,
-                            quantity: it.quantity + 1,
-                          })
-                        }
+                        onPress={() => updateLine.mutateAsync({ itemId: it._id, quantity: it.quantity + 1 })}
                         style={styles.qtyBtn}
                       >
-                        <Ionicons name="add" size={14} color="#ffffff" />
+                        <Ionicons name="add" size={14} color="#FFFFFF" />
                       </Pressable>
                     </View>
-                    <ThemedText style={[styles.itemPriceText, { color: theme.text }]}>₹{it.price * it.quantity}</ThemedText>
+                    <Text style={styles.itemPriceText}>J${it.price * it.quantity}</Text>
                   </View>
                 </View>
               );
             })}
 
-            {/* Add More Items & Note Actions */}
             <Pressable
               onPress={() =>
-                router.push({
-                  pathname: '/restaurant/[restaurantId]',
-                  params: { restaurantId: restaurant?._id },
-                })
+                router.push({ pathname: '/restaurant/[restaurantId]', params: { restaurantId: restaurant?._id } })
               }
               style={styles.addMoreRow}
             >
-              <Ionicons name="add-circle-outline" size={20} color={theme.primary} />
-              <ThemedText style={[styles.addMoreText, { color: theme.primary }]}>Add more items</ThemedText>
+              <Ionicons name="add-circle-outline" size={20} color={CaseUi.orange} />
+              <Text style={styles.addMoreText}>Add more items</Text>
             </Pressable>
 
-            {/* Quick Action Capsules */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -369,16 +365,16 @@ export default function CartScreen() {
             >
               <Pressable
                 onPress={() => setShowNoteInput(!showNoteInput)}
-                style={[
-                  styles.actionCapsule,
-                  { borderColor: theme.backgroundSelected },
-                  showNoteInput && { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-                ]}
+                style={[styles.actionCapsule, showNoteInput && styles.actionCapsuleActive]}
               >
-                <Ionicons name="document-text-outline" size={14} color={showNoteInput ? theme.primary : theme.textSecondary} />
-                <ThemedText style={[styles.actionCapsuleText, { color: theme.textSecondary }, showNoteInput && { color: theme.primary, fontFamily: 'PlusJakartaSans_700Bold' }]} numberOfLines={1}>
+                <Ionicons
+                  name="document-text-outline"
+                  size={14}
+                  color={showNoteInput ? CaseUi.orange : CaseUi.muted}
+                />
+                <Text style={[styles.actionCapsuleText, showNoteInput && styles.actionCapsuleTextActive]}>
                   {note ? 'Edit note' : 'Add note'}
-                </ThemedText>
+                </Text>
               </Pressable>
 
               <Pressable
@@ -388,28 +384,27 @@ export default function CartScreen() {
                   setNoCutlery(nextVal);
                   await updatePrefs.mutateAsync({ dontSendCutlery: nextVal });
                 }}
-                style={[
-                  styles.actionCapsule,
-                  { borderColor: theme.backgroundSelected },
-                  noCutlery && { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-                ]}
+                style={[styles.actionCapsule, noCutlery && styles.actionCapsuleActive]}
               >
-                <Ionicons name="restaurant-outline" size={14} color={noCutlery ? theme.primary : theme.textSecondary} />
-                <ThemedText style={[styles.actionCapsuleText, { color: theme.textSecondary }, noCutlery && { color: theme.primary, fontFamily: 'PlusJakartaSans_700Bold' }]} numberOfLines={1}>
+                <Ionicons
+                  name="restaurant-outline"
+                  size={14}
+                  color={noCutlery ? CaseUi.orange : CaseUi.muted}
+                />
+                <Text style={[styles.actionCapsuleText, noCutlery && styles.actionCapsuleTextActive]}>
                   {noCutlery ? 'No cutlery' : 'Send cutlery'}
-                </ThemedText>
+                </Text>
               </Pressable>
             </ScrollView>
 
-            {/* Note input field */}
             {showNoteInput && (
-              <View style={[styles.noteInputContainer, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
+              <View style={styles.noteInputContainer}>
                 <TextInput
                   value={note}
                   onChangeText={setNote}
-                  placeholder="E.g., Make it extra spicy, No onions..."
-                  placeholderTextColor={theme.textSecondary}
-                  style={[styles.noteTextInput, { color: theme.text }]}
+                  placeholder="E.g., extra spicy, no onions..."
+                  placeholderTextColor={CaseUi.muted}
+                  style={styles.noteTextInput}
                   onBlur={async () => {
                     await updatePrefs.mutateAsync({ generalNote: note.trim() });
                   }}
@@ -421,51 +416,43 @@ export default function CartScreen() {
                       await updatePrefs.mutateAsync({ generalNote: '' });
                     }}
                   >
-                    <Ionicons name="close" size={16} color={theme.textSecondary} />
+                    <Ionicons name="close" size={16} color={CaseUi.muted} />
                   </Pressable>
                 )}
               </View>
             )}
           </View>
 
-          {/* Recommendations: Complete your meal with */}
+          {/* Recommendations */}
           {recommendations.length > 0 && (
             <View style={styles.recsSection}>
               <View style={styles.recsHeader}>
-                <Ionicons name="grid-outline" size={16} color={theme.textSecondary} />
-                <ThemedText style={[styles.recsTitle, { color: theme.text }]}>Complete your meal with</ThemedText>
+                <Ionicons name="grid-outline" size={16} color={CaseUi.muted} />
+                <Text style={styles.recsTitle}>Complete your order with</Text>
               </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 14 }}
-              >
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
                 {recommendations.map((item) => (
-                  <View key={item._id} style={[styles.recCard, { backgroundColor: theme.backgroundElement, borderColor: theme.backgroundSelected }]}>
+                  <View key={item._id} style={styles.recCard}>
                     <View style={styles.recImageContainer}>
-                      <Image
-                        source={{
-                          uri:
-                            item.images?.[0] ||
-                            'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=150&auto=format&fit=crop&q=80',
-                        }}
-                        style={styles.recImage}
-                      />
-                      <Pressable
-                        onPress={() => handleAddRecommendation(item)}
-                        style={styles.recAddBtn}
-                      >
-                        <Ionicons name="add" size={16} color={theme.primary} />
+                      {item.images?.[0] ? (
+                        <Image source={{ uri: item.images[0] }} style={styles.recImage} contentFit="cover" />
+                      ) : (
+                        <View style={[styles.recImage, styles.recImagePlaceholder]}>
+                          <Ionicons name="fast-food-outline" size={22} color={CaseUi.muted} />
+                        </View>
+                      )}
+                      <Pressable onPress={() => handleAddRecommendation(item)} style={styles.recAddBtn}>
+                        <Ionicons name="add" size={16} color={CaseUi.orange} />
                       </Pressable>
                     </View>
                     <View style={styles.recContent}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        {getFoodTypeIcon(item.itemName)}
-                        <ThemedText style={[styles.recItemName, { color: theme.text }]} numberOfLines={1}>
+                        <FoodTypeDot itemName={item.itemName} />
+                        <Text style={styles.recItemName} numberOfLines={1}>
                           {item.itemName}
-                        </ThemedText>
+                        </Text>
                       </View>
-                      <ThemedText style={[styles.recItemPrice, { color: theme.textSecondary }]}>₹{item.price}</ThemedText>
+                      <Text style={styles.recItemPrice}>J${item.discountedPrice ?? item.price}</Text>
                     </View>
                   </View>
                 ))}
@@ -473,197 +460,181 @@ export default function CartScreen() {
             </View>
           )}
 
-          {/* Coupon Code Section */}
-          <View style={[styles.couponCard, { backgroundColor: theme.backgroundElement, borderColor: theme.backgroundSelected }]}>
+          {/* Coupon */}
+          <View style={styles.couponCard}>
             <View style={styles.couponRow}>
-              <Ionicons name="pricetag-outline" size={18} color={theme.primary} />
-              {appliedCoupon ? (
-                <View style={{ flex: 1 }}>
-                  <ThemedText style={[styles.couponCodeTitle, { color: theme.text }]}>
-                    Saved ₹{couponDiscount} with &apos;{appliedCoupon.couponCode}&apos;
-                  </ThemedText>
-                  <ThemedText style={[styles.couponSubText, { color: theme.primary }]}>Coupon discount applied</ThemedText>
-                </View>
-              ) : (
-                <View style={{ flex: 1 }}>
-                  <ThemedText style={[styles.couponCodeTitle, { color: theme.text }]}>
+              <Ionicons name="pricetag-outline" size={18} color={CaseUi.orange} />
+              <View style={{ flex: 1 }}>
+                {quote?.discountAmount ? (
+                  <Text style={styles.couponCodeTitle}>
+                    Saved J${quote.discountAmount} with &apos;{couponCode}&apos;
+                  </Text>
+                ) : (
+                  <Text style={styles.couponCodeTitle}>
                     {suggestedCoupon
                       ? `Try '${suggestedCoupon.couponCode}' — ${formatCouponDescription(suggestedCoupon)}`
-                      : 'Apply a coupon to save on this order'}
-                  </ThemedText>
-                  <Pressable
-                    onPress={() =>
-                      router.push({
-                        pathname: '/restaurant/[restaurantId]',
-                        params: { restaurantId: restaurantId || restaurant?._id },
-                      })
-                    }
-                  >
-                    <ThemedText style={[styles.viewCouponsLink, { color: theme.primary }]}>View all coupons ›</ThemedText>
-                  </Pressable>
-                </View>
-              )}
-
-              {appliedCoupon ? (
-                <Pressable
-                  disabled={mutating}
-                  onPress={async () => {
-                    await removeCoupon.mutateAsync();
-                    toast.info('Coupon removed');
-                  }}
-                  style={styles.applyButton}
-                >
-                  <ThemedText style={[styles.applyButtonText, { color: theme.primary }]}>
-                    REMOVE
-                  </ThemedText>
+                      : 'Have a coupon code?'}
+                  </Text>
+                )}
+              </View>
+              {couponCode ? (
+                <Pressable onPress={() => applyCouponCode('')} style={styles.applyButton}>
+                  <Text style={styles.applyButtonText}>REMOVE</Text>
                 </Pressable>
               ) : (
-                <View style={[styles.couponInputRow, { backgroundColor: theme.background, borderColor: theme.backgroundSelected }]}>
+                <View style={styles.couponInputRow}>
                   <TextInput
                     value={couponCode}
                     onChangeText={setCouponCode}
-                    placeholder="Enter Code"
-                    placeholderTextColor={theme.textSecondary}
+                    onBlur={() => applyCouponCode(couponCode)}
+                    placeholder="Enter code"
+                    placeholderTextColor={CaseUi.muted}
                     autoCapitalize="characters"
-                    style={[styles.couponMiniInput, { color: theme.text }]}
+                    style={styles.couponMiniInput}
                   />
                   <Pressable
-                    disabled={mutating || !couponCode.trim()}
-                    onPress={async () => {
-                      try {
-                        await apply.mutateAsync({ couponCode: couponCode.trim() });
-                        setCouponCode('');
-                        toast.success('Coupon applied successfully', 'Saved');
-                      } catch (e: any) {
-                        toast.error(
-                          e?.response?.data?.message ?? e?.message ?? 'Failed to apply coupon',
-                          'Coupon',
-                        );
-                      }
-                    }}
+                    disabled={!couponCode.trim()}
+                    onPress={() => applyCouponCode(couponCode)}
                     style={styles.applyButton}
                   >
-                    <ThemedText style={[styles.applyButtonText, { color: theme.primary }]}>APPLY</ThemedText>
+                    <Text style={styles.applyButtonText}>APPLY</Text>
                   </Pressable>
                 </View>
               )}
             </View>
           </View>
 
-
-          {V1_WALLET_ENABLED ? (
-            <Pressable
-              onPress={() => toast.info('Single tap payments and instant refunds', 'QuickBite Money')}
-              style={[styles.zomatoMoneyCard, { backgroundColor: theme.backgroundElement, borderColor: theme.backgroundSelected }]}
-            >
-              <View style={styles.zomatoMoneyLeft}>
-                <View style={[styles.moneyIconCircle, { backgroundColor: theme.backgroundSelected }]}>
-                  <Ionicons name="wallet-outline" size={18} color={theme.primary} />
-                </View>
-                <View>
-                  <ThemedText style={[styles.zomatoMoneyTitle, { color: theme.text }]}>QuickBite Money</ThemedText>
-                  <ThemedText style={[styles.zomatoMoneySub, { color: theme.textSecondary }]}>
-                    Single tap payments. Zero failures
-                  </ThemedText>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
-            </Pressable>
-          ) : null}
-
-          {/* Price Breakdown Bill Details */}
-          <View style={[styles.billDetailsCard, { backgroundColor: theme.backgroundElement, borderColor: theme.backgroundSelected }]}>
-            <ThemedText style={[styles.billDetailsTitle, { color: theme.text }]}>Bill Details</ThemedText>
-            <View style={styles.billRow}>
-              <ThemedText style={[styles.billLabel, { color: theme.textSecondary }]}>Item Total</ThemedText>
-              <ThemedText style={[styles.billValue, { color: theme.text }]}>₹{subtotal}</ThemedText>
-            </View>
-            {couponDiscount > 0 && (
-              <View style={styles.billRow}>
-                <ThemedText style={[styles.billLabel, { color: theme.primary }]}>Coupon Discount</ThemedText>
-                <ThemedText style={[styles.billValue, { color: theme.primary }]}>-₹{couponDiscount}</ThemedText>
-              </View>
+          {/* Bill breakdown — driven by the real /public/quote API, same as Checkout */}
+          <View style={styles.billDetailsCard}>
+            <Text style={styles.billDetailsTitle}>Bill Details</Text>
+            {quoteQ.isFetching && !quote ? (
+              <ActivityIndicator color={CaseUi.orange} style={{ marginVertical: 8 }} />
+            ) : (
+              <>
+                <Row label="Item Total" value={`J$${subtotal}`} color={CaseUi.ink} />
+                <Row
+                  label="Delivery Fee"
+                  value={quote?.deliveryFee ? `J$${quote.deliveryFee}` : deliveryPointId ? 'FREE' : 'Set at checkout'}
+                  color={CaseUi.ink}
+                />
+                {quote && quote.multiStoreFee > 0 ? (
+                  <Row label="Multi-store Fee" value={`J$${quote.multiStoreFee}`} color={CaseUi.ink} />
+                ) : null}
+                {quote && quote.discountAmount > 0 ? (
+                  <Row label="Coupon Discount" value={`-J$${quote.discountAmount}`} color={CaseUi.success} />
+                ) : null}
+                <View style={styles.cardSeparator} />
+                <Row label="Total" value={`J$${total}`} color={CaseUi.orange} bold />
+              </>
             )}
-            <View style={styles.billRow}>
-              <ThemedText style={[styles.billLabel, { color: theme.textSecondary }]}>Delivery Charge</ThemedText>
-              <ThemedText style={[styles.billValue, { color: theme.text }]}>
-                {deliveryFee === 0 ? (
-                  <ThemedText style={{ color: theme.primary }}>FREE</ThemedText>
-                ) : (
-                  `₹${deliveryFee}`
-                )}
-              </ThemedText>
-            </View>
-            <View style={styles.billRow}>
-              <ThemedText style={[styles.billLabel, { color: theme.textSecondary }]}>Govt Taxes & Restaurant Charges</ThemedText>
-              <ThemedText style={[styles.billValue, { color: theme.text }]}>₹{taxAmount}</ThemedText>
-            </View>
-            <View style={styles.billRow}>
-              <ThemedText style={[styles.billLabel, { color: theme.textSecondary }]}>Platform Fee</ThemedText>
-              <ThemedText style={[styles.billValue, { color: theme.text }]}>₹{platformFee}</ThemedText>
-            </View>
-            <View style={[styles.cardSeparator, { backgroundColor: theme.backgroundSelected, marginVertical: 12 }]} />
-            <View style={styles.billRow}>
-              <ThemedText style={[styles.billDetailsTitle, { fontSize: 15, color: theme.text }]}>Grand Total</ThemedText>
-              <ThemedText style={[styles.billDetailsTitle, { fontSize: 16, color: theme.primary }]}>
-                ₹{grandTotal}
-              </ThemedText>
-            </View>
           </View>
         </ScrollView>
 
-        {/* Bottom Checkout Bar */}
-        <View
-          style={[
-            styles.bottomCheckoutBar,
-            {
-              backgroundColor: theme.backgroundElement,
-              borderTopColor: theme.backgroundSelected,
-              paddingBottom: checkoutBarPaddingBottom,
-            },
-          ]}
-        >
-          <Pressable onPress={selectPaymentMethod} style={styles.paymentMethodSelect}>
+        <View style={[styles.bottomCheckoutBar, { paddingBottom: checkoutBarPaddingBottom }]}>
+          <Pressable onPress={() => setShowPaymentModal(true)} style={styles.paymentMethodSelect}>
             <View>
-              <ThemedText style={styles.payUsingLabel}>PAY USING</ThemedText>
-              <ThemedText style={styles.payUsingMethod}>
-                {paymentMethod === 'ONLINE' ? 'Online Payment' : 'Cash on Delivery'}
-              </ThemedText>
+              <Text style={styles.payUsingLabel}>PAY USING</Text>
+              <Text style={styles.payUsingMethod}>
+                {paymentMethod === 'BANK_TRANSFER' ? 'Bank Transfer' : 'Cash on Delivery'}
+              </Text>
             </View>
-            <Ionicons name="chevron-up" size={16} color={theme.textSecondary} />
+            <Ionicons name="chevron-up" size={16} color={CaseUi.muted} />
           </Pressable>
-          <Pressable
-            disabled={mutating}
-            onPress={async () => {
-              await storageSetItem('paymentMethod', paymentMethod);
-              router.push('/checkout');
-            }}
-            style={styles.placeOrderBtn}
-          >
-            <SafeGradient
-              colors={[theme.primary, theme.primaryDark]}
-              style={styles.placeOrderGradient}
-            >
+          <Pressable disabled={mutating} onPress={() => router.push('/checkout')} style={styles.placeOrderBtn}>
+            <View style={styles.placeOrderInner}>
               <View style={{ alignItems: 'flex-start' }}>
-                <ThemedText style={styles.btnTotalText}>₹{grandTotal}</ThemedText>
-                <ThemedText style={styles.btnTotalLabel}>TOTAL</ThemedText>
+                <Text style={styles.btnTotalText}>J${total}</Text>
+                <Text style={styles.btnTotalLabel}>TOTAL</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <ThemedText style={styles.placeOrderText}>Proceed to Checkout</ThemedText>
-                <Ionicons name="caret-forward" size={14} color="#ffffff" />
+                <Text style={styles.placeOrderText}>Proceed to Checkout</Text>
+                <Ionicons name="caret-forward" size={14} color="#FFFFFF" />
               </View>
-            </SafeGradient>
+            </View>
           </Pressable>
         </View>
       </SafeAreaView>
+
+      <Modal
+        visible={showPaymentModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPaymentModal(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <Pressable style={{ flex: 1 }} onPress={() => setShowPaymentModal(false)} />
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="wallet-outline" size={20} color={CaseUi.ink} />
+                <Text style={styles.modalTitle}>Payment Method</Text>
+              </View>
+              <Pressable onPress={() => setShowPaymentModal(false)} style={{ padding: 4 }}>
+                <Ionicons name="close-circle" size={24} color={CaseUi.muted} />
+              </Pressable>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={styles.modalSubTitle}>Choose how you want to pay</Text>
+
+              <Pressable
+                onPress={() => handleSelectPayment('COD')}
+                style={[styles.optionCard, paymentMethod === 'COD' && styles.optionCardActive]}
+              >
+                <View style={styles.optionLeft}>
+                  <View style={[styles.iconWrapper, { backgroundColor: CaseUi.successSoft }]}>
+                    <Ionicons name="cash" size={22} color={CaseUi.success} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.optionTitle}>Cash on Delivery</Text>
+                    <Text style={styles.optionDesc}>Pay with cash when your order arrives</Text>
+                  </View>
+                </View>
+                <Ionicons
+                  name={paymentMethod === 'COD' ? 'radio-button-on' : 'radio-button-off'}
+                  size={20}
+                  color={paymentMethod === 'COD' ? CaseUi.orange : CaseUi.muted}
+                />
+              </Pressable>
+
+              <Pressable
+                onPress={() => handleSelectPayment('BANK_TRANSFER')}
+                style={[styles.optionCard, paymentMethod === 'BANK_TRANSFER' && styles.optionCardActive]}
+              >
+                <View style={styles.optionLeft}>
+                  <View style={[styles.iconWrapper, { backgroundColor: CaseUi.orangeSoft }]}>
+                    <Ionicons name="business" size={22} color={CaseUi.orange} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.optionTitle}>Bank Transfer</Text>
+                    <Text style={styles.optionDesc}>Transfer, then upload your receipt</Text>
+                  </View>
+                </View>
+                <Ionicons
+                  name={paymentMethod === 'BANK_TRANSFER' ? 'radio-button-on' : 'radio-button-off'}
+                  size={20}
+                  color={paymentMethod === 'BANK_TRANSFER' ? CaseUi.orange : CaseUi.muted}
+                />
+              </Pressable>
+            </View>
+
+            <View style={[styles.modalFooter, { paddingBottom: bottomInset + 12 }]}>
+              <Pressable onPress={() => setShowPaymentModal(false)} style={styles.cancelBtn}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: CaseUi.white },
   safeArea: { flex: 1 },
   center: { justifyContent: 'center', alignItems: 'center' },
+  loadingText: { color: CaseUi.muted, marginTop: 12, fontFamily: 'PlusJakartaSans_500Medium' },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -671,133 +642,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1c1d20',
-    backgroundColor: '#111214',
+    borderBottomColor: CaseUi.line,
   },
   iconCircle: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#1c1d20',
+    backgroundColor: CaseUi.field,
     justifyContent: 'center',
     alignItems: 'center',
   },
   headerTitle: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 16,
-    color: '#ffffff',
+    color: CaseUi.ink,
   },
-  locationSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  locationText: {
-    fontSize: 11,
-    color: '#9fa2a7',
-    maxWidth: 200,
-  },
-  scrollBody: {
-    padding: 14,
-    gap: 14,
-  },
-  // Savings
-  goldSavingsBanner: {
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    justifyContent: 'center',
-  },
-  goldSavingsText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-  },
-  // Special Offer
-  specialOfferCard: {
-    backgroundColor: '#1c1d20',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  specialOfferHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  specialOfferTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 13,
-    color: '#ffffff',
-  },
-  specialOfferBody: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  districtBadge: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: '#ff5a00',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  districtText: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 10,
-  },
-  districtSubText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 5.5,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    marginTop: -2,
-  },
-  offerPromoText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    lineHeight: 16,
-  },
-  claimLink: {
-    color: '#3b82f6',
-    fontSize: 11,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    marginTop: 4,
-  },
-  addedBadge: {
-    borderWidth: 1,
-    borderColor: '#ff5a00',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: 'rgba(255,90,0,0.08)',
-  },
-  addedBadgeText: {
-    color: '#ff5a00',
-    fontSize: 9,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
-  freeText: {
-    fontSize: 11,
-    color: '#3b82f6',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    marginTop: 4,
-  },
-  // Items
+  locationSelector: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  locationText: { fontSize: 11, color: CaseUi.muted, maxWidth: 220 },
+  locationTextStrong: { fontFamily: 'PlusJakartaSans_700Bold', color: CaseUi.orange },
+  scrollBody: { padding: 14, gap: 14 },
   itemsCard: {
-    backgroundColor: '#1c1d20',
-    borderRadius: 16,
+    backgroundColor: CaseUi.white,
+    borderRadius: CaseUi.radius.lg,
     paddingHorizontal: 14,
     paddingTop: 6,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: CaseUi.line,
+    ...CaseUi.softShadow,
   },
   cartItemRow: {
     flexDirection: 'row',
@@ -805,7 +676,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#26282d',
+    borderBottomColor: CaseUi.line,
   },
   foodTypeBorder: {
     width: 13,
@@ -815,11 +686,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 2.5,
   },
-  vegDotInner: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
+  vegDotInner: { width: 6, height: 6, borderRadius: 3 },
   nonVegTriangle: {
     width: 0,
     height: 0,
@@ -830,67 +697,30 @@ const styles = StyleSheet.create({
     borderRightColor: 'transparent',
     backgroundColor: 'transparent',
   },
-  itemNameText: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 14,
-    color: '#ffffff',
-  },
-  itemPortionText: {
-    fontSize: 12,
-    color: '#9fa2a7',
-    marginTop: 2,
-  },
-  editItemBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    marginTop: 6,
-    alignSelf: 'flex-start',
-  },
-  editItemText: {
-    color: '#ff5a00',
-    fontSize: 11,
-    fontFamily: 'PlusJakartaSans_700Bold',
-  },
+  itemNameText: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: CaseUi.ink },
+  itemPortionText: { fontSize: 12, color: CaseUi.muted, marginTop: 2 },
+  editItemBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 6, alignSelf: 'flex-start' },
+  editItemText: { color: CaseUi.orange, fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold' },
   quantityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 8,
-    backgroundColor: '#ff5a00',
+    backgroundColor: CaseUi.orange,
     overflow: 'hidden',
     height: 32,
     width: 80,
   },
-  qtyBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100%',
-  },
+  qtyBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%' },
   qtyValueText: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 13,
-    color: '#ffffff',
+    color: '#FFFFFF',
     width: 24,
     textAlign: 'center',
   },
-  itemPriceText: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 13,
-    color: '#ffffff',
-    marginTop: 2,
-  },
-  addMoreRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 14,
-  },
-  addMoreText: {
-    color: '#ff5a00',
-    fontSize: 13,
-    fontFamily: 'PlusJakartaSans_700Bold',
-  },
+  itemPriceText: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: CaseUi.ink, marginTop: 2 },
+  addMoreRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 14 },
+  addMoreText: { color: CaseUi.orange, fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold' },
   actionCapsule: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -900,63 +730,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#2c2e33',
-    backgroundColor: 'transparent',
+    borderColor: CaseUi.line,
   },
-  actionCapsuleText: {
-    color: '#9fa2a7',
-    fontSize: 11,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    flexShrink: 1,
-  },
+  actionCapsuleActive: { borderColor: CaseUi.orange, backgroundColor: CaseUi.orangeSoft },
+  actionCapsuleText: { color: CaseUi.muted, fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold', flexShrink: 1 },
+  actionCapsuleTextActive: { color: CaseUi.orange, fontFamily: 'PlusJakartaSans_700Bold' },
   noteInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#111214',
+    backgroundColor: CaseUi.field,
     borderWidth: 1,
-    borderColor: '#2c2e33',
+    borderColor: CaseUi.line,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginBottom: 14,
   },
-  noteTextInput: {
-    flex: 1,
-    color: '#ffffff',
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_500Medium',
-  },
-  // Recs
-  recsSection: {
-    marginTop: 4,
-  },
-  recsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-  },
-  recsTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 13,
-    color: '#ffffff',
-  },
+  noteTextInput: { flex: 1, color: CaseUi.ink, fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium' },
+  recsSection: { marginTop: 4 },
+  recsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
+  recsTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: CaseUi.ink },
   recCard: {
     width: 100,
-    backgroundColor: '#1c1d20',
+    backgroundColor: CaseUi.white,
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: CaseUi.line,
   },
-  recImageContainer: {
-    position: 'relative',
-    height: 80,
-  },
-  recImage: {
-    width: '100%',
-    height: '100%',
-  },
+  recImageContainer: { position: 'relative', height: 80, backgroundColor: CaseUi.field },
+  recImage: { width: '100%', height: '100%' },
+  recImagePlaceholder: { alignItems: 'center', justifyContent: 'center' },
   recAddBtn: {
     position: 'absolute',
     bottom: 6,
@@ -964,301 +768,127 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
+    ...CaseUi.softShadow,
   },
-  recContent: {
-    padding: 6,
-    gap: 2,
-  },
-  recItemName: {
-    fontSize: 10,
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_700Bold',
-    flex: 1,
-  },
-  recItemPrice: {
-    fontSize: 10,
-    color: '#9fa2a7',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
-  // Coupon
+  recContent: { padding: 6, gap: 2 },
+  recItemName: { fontSize: 10, color: CaseUi.ink, fontFamily: 'PlusJakartaSans_700Bold', flex: 1 },
+  recItemPrice: { fontSize: 10, color: CaseUi.muted, fontFamily: 'PlusJakartaSans_800ExtraBold' },
   couponCard: {
-    backgroundColor: '#1c1d20',
-    borderRadius: 16,
+    backgroundColor: CaseUi.white,
+    borderRadius: CaseUi.radius.lg,
     padding: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: CaseUi.line,
+    ...CaseUi.softShadow,
   },
-  couponRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  couponCodeTitle: {
-    fontFamily: 'PlusJakartaSans_750Bold',
-    fontSize: 12,
-    color: '#ffffff',
-  },
-  couponSubText: {
-    fontSize: 10,
-    color: '#24963F',
-    marginTop: 1,
-  },
-  viewCouponsLink: {
-    fontSize: 10.5,
-    color: '#ff5a00',
-    fontFamily: 'PlusJakartaSans_700Bold',
-    marginTop: 2,
-  },
+  couponRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  couponCodeTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: CaseUi.ink },
   couponInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#2c2e33',
+    borderColor: CaseUi.line,
     borderRadius: 8,
     paddingHorizontal: 8,
     height: 32,
-    backgroundColor: '#111214',
+    backgroundColor: CaseUi.field,
     width: 130,
   },
-  couponMiniInput: {
-    flex: 1,
-    color: '#ffffff',
-    fontSize: 10,
-    fontFamily: 'PlusJakartaSans_700Bold',
-    paddingVertical: 0,
-  },
-  applyButton: {
-    paddingHorizontal: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  applyButtonText: {
-    color: '#ff5a00',
-    fontSize: 11,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
-  // VIP Card
-  vipCard: {
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 90, 0, 0.15)',
-  },
-  vipDiamondPill: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  vipTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 13,
-    color: '#ffffff',
-  },
-  vipBulletRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 2,
-  },
-  vipBullet: {
-    color: '#ff5a00',
-    fontSize: 10,
-  },
-  vipBulletText: {
-    color: '#9fa2a7',
-    fontSize: 11,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-  },
-  vipAddBtn: {
-    borderWidth: 1,
-    borderColor: '#ff5a00',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  vipAddBtnText: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
-  vipFooter: {
-    borderTopWidth: 1,
-    borderTopColor: '#1c1d20',
-    marginTop: 12,
-    paddingTop: 10,
-    gap: 2,
-  },
-  vipFooterTitle: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 12,
-  },
-  vipFooterSub: {
-    color: '#586062',
-    fontSize: 10,
-    fontFamily: 'PlusJakartaSans_500Medium',
-  },
-  // Zomato Money
-  zomatoMoneyCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#1c1d20',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  zomatoMoneyLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  moneyIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#2c2e33',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  zomatoMoneyTitle: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_750Bold',
-    fontSize: 12,
-  },
-  zomatoMoneySub: {
-    color: '#9fa2a7',
-    fontSize: 10,
-    marginTop: 1,
-  },
-  // Bill details
+  couponMiniInput: { flex: 1, color: CaseUi.ink, fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', paddingVertical: 0 },
+  applyButton: { paddingHorizontal: 8, justifyContent: 'center', alignItems: 'center' },
+  applyButtonText: { color: CaseUi.orange, fontSize: 11, fontFamily: 'PlusJakartaSans_800ExtraBold' },
   billDetailsCard: {
-    backgroundColor: '#1c1d20',
-    borderRadius: 16,
+    backgroundColor: CaseUi.white,
+    borderRadius: CaseUi.radius.lg,
     padding: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: CaseUi.line,
+    ...CaseUi.softShadow,
   },
-  billDetailsTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 13,
-    color: '#ffffff',
-    marginBottom: 12,
-  },
-  billRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  billLabel: {
-    fontSize: 12,
-    color: '#9fa2a7',
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-  },
-  billValue: {
-    fontSize: 12,
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_700Bold',
-  },
-  cardSeparator: {
-    height: 1,
-    backgroundColor: '#26282d',
-    marginVertical: 10,
-  },
-  // Empty State
-  emptyTitle: {
-    fontSize: 18,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    color: '#ffffff',
-    marginTop: 16,
-  },
-  emptySubtitle: {
-    fontSize: 12,
-    color: '#9fa2a7',
-    marginTop: 6,
-    textAlign: 'center',
-    paddingHorizontal: 30,
-  },
-  shopBtn: {
-    backgroundColor: '#ff5a00',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginTop: 20,
-  },
-  shopBtnText: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 13,
-  },
-  // Sticky footer
+  billDetailsTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: CaseUi.ink, marginBottom: 12 },
+  billRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
+  billLabel: { fontSize: 12, color: CaseUi.muted, fontFamily: 'PlusJakartaSans_600SemiBold' },
+  billLabelBold: { fontSize: 15, fontFamily: 'PlusJakartaSans_800ExtraBold' },
+  billValue: { fontSize: 12, color: CaseUi.ink, fontFamily: 'PlusJakartaSans_700Bold' },
+  billValueBold: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold' },
+  cardSeparator: { height: 1, backgroundColor: CaseUi.line, marginVertical: 10 },
+  emptyTitle: { fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: CaseUi.ink, marginTop: 16 },
+  emptySubtitle: { fontSize: 12, color: CaseUi.muted, marginTop: 6, textAlign: 'center', paddingHorizontal: 30 },
+  shopBtn: { backgroundColor: CaseUi.orange, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 20 },
+  shopBtnText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13 },
   bottomCheckoutBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#1c1d20',
+    backgroundColor: CaseUi.white,
     borderTopWidth: 1,
-    borderTopColor: '#26282d',
+    borderTopColor: CaseUi.line,
     paddingHorizontal: 16,
     paddingTop: 10,
+    ...CaseUi.cardShadow,
   },
-  paymentMethodSelect: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 10,
-  },
-  payUsingLabel: {
-    fontSize: 7.5,
-    color: '#9fa2a7',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    letterSpacing: 0.6,
-  },
-  payUsingMethod: {
-    fontSize: 11,
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_700Bold',
-  },
-  placeOrderBtn: {
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  placeOrderGradient: {
+  paymentMethodSelect: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10 },
+  payUsingLabel: { fontSize: 9, color: CaseUi.muted, fontFamily: 'PlusJakartaSans_800ExtraBold', letterSpacing: 0.6 },
+  payUsingMethod: { fontSize: 12, color: CaseUi.ink, fontFamily: 'PlusJakartaSans_700Bold' },
+  placeOrderBtn: { borderRadius: 14, overflow: 'hidden', backgroundColor: CaseUi.orange },
+  placeOrderInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 18,
-    height: 48,
+    height: 52,
   },
-  btnTotalText: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 14,
+  btnTotalText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14 },
+  btnTotalLabel: { color: 'rgba(255,255,255,0.75)', fontSize: 8, fontFamily: 'PlusJakartaSans_800ExtraBold', marginTop: -2 },
+  placeOrderText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    width: '100%',
   },
-  btnTotalLabel: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 8,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    marginTop: -2,
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: CaseUi.line,
   },
-  placeOrderText: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_850ExtraBold',
-    fontSize: 14,
-    fontWeight: '800',
+  modalTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 18, color: CaseUi.ink },
+  modalBody: { paddingVertical: 18, gap: 12 },
+  modalSubTitle: { fontSize: 14, color: CaseUi.muted, fontFamily: 'PlusJakartaSans_500Medium', marginBottom: 8 },
+  optionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.field,
   },
+  optionCardActive: { borderColor: CaseUi.orange, backgroundColor: CaseUi.orangeSoft },
+  optionLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  iconWrapper: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  optionTitle: { fontSize: 15, fontFamily: 'PlusJakartaSans_700Bold', color: CaseUi.ink },
+  optionDesc: { fontSize: 11, color: CaseUi.muted, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 2 },
+  modalFooter: { paddingTop: 8 },
+  cancelBtn: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: CaseUi.line,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+  },
+  cancelBtnText: { color: CaseUi.ink, fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14 },
 });

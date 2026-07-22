@@ -2,6 +2,9 @@ import { apiFetch } from '@/lib/apiFetch';
 import { clearTokens, getRefreshToken, setTokens } from '@/lib/storage';
 import { registerForPushNotifications, unregisterForPushNotifications } from '@/lib/pushNotifications';
 import { fetchProfile } from '@/services/profile';
+import { queryClient } from '@/lib/queryClient';
+import { CASE_CHECKOUT_ENABLED } from '@/config/features';
+import { getSelectedDeliveryPointId } from '@/lib/caseCheckout';
 
 export type AuthUser = {
   _id: string;
@@ -23,7 +26,21 @@ type ApiEnvelope = {
   data?: AuthPayload;
 };
 
-export type PostAuthRoute = '/(tabs)' | '/(onboarding)/location';
+export type PostAuthRoute =
+  | '/(tabs)'
+  | '/(onboarding)/location'
+  | '/(onboarding)/delivery-point';
+
+/** GET /auth/me — warm session user after login */
+export async function fetchAuthMe(): Promise<AuthUser | null> {
+  try {
+    const body = await apiFetch('/auth/me');
+    const user = (body as any)?.data?.user ?? (body as any)?.data ?? null;
+    return user;
+  } catch {
+    return null;
+  }
+}
 
 /** Persist tokens from verify-otp / login / register responses. */
 export async function saveAuthFromResponse(body: ApiEnvelope): Promise<PostAuthRoute> {
@@ -36,11 +53,26 @@ export async function saveAuthFromResponse(body: ApiEnvelope): Promise<PostAuthR
     refreshToken: data.refreshToken,
   });
   void registerForPushNotifications();
+
+  // Warm profile cache: prefer /auth/me, fall back to /users/profile
+  void (async () => {
+    const me = (await fetchAuthMe()) ?? data.user ?? (await fetchProfile().catch(() => null));
+    if (me) {
+      queryClient.setQueryData(['profile', 'me'], me);
+    }
+  })();
+
   return resolvePostAuthRoute();
 }
 
-/** Logged-in users: home if they have an address; otherwise location setup only (no welcome carousel). */
+/** Logged-in users: CASE delivery point first, then tabs / classic location. */
 export async function resolvePostAuthRoute(): Promise<PostAuthRoute> {
+  if (CASE_CHECKOUT_ENABLED) {
+    const pointId = await getSelectedDeliveryPointId();
+    if (!pointId) return '/(onboarding)/delivery-point';
+    return '/(tabs)';
+  }
+
   try {
     const profile = await fetchProfile();
     const addresses = profile?.addresses ?? [];

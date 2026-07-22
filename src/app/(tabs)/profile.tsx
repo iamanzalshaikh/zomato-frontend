@@ -1,22 +1,21 @@
 import { useState, useMemo } from 'react';
 import {
   Alert,
-  Pressable,
   StyleSheet,
   View,
+  Text,
   Image,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { SafeGradient } from '@/components/safe-gradient';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { TabScrollView } from '@/components/tab-scroll-view';
-
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { useTheme } from '@/hooks/use-theme';
+import { PressableScale } from '@/components/pressable-scale';
+import { CaseUi } from '@/constants/caseUi';
 import { logout } from '@/lib/auth';
 import {
   useDeleteAddressMutation,
@@ -26,8 +25,33 @@ import {
 } from '@/hooks/queries/profile';
 import { V1_WALLET_ENABLED } from '@/config/features';
 
+function OptionRow({
+  icon,
+  label,
+  onPress,
+  danger,
+  trailing,
+  last,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  danger?: boolean;
+  trailing?: React.ReactNode;
+  last?: boolean;
+}) {
+  return (
+    <PressableScale onPress={onPress} style={[styles.optionRow, !last && styles.optionRowBorder]}>
+      <View style={styles.optionLeft}>
+        <Ionicons name={icon} size={18} color={danger ? CaseUi.danger : CaseUi.muted} />
+        <Text style={[styles.optionText, danger && styles.optionTextDanger]}>{label}</Text>
+      </View>
+      {trailing ?? <Ionicons name="chevron-forward" size={16} color={danger ? CaseUi.danger : CaseUi.muted} />}
+    </PressableScale>
+  );
+}
+
 export default function ProfileScreen() {
-  const theme = useTheme();
   const router = useRouter();
   const q = useProfileQuery();
 
@@ -90,154 +114,121 @@ export default function ProfileScreen() {
 
   if (q.isLoading) {
     return (
-      <ThemedView style={[styles.container, styles.center, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="large" color={theme.primary} />
-        <ThemedText style={{ color: theme.textSecondary, marginTop: 12 }}>
-          Loading profile...
-        </ThemedText>
-      </ThemedView>
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color={CaseUi.orange} />
+        <Text style={styles.loadingText}>Loading profile...</Text>
+      </View>
     );
   }
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <TabScrollView contentContainerStyle={styles.scrollBody}>
           {/* Top Profile Header Card */}
-          <SafeGradient
-            colors={[theme.backgroundSelected, theme.backgroundElement]}
-            style={[styles.profileHeaderCard, { borderColor: theme.backgroundSelected }]}
-          >
-            <View style={styles.avatarRow}>
-              {user?.profileImage ? (
-                <Image source={{ uri: user.profileImage }} style={styles.avatarImage} />
-              ) : (
-                <View style={[styles.avatarPlaceholder, { backgroundColor: theme.primary }]}>
-                  <ThemedText style={styles.avatarInitials}>
-                    {user?.fullName?.charAt(0).toUpperCase() || 'U'}
-                  </ThemedText>
-                </View>
-              )}
-              <View style={{ flex: 1, gap: 2 }}>
-                <ThemedText style={styles.userNameText}>{user?.fullName || 'Food Lover'}</ThemedText>
-                <ThemedText style={[styles.userContactText, { color: theme.textSecondary }]}>
-                  {user?.email || 'email@example.com'}
-                </ThemedText>
-                {user?.mobile && (
-                  <ThemedText style={[styles.userContactText, { color: theme.textSecondary }]}>
-                    📱 {user.mobile}
-                  </ThemedText>
+          <Animated.View entering={FadeInDown.duration(320)}>
+            <LinearGradient colors={['#FF8A4C', '#FF5A00']} style={styles.profileHeaderCard}>
+              <View style={styles.avatarRow}>
+                {user?.profileImage ? (
+                  <Image source={{ uri: user.profileImage }} style={styles.avatarImage} />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Text style={styles.avatarInitials}>
+                      {user?.fullName?.charAt(0).toUpperCase() || 'U'}
+                    </Text>
+                  </View>
                 )}
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={styles.userNameText}>{user?.fullName || 'CASE Student'}</Text>
+                  <Text style={styles.userContactText}>{user?.email || 'email@example.com'}</Text>
+                  {user?.mobile && <Text style={styles.userContactText}>{user.mobile}</Text>}
+                  <PressableScale onPress={() => router.push('/edit-profile')} style={{ marginTop: 6, alignSelf: 'flex-start' }}>
+                    <Text style={styles.editLink}>Edit Profile →</Text>
+                  </PressableScale>
+                </View>
               </View>
-            </View>
 
-            {/* Quick actions */}
-          <View style={[styles.balanceCard, { backgroundColor: theme.backgroundElement }]}>
-            {V1_WALLET_ENABLED ? (
-              <>
-                <Pressable onPress={() => router.push('/wallet')} style={styles.balanceItem}>
-                  <Ionicons name="wallet-outline" size={20} color={theme.primary} />
+              <View style={styles.balanceCard}>
+                {V1_WALLET_ENABLED ? (
+                  <>
+                    <PressableScale onPress={() => router.push('/wallet')} style={styles.balanceItem}>
+                      <Ionicons name="wallet-outline" size={20} color={CaseUi.orange} />
+                      <View>
+                        <Text style={styles.balanceLabel}>Wallet Balance</Text>
+                        <Text style={styles.balanceValue}>J${user?.walletBalance ?? 0}</Text>
+                      </View>
+                    </PressableScale>
+                    <View style={styles.cardDividerVertical} />
+                  </>
+                ) : null}
+                <PressableScale
+                  onPress={() => router.push('/(tabs)/orders')}
+                  style={[styles.balanceItem, !V1_WALLET_ENABLED && { flex: 1 }]}
+                >
+                  <Ionicons name="receipt-outline" size={20} color={CaseUi.orange} />
                   <View>
-                    <ThemedText style={[styles.balanceLabel, { color: theme.textSecondary }]}>
-                      Wallet Balance
-                    </ThemedText>
-                    <ThemedText style={styles.balanceValue}>
-                      ₹{user?.walletBalance ?? 0}
-                    </ThemedText>
+                    <Text style={styles.balanceLabel}>My Orders</Text>
+                    <Text style={styles.balanceValue}>View history ›</Text>
                   </View>
-                </Pressable>
-                <View style={[styles.cardDividerVertical, { backgroundColor: theme.backgroundSelected }]} />
-              </>
-            ) : null}
-            <Pressable
-              onPress={() => router.push('/(tabs)/orders')}
-              style={[styles.balanceItem, !V1_WALLET_ENABLED && { flex: 1 }]}
-            >
-              <Ionicons name="receipt-outline" size={20} color={theme.primary} />
-              <View>
-                <ThemedText style={[styles.balanceLabel, { color: theme.textSecondary }]}>
-                  My Orders
-                </ThemedText>
-                <ThemedText style={styles.balanceValue}>View history ›</ThemedText>
+                </PressableScale>
+                {!V1_WALLET_ENABLED ? (
+                  <>
+                    <View style={styles.cardDividerVertical} />
+                    <PressableScale onPress={() => router.push('/coupons')} style={[styles.balanceItem, { flex: 1 }]}>
+                      <Ionicons name="pricetag-outline" size={20} color={CaseUi.orange} />
+                      <View>
+                        <Text style={styles.balanceLabel}>Offers</Text>
+                        <Text style={styles.balanceValue}>Coupons ›</Text>
+                      </View>
+                    </PressableScale>
+                  </>
+                ) : null}
               </View>
-            </Pressable>
-            {!V1_WALLET_ENABLED ? (
-              <>
-                <View style={[styles.cardDividerVertical, { backgroundColor: theme.backgroundSelected }]} />
-                <Pressable onPress={() => router.push('/coupons')} style={[styles.balanceItem, { flex: 1 }]}>
-                  <Ionicons name="pricetag-outline" size={20} color={theme.primary} />
-                  <View>
-                    <ThemedText style={[styles.balanceLabel, { color: theme.textSecondary }]}>
-                      Offers
-                    </ThemedText>
-                    <ThemedText style={styles.balanceValue}>Coupons ›</ThemedText>
-                  </View>
-                </Pressable>
-              </>
-            ) : null}
-          </View>
-          </SafeGradient>
+            </LinearGradient>
+          </Animated.View>
 
           {/* Addresses Accordion */}
-          <View style={[styles.sectionCard, { backgroundColor: theme.backgroundElement }]}>
-            <Pressable
-              onPress={() => setShowAddresses(!showAddresses)}
-              style={styles.sectionHeader}
-            >
+          <Animated.View entering={FadeInDown.delay(60).duration(320)} style={styles.sectionCard}>
+            <PressableScale onPress={() => setShowAddresses(!showAddresses)} style={styles.sectionHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Ionicons name="location-outline" size={20} color={theme.primary} />
-                <ThemedText style={styles.sectionTitle}>Saved Addresses</ThemedText>
+                <Ionicons name="location-outline" size={20} color={CaseUi.orange} />
+                <Text style={styles.sectionTitle}>Saved Addresses</Text>
               </View>
-              <Ionicons
-                name={showAddresses ? 'chevron-up' : 'chevron-down'}
-                size={16}
-                color={theme.textSecondary}
-              />
-            </Pressable>
+              <Ionicons name={showAddresses ? 'chevron-up' : 'chevron-down'} size={16} color={CaseUi.muted} />
+            </PressableScale>
 
             {showAddresses && (
               <View style={{ marginTop: 10 }}>
                 {addresses.length === 0 ? (
-                  <ThemedText style={[styles.emptyAddrText, { color: theme.textSecondary }]}>
-                    No saved addresses yet. Add one during checkout!
-                  </ThemedText>
+                  <Text style={styles.emptyAddrText}>No saved addresses yet. Add one during checkout!</Text>
                 ) : (
                   addresses.map((a) => (
-                    <View
-                      key={a._id}
-                      style={[styles.addrRow, { borderBottomColor: theme.backgroundSelected }]}
-                    >
-                      {/* Left side: Stylized Icon container */}
-                      <View style={[styles.addrIconContainer, { backgroundColor: a.isDefault ? theme.primarySoft : theme.backgroundSelected }]}>
+                    <View key={a._id} style={styles.addrRow}>
+                      <View style={[styles.addrIconContainer, a.isDefault && { backgroundColor: CaseUi.orangeSoft }]}>
                         <Ionicons
                           name={a.label === 'Home' ? 'home-outline' : a.label === 'Work' ? 'briefcase-outline' : 'location-outline'}
                           size={18}
-                          color={a.isDefault ? theme.primary : theme.textSecondary}
+                          color={a.isDefault ? CaseUi.orange : CaseUi.muted}
                         />
                       </View>
 
-                      {/* Middle: Content */}
                       <View style={styles.addrContent}>
                         <View style={styles.addrHeader}>
-                          <ThemedText style={styles.addrLabel}>{a.label}</ThemedText>
+                          <Text style={styles.addrLabel}>{a.label}</Text>
                           {a.isDefault && (
-                            <SafeGradient
-                              colors={['#ff5a00', '#ff8a00']}
-                              style={styles.defaultBadge}
-                            >
-                              <ThemedText style={styles.defaultBadgeText}>DEFAULT</ThemedText>
-                            </SafeGradient>
+                            <View style={styles.defaultBadge}>
+                              <Text style={styles.defaultBadgeText}>DEFAULT</Text>
+                            </View>
                           )}
                         </View>
-                        <ThemedText numberOfLines={2} style={[styles.addrText, { color: theme.textSecondary }]}>
+                        <Text numberOfLines={2} style={styles.addrText}>
                           {a.fullAddress}
-                        </ThemedText>
+                        </Text>
                       </View>
 
-                      {/* Right side: Actions */}
                       <View style={styles.addrActionsRight}>
                         {!a.isDefault ? (
-                          <Pressable
+                          <PressableScale
                             disabled={busy}
                             onPress={async () => {
                               try {
@@ -247,31 +238,22 @@ export default function ProfileScreen() {
                                 setBusy(false);
                               }
                             }}
-                            style={[
-                              styles.miniActionBtn,
-                              { backgroundColor: theme.primarySoft, borderColor: theme.primary },
-                            ]}
+                            style={styles.miniActionBtn}
                           >
-                            <ThemedText style={[styles.miniActionBtnText, { color: theme.primary }]}>
-                              Use
-                            </ThemedText>
-                          </Pressable>
+                            <Text style={styles.miniActionBtnText}>Use</Text>
+                          </PressableScale>
                         ) : (
-                          <View style={[styles.defaultCheckCircle, { backgroundColor: theme.primary }]}>
-                            <Ionicons name="checkmark" size={12} color="#ffffff" />
+                          <View style={styles.defaultCheckCircle}>
+                            <Ionicons name="checkmark" size={12} color="#FFFFFF" />
                           </View>
                         )}
-                        <Pressable
+                        <PressableScale
                           disabled={busy}
                           onPress={() => {
                             if (busy) return;
                             setBusy(true);
                             Alert.alert('Delete Address', 'Remove this address?', [
-                              { 
-                                text: 'Cancel', 
-                                style: 'cancel',
-                                onPress: () => setBusy(false)
-                              },
+                              { text: 'Cancel', style: 'cancel', onPress: () => setBusy(false) },
                               {
                                 text: 'Delete',
                                 style: 'destructive',
@@ -289,238 +271,117 @@ export default function ProfileScreen() {
                           }}
                           style={styles.deleteMiniBtn}
                         >
-                          <Ionicons name="trash-outline" size={14} color="#E5484D" />
-                        </Pressable>
+                          <Ionicons name="trash-outline" size={14} color={CaseUi.danger} />
+                        </PressableScale>
                       </View>
                     </View>
                   ))
                 )}
               </View>
             )}
-          </View>
+          </Animated.View>
 
           {/* Settings / General Options Card */}
-          <View style={[styles.sectionCard, { backgroundColor: theme.backgroundElement }]}>
-            <ThemedText style={[styles.cardTitle, { color: theme.textSecondary }]}>Settings</ThemedText>
-            
-            <Pressable
-              onPress={() => router.push('/edit-profile')}
-              style={[styles.optionRow, { borderBottomColor: theme.backgroundSelected }]}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Ionicons name="person-outline" size={18} color={theme.textSecondary} />
-                <ThemedText style={styles.optionText}>Edit profile</ThemedText>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
-            </Pressable>
-
-            <Pressable
-              onPress={() => router.push('/notifications')}
-              style={[styles.optionRow, { borderBottomColor: theme.backgroundSelected }]}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Ionicons name="notifications-outline" size={18} color={theme.textSecondary} />
-                <ThemedText style={styles.optionText}>Notifications</ThemedText>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
-            </Pressable>
-
+          <Animated.View entering={FadeInDown.delay(120).duration(320)} style={styles.sectionCard}>
+            <Text style={styles.cardTitle}>Settings</Text>
+            <OptionRow icon="person-outline" label="Edit profile" onPress={() => router.push('/edit-profile')} />
+            <OptionRow icon="notifications-outline" label="Notifications" onPress={() => router.push('/notifications')} />
             {V1_WALLET_ENABLED ? (
-              <Pressable
-                onPress={() => router.push('/wallet')}
-                style={[styles.optionRow, { borderBottomColor: theme.backgroundSelected }]}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <Ionicons name="card-outline" size={18} color={theme.textSecondary} />
-                  <ThemedText style={styles.optionText}>Wallet</ThemedText>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
-              </Pressable>
+              <OptionRow icon="card-outline" label="Wallet" onPress={() => router.push('/wallet')} />
             ) : null}
-
-            <Pressable
-              onPress={() => router.push('/support')}
-              style={styles.optionRow}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Ionicons name="help-circle-outline" size={18} color={theme.textSecondary} />
-                <ThemedText style={styles.optionText}>Help & Support</ThemedText>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
-            </Pressable>
-          </View>
+            <OptionRow icon="heart-outline" label="Favourites" onPress={() => router.push('/favorites-list')} />
+            <OptionRow icon="book-outline" label="FAQ" onPress={() => router.push('/faq')} />
+            <OptionRow icon="document-text-outline" label="Terms of Service" onPress={() => router.push('/terms')} />
+            <OptionRow icon="help-circle-outline" label="Help & Support" onPress={() => router.push('/support')} last />
+          </Animated.View>
 
           {/* Danger Zone Account deletion & Logout */}
-          <View style={[styles.sectionCard, { backgroundColor: theme.backgroundElement }]}>
-            <Pressable
-              onPress={handleLogout}
-              style={[styles.optionRow, { borderBottomColor: theme.backgroundSelected }]}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Ionicons name="log-out-outline" size={18} color="#E5484D" />
-                <ThemedText style={[styles.optionText, { color: '#E5484D', fontFamily: 'PlusJakartaSans_700Bold' }]}>
-                  Log Out
-                </ThemedText>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color="#E5484D" />
-            </Pressable>
-
-            <Pressable
-              disabled={busy}
+          <Animated.View entering={FadeInDown.delay(180).duration(320)} style={styles.sectionCard}>
+            <OptionRow icon="log-out-outline" label="Log Out" onPress={handleLogout} danger />
+            <OptionRow
+              icon="trash-outline"
+              label="Delete Account"
               onPress={handleDeleteAccount}
-              style={styles.optionRow}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Ionicons name="trash-outline" size={18} color="#E5484D" />
-                <ThemedText style={[styles.optionText, { color: '#E5484D', fontFamily: 'PlusJakartaSans_600SemiBold' }]}>
-                  Delete Account
-                </ThemedText>
-              </View>
-              {busy ? (
-                <ActivityIndicator size="small" color="#E5484D" />
-              ) : (
-                <Ionicons name="chevron-forward" size={16} color="#E5484D" />
-              )}
-            </Pressable>
-          </View>
+              danger
+              last
+              trailing={busy ? <ActivityIndicator size="small" color={CaseUi.danger} /> : undefined}
+            />
+          </Animated.View>
         </TabScrollView>
       </SafeAreaView>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: CaseUi.white },
   safeArea: { flex: 1 },
   center: { justifyContent: 'center', alignItems: 'center' },
-  scrollBody: {
-    padding: 16,
-    gap: 16,
-  },
-  // Header Card
+  loadingText: { color: CaseUi.muted, marginTop: 12, fontFamily: 'PlusJakartaSans_500Medium' },
+  scrollBody: { padding: 16, gap: 16 },
   profileHeaderCard: {
     borderRadius: 20,
     padding: 20,
-    borderWidth: 1,
     gap: 16,
-    position: 'relative',
     overflow: 'hidden',
   },
-  avatarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  avatarImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#e3e3e3',
-  },
+  avatarRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  avatarImage: { width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.25)' },
   avatarPlaceholder: {
     width: 60,
     height: 60,
     borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.25)',
   },
-  avatarInitials: {
-    color: '#ffffff',
-    fontSize: 22,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
-  userNameText: {
-    fontSize: 18,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
-  userContactText: {
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_500Medium',
-  },
-  goldBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
-  goldBadgeText: {
-    color: '#ffffff',
-    fontSize: 10.5,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
-  // Balance Card
+  avatarInitials: { color: '#FFFFFF', fontSize: 22, fontFamily: 'PlusJakartaSans_800ExtraBold' },
+  userNameText: { fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#FFFFFF' },
+  userContactText: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', color: 'rgba(255,255,255,0.85)' },
+  editLink: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12 },
   balanceCard: {
     borderRadius: 16,
     padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    elevation: 2,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
+    backgroundColor: CaseUi.white,
+    ...CaseUi.softShadow,
   },
-  balanceItem: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 8,
-  },
-  balanceLabel: {
-    fontSize: 10,
-    fontFamily: 'PlusJakartaSans_700Bold',
-  },
-  balanceValue: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_850ExtraBold',
-    marginTop: 2,
-  },
-  cardDividerVertical: {
-    width: 1,
-    height: '80%',
-  },
-  // Section Cards
+  balanceItem: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8 },
+  balanceLabel: { fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: CaseUi.muted },
+  balanceValue: { fontSize: 14, fontFamily: 'PlusJakartaSans_800ExtraBold', marginTop: 2, color: CaseUi.ink },
+  cardDividerVertical: { width: 1, height: '80%', backgroundColor: CaseUi.line },
   sectionCard: {
     borderRadius: 16,
     padding: 16,
-    elevation: 2,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 6,
+    backgroundColor: CaseUi.white,
+    borderWidth: 1,
+    borderColor: CaseUi.line,
+    ...CaseUi.softShadow,
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sectionTitle: { fontSize: 14, fontFamily: 'PlusJakartaSans_800ExtraBold', color: CaseUi.ink },
   cardTitle: {
     fontSize: 11,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     textTransform: 'uppercase',
     marginBottom: 8,
+    color: CaseUi.muted,
   },
   emptyAddrText: {
     fontSize: 12,
     fontFamily: 'PlusJakartaSans_500Medium',
     marginTop: 8,
     textAlign: 'center',
+    color: CaseUi.muted,
   },
-  // Address Rows
   addrRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 14,
     borderBottomWidth: 1,
+    borderBottomColor: CaseUi.line,
     gap: 12,
   },
   addrIconContainer: {
@@ -529,58 +390,33 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: CaseUi.field,
   },
-  addrContent: {
-    flex: 1,
-    gap: 2,
-  },
-  addrHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  addrLabel: {
-    fontFamily: 'PlusJakartaSans_750Bold',
-    fontSize: 14,
-  },
-  defaultBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  defaultBadgeText: {
-    color: '#ffffff',
-    fontSize: 7.5,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
-  addrText: {
-    fontSize: 11.5,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    lineHeight: 16,
-  },
-  addrActionsRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  addrContent: { flex: 1, gap: 2 },
+  addrHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  addrLabel: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: CaseUi.ink },
+  defaultBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: CaseUi.orange },
+  defaultBadgeText: { color: '#FFFFFF', fontSize: 7.5, fontFamily: 'PlusJakartaSans_800ExtraBold' },
+  addrText: { fontSize: 11.5, fontFamily: 'PlusJakartaSans_500Medium', lineHeight: 16, color: CaseUi.muted },
+  addrActionsRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   miniActionBtn: {
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 6,
     borderWidth: 1,
+    borderColor: CaseUi.orange,
+    backgroundColor: CaseUi.orangeSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  miniActionBtnText: {
-    fontSize: 10,
-    fontFamily: 'PlusJakartaSans_700Bold',
-  },
+  miniActionBtnText: { fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', color: CaseUi.orange },
   defaultCheckCircle: {
     width: 20,
     height: 20,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: CaseUi.orange,
   },
   deleteMiniBtn: {
     width: 30,
@@ -588,18 +424,16 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(229,72,77,0.06)',
+    backgroundColor: '#FEE2E2',
   },
-  // Options
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 14,
-    borderBottomWidth: 1,
   },
-  optionText: {
-    fontSize: 13,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-  },
+  optionRowBorder: { borderBottomWidth: 1, borderBottomColor: CaseUi.line },
+  optionLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  optionText: { fontSize: 13, fontFamily: 'PlusJakartaSans_600SemiBold', color: CaseUi.ink },
+  optionTextDanger: { color: CaseUi.danger, fontFamily: 'PlusJakartaSans_700Bold' },
 });

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   ImageBackground,
-  Pressable,
   StyleSheet,
   TextInput,
   View,
@@ -14,8 +13,10 @@ import {
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { ThemedView } from '@/components/themed-view';
+import { PressableScale } from '@/components/pressable-scale';
 import { addAddress } from '@/services/users';
 import { useTheme } from '@/hooks/use-theme';
 import { ensureForegroundPermission, getCurrentCoords, reverseGeocode } from '@/lib/location';
@@ -38,7 +39,7 @@ export default function LocationSetupScreen() {
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locBusy, setLocBusy] = useState(false);
   const [permissionChecked, setPermissionChecked] = useState(true); // true on mount — avoids effect-driven setState
-  const [city, setCity] = useState('New Delhi');
+  const [city, setCity] = useState('your area');
   const qc = useQueryClient();
   const addAddressMutation = useMutation({
     mutationFn: addAddress,
@@ -49,18 +50,13 @@ export default function LocationSetupScreen() {
 
   // Dynamic address list from user profile with fallbacks
   const savedAddresses = useMemo(() => {
-    const fromProfile = (profileQ.data?.addresses ?? [])
+    return (profileQ.data?.addresses ?? [])
       .filter((a: any) => a.fullAddress && a.fullAddress.trim().toLowerCase() !== 'current location')
       .map((a: any) => ({
         id: a._id,
         label: a.label || 'Saved',
         fullAddress: a.fullAddress,
       }));
-    if (fromProfile.length > 0) return fromProfile;
-    return [
-      { id: 'recent-1', label: 'Recent', fullAddress: 'Block 4, Vasant Kunj, New Delhi' },
-      { id: 'recent-2', label: 'Recent', fullAddress: 'Connaught Place, New Delhi' },
-    ];
   }, [profileQ.data?.addresses]);
 
   // Keep label user-driven only (no effect-driven setState).
@@ -122,7 +118,7 @@ export default function LocationSetupScreen() {
       const nice = formatReverseGeocode(rev ?? {});
       setFullAddress(nice || `Lat ${nextCoords.latitude.toFixed(5)}, Lng ${nextCoords.longitude.toFixed(5)}`);
       
-      const cityName = (rev as any)?.city || (rev as any)?.subregion || (rev as any)?.district || 'New Delhi';
+      const cityName = (rev as any)?.city || (rev as any)?.subregion || (rev as any)?.district || 'your area';
       setCity(cityName);
       setLabel('Home');
     } catch (e: any) {
@@ -152,21 +148,24 @@ export default function LocationSetupScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       {/* Transparent Header Section */}
-      <View style={[styles.header, { top: Math.max(insets.top, Platform.OS === 'ios' ? 8 : 12) }]}>
-        <Pressable
+      <Animated.View
+        entering={FadeInDown.duration(280)}
+        style={[styles.header, { top: Math.max(insets.top, Platform.OS === 'ios' ? 8 : 12) }]}
+      >
+        <PressableScale
           onPress={() => router.back()}
           style={[styles.backButton, { backgroundColor: theme.backgroundElement }]}
         >
-          <Text style={[styles.backText, { color: theme.text }]}>←</Text>
-        </Pressable>
+          <Ionicons name="arrow-back" size={20} color={theme.text} />
+        </PressableScale>
 
         <View style={[styles.locationBadge, { backgroundColor: theme.backgroundElement }]}>
-          <Text style={[styles.locationBadgeIcon, { color: theme.primary }]}>📍</Text>
+          <Ionicons name="location" size={14} color={theme.primary} />
           <Text style={[styles.locationBadgeText, { color: theme.text }]}>{city}</Text>
         </View>
 
         <View style={{ width: 40 }} />
-      </View>
+      </Animated.View>
 
       {/* Map Background (Top 45%) */}
       <View style={[styles.mapContainer, { height: height * 0.45 }]}>
@@ -205,17 +204,20 @@ export default function LocationSetupScreen() {
           style={styles.sheetScroll}
         >
           {/* Heading */}
-          <View style={styles.heading}>
+          <Animated.View entering={FadeInDown.delay(40).duration(300)} style={styles.heading}>
             <Text style={[styles.title, { color: theme.text }]}>
               Set Your Delivery Location
             </Text>
             <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
               We&apos;ll show restaurants near you
             </Text>
-          </View>
+          </Animated.View>
 
           {/* Search Bar */}
-          <View style={[styles.searchWrap, { backgroundColor: theme.backgroundSelected }]}>
+          <Animated.View
+            entering={FadeInDown.delay(80).duration(300)}
+            style={[styles.searchWrap, { backgroundColor: theme.backgroundSelected }]}
+          >
             <Ionicons name="search" size={18} color={theme.textSecondary} style={styles.searchIcon} />
             <TextInput
               value={fullAddress}
@@ -228,17 +230,19 @@ export default function LocationSetupScreen() {
               style={[styles.input, { color: theme.text }]}
               multiline={false}
               numberOfLines={1}
+              cursorColor={theme.primary}
             />
-          </View>
+          </Animated.View>
 
           {/* Quick Select Chips */}
+          <Animated.View entering={FadeInDown.delay(120).duration(300)}>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.chipsRow}
             style={styles.chipsScroll}
           >
-              <Pressable
+              <PressableScale
                 disabled={locBusy || !permissionChecked}
                 onPress={useCurrentLocation}
                 style={[
@@ -248,16 +252,17 @@ export default function LocationSetupScreen() {
                   (locBusy || !permissionChecked) && { opacity: 0.75 }
                 ]}
               >
+                <Ionicons name="navigate" size={14} color={theme.primary} style={{ marginRight: 6 }} />
                 <Text style={[styles.chipPrimaryText, { color: theme.primary }]}>
                   {!permissionChecked
                     ? 'Checking permission…'
                     : locBusy
                     ? 'Getting location…'
-                    : 'Use Current Location 📍'}
+                    : 'Use Current Location'}
                 </Text>
-              </Pressable>
+              </PressableScale>
 
-              <Pressable
+              <PressableScale
                 onPress={() => setLabel('Home')}
                 style={[
                   styles.chip,
@@ -272,11 +277,11 @@ export default function LocationSetupScreen() {
                     label === 'Home' && { color: theme.primary, fontFamily: 'PlusJakartaSans_700Bold' },
                   ]}
                 >
-                  ⌂ Home
+                  🏠 Home
                 </Text>
-              </Pressable>
+              </PressableScale>
 
-              <Pressable
+              <PressableScale
                 onPress={() => setLabel('Work')}
                 style={[
                   styles.chip,
@@ -293,49 +298,52 @@ export default function LocationSetupScreen() {
                 >
                   💼 Work
                 </Text>
-              </Pressable>
+              </PressableScale>
           </ScrollView>
+          </Animated.View>
 
           {/* Recent Addresses List */}
-          <View style={styles.recents}>
+          {savedAddresses.length > 0 ? (
+          <Animated.View entering={FadeInDown.delay(160).duration(300)} style={styles.recents}>
             <Text style={[styles.recentsTitle, { color: theme.textSecondary }]}>
-              Recent Searches
+              Saved addresses
             </Text>
             {savedAddresses.map((a: SavedAddress) => (
-              <Pressable
+              <PressableScale
                 key={a.id}
                 onPress={() => {
                   setFullAddress(a.fullAddress);
                   setCoords(null);
                   setLabel(a.label === 'Home' || a.label === 'Work' || a.label === 'Other' ? (a.label as any) : 'Other');
                   const parts = a.fullAddress.split(',');
-                  let cityPart = parts[parts.length - 2]?.trim() || parts[parts.length - 1]?.trim() || 'New Delhi';
+                  let cityPart = parts[parts.length - 2]?.trim() || parts[parts.length - 1]?.trim() || 'your area';
                   if (cityPart.toLowerCase() === 'current location') {
-                    cityPart = 'New Delhi';
+                    cityPart = 'your area';
                   }
                   setCity(cityPart);
                 }}
                 style={styles.recentRow}
               >
                 <View style={[styles.recentIcon, { backgroundColor: theme.backgroundSelected }]}>
-                  <Text style={{ fontSize: 16, color: theme.textSecondary }}>📍</Text>
+                  <Ionicons name="location-outline" size={18} color={theme.textSecondary} />
                 </View>
                 <View style={[styles.recentBody, { borderBottomColor: 'rgba(127,127,127,0.1)' }]}>
                   <Text style={[styles.recentMain, { color: theme.text }]}>
                     {a.fullAddress.split(',')[0]}
                   </Text>
                   <Text style={[styles.recentSub, { color: theme.textSecondary }]}>
-                    {a.fullAddress.split(',').slice(1).join(',').trim() || 'New Delhi'}
+                    {a.fullAddress.split(',').slice(1).join(',').trim() || 'Saved address'}
                   </Text>
                 </View>
-              </Pressable>
+              </PressableScale>
             ))}
-          </View>
+          </Animated.View>
+          ) : null}
         </ScrollView>
 
         {/* Footer / Confirm Location Button */}
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
-          <Pressable
+          <PressableScale
             disabled={busy || !fullAddress.trim()}
             onPress={onConfirm}
             style={[
@@ -347,7 +355,7 @@ export default function LocationSetupScreen() {
             <Text style={styles.primaryBtnText}>
               {busy ? 'Saving…' : 'Confirm Location'}
             </Text>
-          </Pressable>
+          </PressableScale>
         </View>
       </ThemedView>
     </SafeAreaView>
@@ -379,12 +387,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-  },
-  backText: {
-    fontSize: 22,
-    fontWeight: '700',
-    lineHeight: 22,
-    marginTop: -2,
   },
   locationBadge: {
     flexDirection: 'row',
@@ -513,6 +515,8 @@ const styles = StyleSheet.create({
     paddingRight: 20,
   },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,

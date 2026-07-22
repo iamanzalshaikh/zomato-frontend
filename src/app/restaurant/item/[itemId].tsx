@@ -36,7 +36,13 @@ export default function MenuItemDetailsScreen() {
     if (!item?._id || !item.restaurantId) return;
     try {
       setAdding(true);
-      await add.mutateAsync({ restaurantId: String(item.restaurantId), menuItemId: String(item._id), quantity: 1 });
+      await add.mutateAsync({
+        restaurantId: String(item.restaurantId),
+        menuItemId: String(item._id),
+        quantity: 1,
+        itemName: item.itemName,
+        price: Number(item.discountedPrice ?? item.price ?? 0),
+      });
       await qc.invalidateQueries({ queryKey: cartKeys.all });
       router.push('/cart');
     } catch {

@@ -1,120 +1,78 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { PressableScale } from '@/components/pressable-scale';
+import { SuccessMoment } from '@/components/state-views';
+import { CaseUi } from '@/constants/caseUi';
 
 export default function OrderSuccessScreen() {
-  const theme = useTheme();
   const router = useRouter();
   const { orderId, payment } = useLocalSearchParams<{ orderId?: string; payment?: string }>();
   const id = orderId ?? '';
   const paidOnline = payment === 'ONLINE';
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.iconWrap}>
-          <View style={[styles.iconCircle, { backgroundColor: theme.primarySoft }]}>
-            <Ionicons name="checkmark-circle" size={72} color={theme.primary} />
-          </View>
-        </View>
+        <SuccessMoment
+          title={paidOnline ? 'Payment successful!' : 'Order placed!'}
+          subtitle={
+            paidOnline
+              ? 'Your payment was confirmed. The restaurant will start preparing your order.'
+              : 'Your food is being prepared. You can track delivery status anytime.'
+          }
+        >
+          {id ? <Text style={styles.orderId}>Order #{id.slice(-8).toUpperCase()}</Text> : null}
 
-        <ThemedText type="subtitle" style={styles.title}>
-          {paidOnline ? 'Payment successful!' : 'Order placed!'}
-        </ThemedText>
-        <ThemedText themeColor="textSecondary" style={styles.subtitle}>
-          {paidOnline
-            ? 'Your payment was confirmed. The restaurant will start preparing your order.'
-            : 'Your food is being prepared. You can track delivery status anytime.'}
-        </ThemedText>
+          <Animated.View entering={FadeInDown.delay(400).duration(320)} style={styles.actions}>
+            {id ? (
+              <PressableScale
+                onPress={() => router.replace({ pathname: '/order/track/[orderId]', params: { orderId: id } })}
+                style={styles.primaryBtn}
+              >
+                <Text style={styles.primaryBtnText}>Track order</Text>
+              </PressableScale>
+            ) : null}
 
-        {id ? (
-          <ThemedText themeColor="textSecondary" style={styles.orderId}>
-            Order #{id.slice(-8).toUpperCase()}
-          </ThemedText>
-        ) : null}
+            <PressableScale onPress={() => router.replace('/(tabs)/orders')} style={styles.secondaryBtn}>
+              <Text style={styles.secondaryBtnText}>View my orders</Text>
+            </PressableScale>
 
-        <View style={styles.actions}>
-          {id ? (
-            <Pressable
-              onPress={() =>
-                router.replace({
-                  pathname: '/order/track/[orderId]',
-                  params: { orderId: id },
-                })
-              }
-              style={[styles.primaryBtn, { backgroundColor: theme.primary }]}
-            >
-              <ThemedText style={styles.primaryBtnText}>Track order</ThemedText>
-            </Pressable>
-          ) : null}
-
-          <Pressable
-            onPress={() => router.replace('/(tabs)/orders')}
-            style={[styles.secondaryBtn, { borderColor: theme.backgroundSelected }]}
-          >
-            <ThemedText style={styles.secondaryBtnText}>View my orders</ThemedText>
-          </Pressable>
-
-          <Pressable onPress={() => router.replace('/(tabs)')} style={styles.linkBtn}>
-            <ThemedText style={[styles.linkText, { color: theme.primary }]}>Back to home</ThemedText>
-          </Pressable>
-        </View>
+            <PressableScale onPress={() => router.replace('/(tabs)')} style={styles.linkBtn}>
+              <Text style={styles.linkText}>Back to home</Text>
+            </PressableScale>
+          </Animated.View>
+        </SuccessMoment>
       </SafeAreaView>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.six,
-    paddingBottom: Spacing.four,
-    alignItems: 'center',
-    justifyContent: 'center',
+  container: { flex: 1, backgroundColor: CaseUi.white },
+  safeArea: { flex: 1 },
+  orderId: {
+    textAlign: 'center',
+    marginTop: 10,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontSize: 13,
+    color: CaseUi.muted,
   },
-  iconWrap: { marginBottom: Spacing.four },
-  iconCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: { textAlign: 'center', marginTop: Spacing.two },
-  subtitle: { textAlign: 'center', marginTop: Spacing.two, lineHeight: 22, maxWidth: 300 },
-  orderId: { marginTop: Spacing.three, fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 13 },
-  actions: { width: '100%', marginTop: Spacing.five, gap: 12 },
-  primaryBtn: {
-    height: 52,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryBtnText: {
-    color: '#fff',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 16,
-  },
+  actions: { width: '100%', marginTop: 28, gap: 12 },
+  primaryBtn: { height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: CaseUi.orange },
+  primaryBtnText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 16 },
   secondaryBtn: {
     height: 52,
     borderRadius: 16,
     borderWidth: 1,
+    borderColor: CaseUi.line,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: CaseUi.white,
   },
-  secondaryBtnText: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    color: '#1a1c1c',
-  },
+  secondaryBtnText: { fontFamily: 'PlusJakartaSans_700Bold', color: CaseUi.ink },
   linkBtn: { alignItems: 'center', paddingVertical: 8 },
-  linkText: { fontFamily: 'PlusJakartaSans_700Bold' },
+  linkText: { fontFamily: 'PlusJakartaSans_700Bold', color: CaseUi.orange },
 });

@@ -1,45 +1,39 @@
 import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useTheme } from '@/hooks/use-theme';
+import { CaseUi } from '@/constants/caseUi';
+import { useCart } from '@/hooks/use-cart';
+import { getCartItemCount } from '@/lib/cartDisplay';
 
 const TAB_LABEL_FONT = 'PlusJakartaSans_600SemiBold';
 
 export default function AppTabs() {
-  const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const androidBottomInset = Math.max(insets.bottom, 8);
-  const tabBarHeight = Platform.OS === 'ios' ? 50 + insets.bottom : 62 + androidBottomInset;
+  const { cart } = useCart();
+  const cartCount = getCartItemCount(cart);
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.primary,
-        tabBarInactiveTintColor: theme.textSecondary,
+        tabBarActiveTintColor: CaseUi.orange,
+        tabBarInactiveTintColor: CaseUi.muted,
         tabBarStyle: {
-          backgroundColor: theme.backgroundElement,
+          backgroundColor: CaseUi.white,
           borderTopWidth: 1,
-          borderTopColor: '#f0f0f0',
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          elevation: 16,
-          height: tabBarHeight,
-          paddingBottom: Platform.OS === 'ios' ? insets.bottom : androidBottomInset,
-          paddingTop: 8,
-        },
-        tabBarItemStyle: {
-          paddingVertical: 2,
+          borderTopColor: CaseUi.line,
+          height: 58 + Math.max(insets.bottom, 0),
+          paddingBottom: Math.max(insets.bottom, 6),
+          paddingTop: 6,
+          ...CaseUi.softShadow,
         },
         tabBarLabelStyle: {
           fontSize: 10,
           fontFamily: TAB_LABEL_FONT,
         },
-      }}>
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
@@ -53,16 +47,9 @@ export default function AppTabs() {
       <Tabs.Screen
         name="explore"
         options={{
-          href: null,
-        }}
-      />
-
-      <Tabs.Screen
-        name="favorites"
-        options={{
-          title: 'Fav',
+          title: 'Explore',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'heart' : 'heart-outline'} size={22} color={color} />
+            <Ionicons name={focused ? 'compass' : 'compass-outline'} size={22} color={color} />
           ),
         }}
       />
@@ -78,6 +65,22 @@ export default function AppTabs() {
       />
 
       <Tabs.Screen
+        name="cart"
+        options={{
+          title: 'Cart',
+          tabBarBadge: cartCount > 0 ? cartCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: CaseUi.orange,
+            fontSize: 10,
+            fontFamily: TAB_LABEL_FONT,
+          },
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'cart' : 'cart-outline'} size={22} color={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
@@ -86,6 +89,8 @@ export default function AppTabs() {
           ),
         }}
       />
+
+      <Tabs.Screen name="favorites" options={{ href: null }} />
     </Tabs>
   );
 }

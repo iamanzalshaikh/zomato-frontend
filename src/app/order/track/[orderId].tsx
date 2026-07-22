@@ -1,16 +1,23 @@
-import { useMemo, useRef } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery } from '@tanstack/react-query';
+import Animated, {
+  Easing,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { OrderTrackingMap } from '@/components/order-tracking-map';
-import { useTheme } from '@/hooks/use-theme';
+import { PressableScale } from '@/components/pressable-scale';
+import { CaseUi } from '@/constants/caseUi';
 import { useOrderByIdQuery, useOrderTrackQuery } from '@/hooks/queries/orderDetail';
 import { fetchOrderRoute } from '@/services/orders';
-import { useQuery } from '@tanstack/react-query';
 import { useOrderSocket } from '@/hooks/use-order-socket';
 
 function pickCoord(...sources: ({ latitude?: number; longitude?: number } | null | undefined)[]) {
@@ -57,8 +64,29 @@ const STEP_DESCRIPTIONS: Record<string, string> = {
   DELIVERED: 'Hope you enjoy your meal!',
 };
 
+function LivePulse({ color }: { color: string }) {
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(0.6);
+
+  useEffect(() => {
+    scale.value = withRepeat(withTiming(2.2, { duration: 1200, easing: Easing.out(Easing.ease) }), -1, false);
+    opacity.value = withRepeat(withTiming(0, { duration: 1200, easing: Easing.out(Easing.ease) }), -1, false);
+  }, [scale, opacity]);
+
+  const ringStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <View style={styles.pulseWrap}>
+      <Animated.View style={[styles.pulseRing, { backgroundColor: color }, ringStyle]} />
+      <View style={[styles.pulseDot, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
 export default function TrackOrderScreen() {
-  const theme = useTheme();
   const router = useRouter();
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const id = orderId ?? '';
@@ -71,19 +99,19 @@ export default function TrackOrderScreen() {
   const order: any = orderQ.data;
 
   const status = String(tracking?.orderStatus ?? tracking?.status ?? order?.orderStatus ?? 'PENDING');
-  
-  // Use a ref for the mount time so it's stable across renders.
-  // Date.now() inside useMemo is impure (ESLint react-hooks/purity).
-  const mountTimeRef = useRef(Date.now());
+
+  // Lazy useState initializer is the sanctioned "compute once at mount" escape
+  // hatch — unlike a ref, this value is safe to read during render.
+  const [mountTime] = useState(() => Date.now());
 
   const remainingMins = useMemo(() => {
     if (tracking?.etaMinutes != null) return tracking.etaMinutes;
     const estTime = tracking?.estimatedDeliveryTime ?? order?.estimatedDeliveryTime;
     if (!estTime) return null;
-    const diffMs = new Date(estTime).getTime() - mountTimeRef.current;
+    const diffMs = new Date(estTime).getTime() - mountTime;
     const diffMins = Math.ceil(diffMs / (60 * 1000));
     return diffMins > 0 ? diffMins : 0;
-  }, [tracking?.etaMinutes, tracking?.estimatedDeliveryTime, order?.estimatedDeliveryTime]);
+  }, [tracking?.etaMinutes, tracking?.estimatedDeliveryTime, order?.estimatedDeliveryTime, mountTime]);
 
   const etaText = useMemo(() => {
     if (status === 'DELIVERED') return 'Delivered';
@@ -98,21 +126,13 @@ export default function TrackOrderScreen() {
     return `${remainingMins} mins`;
   }, [status, remainingMins, tracking?.estimatedPreparationTime, order?.estimatedPreparationTime]);
 
-  const riderCoord = pickCoord(
-    tracking?.liveLocation,
-    tracking?.riderLocation,
-    order?.riderLocation,
-  );
+  const riderCoord = pickCoord(tracking?.liveLocation, tracking?.riderLocation, order?.riderLocation);
 
   const riderHeading =
     (tracking?.liveLocation as { heading?: number } | undefined)?.heading ??
     (tracking?.riderLocation as { heading?: number } | undefined)?.heading;
 
-  const customerCoord = pickCoord(
-    tracking?.deliveryLocation,
-    order?.customerAddress,
-    order?.deliveryAddress,
-  );
+  const customerCoord = pickCoord(tracking?.deliveryLocation, order?.customerAddress, order?.deliveryAddress);
 
   const restaurantCoord = pickCoord(
     tracking?.restaurantLocation,
@@ -156,9 +176,7 @@ export default function TrackOrderScreen() {
   const currentStepIndex = STATUS_STEPS.indexOf(status);
   const socketLive = Boolean(tracking?.socketLive);
 
-  const activeStepDescription = useMemo(() => {
-    return STEP_DESCRIPTIONS[status] ?? 'Updating your order status';
-  }, [status]);
+  const activeStepDescription = useMemo(() => STEP_DESCRIPTIONS[status] ?? 'Updating your order status', [status]);
 
   const riderInfo = useMemo(() => {
     const fromTrack = tracking?.rider;
@@ -177,37 +195,35 @@ export default function TrackOrderScreen() {
   }, [tracking?.rider, order?.riderId]);
 
   const showRiderCard = Boolean(
-    riderInfo &&
-      ['RIDER_ASSIGNED', 'PICKED_UP', 'ON_THE_WAY', 'DELIVERED'].includes(status),
+    riderInfo && ['RIDER_ASSIGNED', 'PICKED_UP', 'ON_THE_WAY', 'DELIVERED'].includes(status),
   );
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        {/* Header */}
         <View style={styles.topRow}>
-          <Pressable onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: theme.backgroundSelected, borderColor: theme.backgroundSelected }]}>
-            <Ionicons name="arrow-back" size={20} color={theme.text} />
-          </Pressable>
-          <ThemedText style={styles.headerTitle}>Live Tracking</ThemedText>
+          <PressableScale onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
+            <Ionicons name="arrow-back" size={20} color={CaseUi.ink} />
+          </PressableScale>
+          <Text style={styles.headerTitle}>Live Tracking</Text>
           <View style={{ width: 40 }} />
         </View>
 
         {trackQ.isLoading && !tracking ? (
-          <ThemedView style={[styles.container, styles.center, { backgroundColor: theme.background }]}>
-            <ThemedText style={{ color: theme.textSecondary }}>Connecting to live status...</ThemedText>
-          </ThemedView>
+          <View style={[styles.container, styles.center]}>
+            <Text style={styles.mutedText}>Connecting to live status...</Text>
+          </View>
         ) : trackQ.isError ? (
-          <ThemedView style={[styles.container, styles.center, { backgroundColor: theme.background }]}>
-            <ThemedView type="backgroundElement" style={styles.errorCard}>
-              <ThemedText style={styles.errorText}>
+          <View style={[styles.container, styles.center]}>
+            <View style={styles.errorCard}>
+              <Text style={styles.errorText}>
                 {(trackQ.error as Error)?.message ?? 'Failed to load tracking data.'}
-              </ThemedText>
-              <Pressable onPress={() => trackQ.refetch()} style={styles.retryBtn}>
-                <ThemedText style={styles.retryText}>Retry</ThemedText>
-              </Pressable>
-            </ThemedView>
-          </ThemedView>
+              </Text>
+              <PressableScale onPress={() => trackQ.refetch()} style={styles.retryBtn}>
+                <Text style={styles.retryText}>Retry</Text>
+              </PressableScale>
+            </View>
+          </View>
         ) : (
           <>
             <View style={styles.mapContainer}>
@@ -221,168 +237,151 @@ export default function TrackOrderScreen() {
                 followRider
                 orderStatus={status}
               />
-              <View style={[styles.socketBadge, { backgroundColor: socketLive ? 'rgba(15,138,95,0.9)' : 'rgba(36,37,40,0.85)' }]}>
-                <View style={[styles.socketDot, { backgroundColor: socketLive ? '#ffffff' : '#9fa2a7' }]} />
-                <ThemedText style={styles.socketText}>
-                  {socketLive ? 'Live Tracking' : 'Updating every 10s'}
-                </ThemedText>
+              <View style={[styles.socketBadge, { backgroundColor: socketLive ? 'rgba(22,163,74,0.92)' : 'rgba(15,15,15,0.85)' }]}>
+                <LivePulse color="#FFFFFF" />
+                <Text style={styles.socketText}>{socketLive ? 'Live Tracking' : 'Updating every 10s'}</Text>
               </View>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollBody}>
-            <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.backgroundSelected }]}>
-              <View style={styles.etaHeaderRow}>
-                <View style={{ flex: 1 }}>
-                  <ThemedText style={[styles.etaSubText, { color: theme.textSecondary }]}>
-                    ESTIMATED DELIVERY TIME
-                  </ThemedText>
-                  <ThemedText style={[styles.etaMainText, { color: theme.text }]}>
-                    {etaText}
-                  </ThemedText>
+              <Animated.View entering={FadeInDown.duration(300)} style={styles.card}>
+                <View style={styles.etaHeaderRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.etaSubText}>ESTIMATED DELIVERY TIME</Text>
+                    <Text style={styles.etaMainText}>{etaText}</Text>
+                  </View>
+                  <View style={styles.bicycleIconCircle}>
+                    <Ionicons name="bicycle" size={24} color={CaseUi.orange} />
+                  </View>
                 </View>
-                <View style={[styles.bicycleIconCircle, { backgroundColor: theme.primarySoft }]}>
-                  <Ionicons name="bicycle" size={24} color={theme.primary} />
+
+                <View style={styles.divider} />
+
+                {(status === 'CONFIRMED' || status === 'PREPARING') &&
+                (tracking?.estimatedPreparationTime ?? order?.estimatedPreparationTime) ? (
+                  <Text style={styles.waitTimeText}>
+                    Restaurant prep time: {tracking?.estimatedPreparationTime ?? order?.estimatedPreparationTime} minutes
+                  </Text>
+                ) : null}
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <LivePulse color={CaseUi.orange} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.etaDescriptionText}>{activeStepDescription}</Text>
+                  </View>
                 </View>
-              </View>
+              </Animated.View>
 
-              <View style={[styles.divider, { backgroundColor: theme.backgroundSelected }]} />
-
-              {(status === 'CONFIRMED' || status === 'PREPARING') &&
-              (tracking?.estimatedPreparationTime ?? order?.estimatedPreparationTime) ? (
-                <ThemedText style={[styles.waitTimeText, { color: theme.primary }]}>
-                  Restaurant prep time: {tracking?.estimatedPreparationTime ?? order?.estimatedPreparationTime} minutes
-                </ThemedText>
+              {showRiderCard && riderInfo ? (
+                <Animated.View entering={FadeInDown.delay(60).duration(300)} style={[styles.card, styles.riderCard]}>
+                  <View style={styles.riderCardHeader}>
+                    <View style={styles.bicycleIconCircle}>
+                      <Ionicons name="person" size={22} color={CaseUi.orange} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.riderLabel}>Your delivery partner</Text>
+                      <Text style={styles.riderName}>{riderInfo.fullName ?? 'Delivery Partner'}</Text>
+                      {riderInfo.riderCode ? <Text style={styles.riderMeta}>ID: {riderInfo.riderCode}</Text> : null}
+                    </View>
+                  </View>
+                  {riderInfo.mobile ? (
+                    <PressableScale
+                      onPress={() => Linking.openURL(`tel:${riderInfo.mobile}`)}
+                      style={styles.callRiderBtn}
+                    >
+                      <Ionicons name="call" size={18} color="#FFFFFF" />
+                      <Text style={styles.callRiderText}>Call {riderInfo.mobile}</Text>
+                    </PressableScale>
+                  ) : null}
+                </Animated.View>
               ) : null}
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={styles.indicatorPulse}>
-                  <View style={styles.pulseInner} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <ThemedText style={styles.etaDescriptionText}>{activeStepDescription}</ThemedText>
-                </View>
-              </View>
-            </ThemedView>
+              {/* Delivery Timeline Card */}
+              <Animated.View entering={FadeInDown.delay(120).duration(300)} style={styles.card}>
+                <Text style={styles.timelineTitle}>Delivery Timeline</Text>
 
-            {showRiderCard && riderInfo ? (
-              <ThemedView type="backgroundElement" style={[styles.card, styles.riderCard, { borderColor: theme.backgroundSelected }]}>
-                <View style={styles.riderCardHeader}>
-                  <View style={[styles.bicycleIconCircle, { backgroundColor: theme.primarySoft }]}>
-                    <Ionicons name="person" size={22} color={theme.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <ThemedText style={styles.riderLabel}>Your delivery partner</ThemedText>
-                    <ThemedText style={[styles.riderName, { color: theme.text }]}>
-                      {riderInfo.fullName ?? 'Delivery Partner'}
-                    </ThemedText>
-                    {riderInfo.riderCode ? (
-                      <ThemedText style={[styles.riderMeta, { color: theme.textSecondary }]}>
-                        ID: {riderInfo.riderCode}
-                      </ThemedText>
-                    ) : null}
-                  </View>
-                </View>
-                {riderInfo.mobile ? (
-                  <Pressable
-                    onPress={() => Linking.openURL(`tel:${riderInfo.mobile}`)}
-                    style={[styles.callRiderBtn, { backgroundColor: theme.primary }]}
-                  >
-                    <Ionicons name="call" size={18} color="#ffffff" />
-                    <ThemedText style={styles.callRiderText}>Call {riderInfo.mobile}</ThemedText>
-                  </Pressable>
-                ) : null}
-              </ThemedView>
-            ) : null}
+                <View style={styles.timelineList}>
+                  {timeline.map((step, idx) => {
+                    const stepStatus = step.status;
+                    const stepLabel = STEP_LABELS[stepStatus] ?? stepStatus.replace(/_/g, ' ');
+                    const stepIdx = STATUS_STEPS.indexOf(stepStatus);
+                    const isCompleted = stepIdx >= 0 && stepIdx <= currentStepIndex;
+                    const isActive = stepStatus === status;
 
-            {/* Delivery Timeline Card */}
-            <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.backgroundSelected }]}>
-              <ThemedText style={styles.timelineTitle}>Delivery Timeline</ThemedText>
-              
-              <View style={styles.timelineList}>
-                {timeline.map((step, idx) => {
-                  const stepStatus = step.status;
-                  const stepLabel = STEP_LABELS[stepStatus] ?? stepStatus.replace(/_/g, ' ');
-                  const stepIdx = STATUS_STEPS.indexOf(stepStatus);
-                  const isCompleted = stepIdx >= 0 && stepIdx <= currentStepIndex;
-                  const isActive = stepStatus === status;
-
-                  return (
-                    <View key={stepStatus} style={styles.timelineItem}>
-                      {/* Left Line & Dot Column */}
-                      <View style={styles.timelineLeftColumn}>
-                        <View
-                          style={[
-                            styles.timelinePoint,
-                            isCompleted ? { backgroundColor: theme.primary } : { backgroundColor: theme.backgroundSelected },
-                            isActive && { borderWidth: 3, borderColor: `${theme.primary}50` },
-                          ]}
-                        />
-                        {idx < timeline.length - 1 && (
+                    return (
+                      <Animated.View
+                        key={stepStatus}
+                        entering={FadeInDown.delay(150 + idx * 30).duration(240)}
+                        style={styles.timelineItem}
+                      >
+                        <View style={styles.timelineLeftColumn}>
                           <View
                             style={[
-                              styles.timelineLineConnector,
-                              { backgroundColor: stepIdx < currentStepIndex ? theme.primary : theme.backgroundSelected },
+                              styles.timelinePoint,
+                              isCompleted ? { backgroundColor: CaseUi.orange } : { backgroundColor: CaseUi.line },
+                              isActive && styles.timelinePointActive,
                             ]}
                           />
-                        )}
-                      </View>
+                          {idx < timeline.length - 1 && (
+                            <View
+                              style={[
+                                styles.timelineLineConnector,
+                                { backgroundColor: stepIdx < currentStepIndex ? CaseUi.orange : CaseUi.line },
+                              ]}
+                            />
+                          )}
+                        </View>
 
-                      {/* Content Column */}
-                      <View style={styles.timelineContentColumn}>
-                        <ThemedText
-                          style={[
-                            styles.timelineStepLabel,
-                            isCompleted ? { color: theme.text, fontFamily: 'PlusJakartaSans_800ExtraBold' } : { color: theme.textSecondary },
-                            isActive && { color: theme.primary },
-                          ]}
-                        >
-                          {stepLabel}
-                        </ThemedText>
-                        {step.timestamp ? (
-                          <ThemedText style={[styles.timelineTimestamp, { color: theme.textSecondary }]}>
-                            {new Date(step.timestamp).toLocaleTimeString(undefined, {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              hour12: true,
-                            })}
-                          </ThemedText>
-                        ) : null}
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </ThemedView>
+                        <View style={styles.timelineContentColumn}>
+                          <Text
+                            style={[
+                              styles.timelineStepLabel,
+                              isCompleted && styles.timelineStepLabelDone,
+                              isActive && styles.timelineStepLabelActive,
+                            ]}
+                          >
+                            {stepLabel}
+                          </Text>
+                          {step.timestamp ? (
+                            <Text style={styles.timelineTimestamp}>
+                              {new Date(step.timestamp).toLocaleTimeString(undefined, {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                hour12: true,
+                              })}
+                            </Text>
+                          ) : null}
+                        </View>
+                      </Animated.View>
+                    );
+                  })}
+                </View>
+              </Animated.View>
 
-            {/* Support Quick Buttons */}
-            <View style={styles.actionRow}>
-              <Pressable
-                style={[styles.actionBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.backgroundSelected }]}
-                onPress={() => Linking.openURL('tel:18001234567')}
-              >
-                <Ionicons name="call" size={18} color={theme.primary} />
-                <ThemedText style={[styles.actionText, { color: theme.text }]}>Call Support</ThemedText>
-              </Pressable>
-              <Pressable
-                style={[styles.actionBtn, { backgroundColor: theme.backgroundElement, borderColor: theme.backgroundSelected }]}
-                onPress={() => router.push('/support')}
-              >
-                <Ionicons name="chatbubble-ellipses" size={18} color={theme.primary} />
-                <ThemedText style={[styles.actionText, { color: theme.text }]}>Get Help</ThemedText>
-              </Pressable>
-            </View>
-          </ScrollView>
+              {/* Support Quick Buttons */}
+              <Animated.View entering={FadeInDown.delay(180).duration(300)} style={styles.actionRow}>
+                <PressableScale style={styles.actionBtn} onPress={() => Linking.openURL('tel:18001234567')}>
+                  <Ionicons name="call" size={18} color={CaseUi.orange} />
+                  <Text style={styles.actionText}>Call Support</Text>
+                </PressableScale>
+                <PressableScale style={styles.actionBtn} onPress={() => router.push('/support')}>
+                  <Ionicons name="chatbubble-ellipses" size={18} color={CaseUi.orange} />
+                  <Text style={styles.actionText}>Get Help</Text>
+                </PressableScale>
+              </Animated.View>
+            </ScrollView>
           </>
         )}
       </SafeAreaView>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: CaseUi.white },
   safeArea: { flex: 1 },
   center: { justifyContent: 'center', alignItems: 'center' },
+  mutedText: { color: CaseUi.muted, fontFamily: 'PlusJakartaSans_500Medium' },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -395,18 +394,13 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     borderWidth: 1,
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.field,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 16.5,
-  },
-  scrollBody: {
-    padding: 16,
-    paddingBottom: 40,
-    gap: 14,
-  },
+  headerTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 16.5, color: CaseUi.ink },
+  scrollBody: { padding: 16, paddingBottom: 40, gap: 14 },
   mapContainer: {
     height: 260,
     marginHorizontal: 16,
@@ -415,7 +409,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     borderWidth: 1,
-    borderColor: 'rgba(127,127,127,0.08)',
+    borderColor: CaseUi.line,
   },
   socketBadge: {
     position: 'absolute',
@@ -423,100 +417,48 @@ const styles = StyleSheet.create({
     right: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 20,
   },
-  socketDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  socketText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
+  socketText: { color: '#FFFFFF', fontSize: 10, fontFamily: 'PlusJakartaSans_800ExtraBold' },
+  pulseWrap: { width: 10, height: 10, alignItems: 'center', justifyContent: 'center' },
+  pulseRing: { position: 'absolute', width: 10, height: 10, borderRadius: 5 },
+  pulseDot: { width: 6, height: 6, borderRadius: 3 },
   card: {
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.white,
+    ...CaseUi.softShadow,
   },
-  etaHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  etaSubText: {
-    fontSize: 8.5,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    letterSpacing: 0.5,
-  },
-  etaMainText: {
-    fontSize: 24,
-    fontFamily: 'PlusJakartaSans_850ExtraBold',
-    marginTop: 4,
-  },
+  etaHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  etaSubText: { fontSize: 9, fontFamily: 'PlusJakartaSans_800ExtraBold', letterSpacing: 0.5, color: CaseUi.muted },
+  etaMainText: { fontSize: 24, fontFamily: 'PlusJakartaSans_800ExtraBold', marginTop: 4, color: CaseUi.ink },
   bicycleIconCircle: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: CaseUi.orangeSoft,
   },
-  divider: {
-    height: 1,
-    marginVertical: 12,
-  },
-  indicatorPulse: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: 'rgba(255,90,0,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pulseInner: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#ff5a00',
-  },
-  etaDescriptionText: {
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_700Bold',
-  },
-  waitTimeText: {
-    fontSize: 13,
-    fontFamily: 'PlusJakartaSans_700Bold',
-    marginBottom: 10,
-  },
-  riderCard: {
-    gap: 12,
-  },
-  riderCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
+  divider: { height: 1, marginVertical: 12, backgroundColor: CaseUi.line },
+  etaDescriptionText: { fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold', color: CaseUi.ink },
+  waitTimeText: { fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold', marginBottom: 10, color: CaseUi.orange },
+  riderCard: { gap: 12 },
+  riderCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   riderLabel: {
     fontSize: 11,
     fontFamily: 'PlusJakartaSans_600SemiBold',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
-    opacity: 0.7,
+    color: CaseUi.muted,
   },
-  riderName: {
-    fontSize: 16,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    marginTop: 2,
-  },
-  riderMeta: {
-    fontSize: 11,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    marginTop: 2,
-  },
+  riderName: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', marginTop: 2, color: CaseUi.ink },
+  riderMeta: { fontSize: 11, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 2, color: CaseUi.muted },
   callRiderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -524,61 +466,22 @@ const styles = StyleSheet.create({
     gap: 8,
     borderRadius: 12,
     paddingVertical: 12,
+    backgroundColor: CaseUi.orange,
   },
-  callRiderText: {
-    color: '#ffffff',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 14,
-  },
-  timelineTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 14,
-    marginBottom: 16,
-  },
-  timelineList: {
-    paddingLeft: 4,
-  },
-  timelineItem: {
-    flexDirection: 'row',
-    minHeight: 48,
-  },
-  timelineLeftColumn: {
-    alignItems: 'center',
-    width: 20,
-  },
-  timelinePoint: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    zIndex: 2,
-    marginTop: 5,
-  },
-  timelineLineConnector: {
-    width: 2,
-    flex: 1,
-    marginVertical: 2,
-    zIndex: 1,
-  },
-  timelineContentColumn: {
-    flex: 1,
-    paddingLeft: 12,
-    paddingBottom: 16,
-    justifyContent: 'flex-start',
-  },
-  timelineStepLabel: {
-    fontSize: 12.5,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    marginTop: 0,
-  },
-  timelineTimestamp: {
-    fontSize: 10,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    marginTop: 3,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
+  callRiderText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14 },
+  timelineTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, marginBottom: 16, color: CaseUi.ink },
+  timelineList: { paddingLeft: 4 },
+  timelineItem: { flexDirection: 'row', minHeight: 48 },
+  timelineLeftColumn: { alignItems: 'center', width: 20 },
+  timelinePoint: { width: 8, height: 8, borderRadius: 4, zIndex: 2, marginTop: 5 },
+  timelinePointActive: { borderWidth: 3, borderColor: CaseUi.orangeSoft },
+  timelineLineConnector: { width: 2, flex: 1, marginVertical: 2, zIndex: 1 },
+  timelineContentColumn: { flex: 1, paddingLeft: 12, paddingBottom: 16, justifyContent: 'flex-start' },
+  timelineStepLabel: { fontSize: 12.5, fontFamily: 'PlusJakartaSans_600SemiBold', color: CaseUi.muted },
+  timelineStepLabelDone: { color: CaseUi.ink, fontFamily: 'PlusJakartaSans_800ExtraBold' },
+  timelineStepLabelActive: { color: CaseUi.orange },
+  timelineTimestamp: { fontSize: 10, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 3, color: CaseUi.muted },
+  actionRow: { flexDirection: 'row', gap: 12 },
   actionBtn: {
     flex: 1,
     flexDirection: 'row',
@@ -588,32 +491,20 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 14,
     borderWidth: 1,
+    borderColor: CaseUi.line,
+    backgroundColor: CaseUi.white,
   },
-  actionText: {
-    fontFamily: 'PlusJakartaSans_750Bold',
-    fontSize: 12.5,
-  },
+  actionText: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: CaseUi.ink },
   errorCard: {
     margin: 16,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(226,55,68,0.25)',
+    borderColor: 'rgba(220,38,38,0.25)',
     alignItems: 'center',
     gap: 12,
   },
-  errorText: {
-    color: '#e23744',
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 13,
-  },
-  retryBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  retryText: {
-    color: '#ff5a00',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
+  errorText: { color: CaseUi.danger, fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 13 },
+  retryBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+  retryText: { color: CaseUi.orange, fontFamily: 'PlusJakartaSans_800ExtraBold' },
 });
