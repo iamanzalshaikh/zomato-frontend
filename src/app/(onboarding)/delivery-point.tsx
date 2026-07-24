@@ -13,10 +13,13 @@ import { CaseUi } from '@/constants/caseUi';
 import { useCaseDeliveryPointsQuery } from '@/hooks/queries/case';
 import { setSelectedDeliveryPoint } from '@/lib/caseCheckout';
 import { toast } from '@/lib/toast';
+import { useThemeContext } from '@/context/ThemeContext';
 
 export default function DeliveryPointScreen() {
   const router = useRouter();
   const pointsQ = useCaseDeliveryPointsQuery();
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -62,14 +65,21 @@ export default function DeliveryPointScreen() {
             <Animated.View key={point.id} entering={FadeInDown.delay(delay + i * 40).duration(280)}>
               <PressableScale
                 onPress={() => setSelectedId(point.id)}
-                style={[styles.row, active && styles.rowActive]}
+                style={[
+                  styles.row,
+                  {
+                    backgroundColor: isDark ? '#141417' : CaseUi.white,
+                    borderColor: isDark ? '#27272A' : CaseUi.line,
+                  },
+                  active && styles.rowActive,
+                ]}
               >
                 <View style={[styles.iconWrap, active && styles.iconWrapActive]}>
                   <Ionicons name="location" size={20} color={active ? CaseUi.orange : CaseUi.muted} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.rowTitle}>{point.name}</Text>
-                  {point.campus ? <Text style={styles.rowSub}>{point.campus} campus</Text> : null}
+                  <Text style={[styles.rowTitle, { color: colors.text }]}>{point.name}</Text>
+                  {point.campus ? <Text style={[styles.rowSub, { color: colors.textSecondary }]}>{point.campus} campus</Text> : null}
                 </View>
                 {active ? <Ionicons name="checkmark-circle" size={22} color={CaseUi.orange} /> : null}
               </PressableScale>
@@ -84,8 +94,8 @@ export default function DeliveryPointScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right', 'bottom']}>
         <Animated.View entering={FadeInDown.duration(300)}>
-          <Text style={styles.title}>Campus drop-off</Text>
-          <Text style={styles.sub}>Choose where CASE should deliver your order</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Campus drop-off</Text>
+          <Text style={[styles.sub, { color: colors.textSecondary }]}>Choose where CASE should deliver your order</Text>
         </Animated.View>
 
         {pointsQ.isLoading ? (

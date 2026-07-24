@@ -16,12 +16,34 @@ import {
 } from '@expo-google-fonts/plus-jakarta-sans';
 
 import { ToastHost } from '@/components/toast-host';
+import { SpellingLoader } from '@/components/spelling-loader';
 import { queryClient } from '@/lib/queryClient';
-
-const LOADING_ORANGE = '#ff5a00';
-const SURFACE = '#f9f9f9';
+import { ThemeProviderCustom, useThemeContext } from '@/context/ThemeContext';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+function InnerRootLayout() {
+  const { colors } = useThemeContext();
+
+  return (
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <ToastHost />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+          }}
+        />
+      </QueryClientProvider>
+    </SafeAreaProvider>
+  );
+}
+
+function RootContent() {
+  const { colors } = useThemeContext();
+  return <View style={{ flex: 1, backgroundColor: colors.background }} />;
+}
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -38,31 +60,11 @@ export default function RootLayout() {
     }
   }, [fontsLoaded]);
 
-  if (!fontsLoaded) {
-    return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: LOADING_ORANGE }}>
-          <ActivityIndicator size="large" color="#ffffff" />
-        </View>
-      </GestureHandlerRootView>
-    );
-  }
-
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <ThemeProvider value={DefaultTheme}>
-            <ToastHost />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: SURFACE },
-              }}
-            />
-          </ThemeProvider>
-        </QueryClientProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ThemeProviderCustom>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        {!fontsLoaded ? <RootContent /> : <InnerRootLayout />}
+      </GestureHandlerRootView>
+    </ThemeProviderCustom>
   );
 }

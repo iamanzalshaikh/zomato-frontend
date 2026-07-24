@@ -22,6 +22,8 @@ import { saveAuthFromResponse } from '@/lib/auth';
 import { getApiUrl } from '@/config/env';
 import { CaseUi } from '@/constants/caseUi';
 import { PressableScale } from '@/components/pressable-scale';
+import { SD_LOGO, SD_LOGO_BLACK } from '@/constants/splashAssets';
+import { useThemeContext } from '@/context/ThemeContext';
 
 function extractErrorMessage(error: unknown, fallback: string): string {
   const err = error as { message?: string; data?: { message?: string } };
@@ -31,6 +33,8 @@ function extractErrorMessage(error: unknown, fallback: string): string {
 export default function LoginScreen() {
   const { width, height } = useWindowDimensions();
   const router = useRouter();
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
 
   const [email, setEmail] = useState(__DEV__ ? 'enganzalshaikh@gmail.com' : '');
   const [fullName] = useState('');
@@ -256,6 +260,8 @@ export default function LoginScreen() {
             styles.bottomPanel,
             {
               minHeight: height * 0.32,
+              backgroundColor: isDark ? '#141417' : CaseUi.white,
+              borderTopColor: isDark ? '#27272A' : CaseUi.line,
               transform: [{ translateY: panelTranslateY }],
             },
           ]}
@@ -267,10 +273,15 @@ export default function LoginScreen() {
           >
             {/* Header */}
             <Reanimated.View entering={FadeInDown.duration(340)} style={styles.headerContainer}>
-              <Text style={styles.title}>
-                {step === 'input' ? 'Welcome to QuickBite' : 'Verify OTP'}
+              <Image
+                source={isDark ? SD_LOGO : SD_LOGO_BLACK}
+                style={{ width: 64, height: 64, alignSelf: 'center', marginBottom: 12 }}
+                resizeMode="contain"
+              />
+              <Text style={[styles.title, { color: colors.text }]}>
+                {step === 'input' ? 'Welcome to SD-Services' : 'Verify OTP'}
               </Text>
-              <Text style={styles.subtitle}>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                 {step === 'input'
                   ? 'Enter your email to continue'
                   : `Enter the 6-digit code sent to ${email}`}
@@ -291,15 +302,15 @@ export default function LoginScreen() {
             {step === 'input' ? (
               <Reanimated.View entering={FadeInDown.delay(60).duration(340)} style={styles.inputSection}>
                 {/* Email Input */}
-                <View style={styles.phoneInputContainer}>
+                <View style={[styles.phoneInputContainer, { backgroundColor: isDark ? '#1C1C22' : CaseUi.field, borderColor: isDark ? '#27272A' : CaseUi.line }]}>
                   <View style={styles.countryCodeContainer}>
                     <Text style={styles.atSymbol}>@</Text>
                   </View>
-                  <View style={styles.inputDivider} />
+                  <View style={[styles.inputDivider, { backgroundColor: isDark ? '#27272A' : CaseUi.line }]} />
                   <TextInput
-                    style={styles.phoneInput}
+                    style={[styles.phoneInput, { color: colors.text }]}
                     placeholder="Enter email address"
-                    placeholderTextColor={CaseUi.muted}
+                    placeholderTextColor={isDark ? '#666' : CaseUi.muted}
                     value={email}
                     onChangeText={setEmail}
                     keyboardType="email-address"
@@ -331,16 +342,16 @@ export default function LoginScreen() {
                 {/* Social Login Icons */}
                 <View style={styles.socialContainer}>
                   <PressableScale
-                    style={styles.socialButton}
+                    style={[styles.socialButton, { backgroundColor: isDark ? '#1C1C22' : CaseUi.white, borderColor: isDark ? '#27272A' : CaseUi.line }]}
                     onPress={() => Alert.alert('Google', 'Google login is coming next. Backend social login is currently a stub (501).')}
                   >
                     <Text style={styles.socialG}>G</Text>
                   </PressableScale>
                   <PressableScale
-                    style={styles.socialButton}
+                    style={[styles.socialButton, { backgroundColor: isDark ? '#1C1C22' : CaseUi.white, borderColor: isDark ? '#27272A' : CaseUi.line }]}
                     onPress={() => Alert.alert('Apple', 'Apple login is coming next.')}
                   >
-                    <Ionicons name="logo-apple" size={22} color={CaseUi.ink} />
+                    <Ionicons name="logo-apple" size={22} color={colors.text} />
                   </PressableScale>
                 </View>
 
@@ -367,7 +378,11 @@ export default function LoginScreen() {
                       ref={(ref) => {
                         inputRefs.current[index] = ref;
                       }}
-                      style={[styles.otpBox, digit ? styles.otpBoxFilled : null]}
+                      style={[
+                        styles.otpBox, 
+                        { backgroundColor: isDark ? '#1C1C22' : CaseUi.field, borderColor: isDark ? '#27272A' : CaseUi.line, color: colors.text },
+                        digit ? styles.otpBoxFilled : null
+                      ]}
                       value={digit}
                       onChangeText={(value) => handleOtpChange(value, index)}
                       onKeyPress={(e) => handleKeyPress(e, index)}
@@ -638,9 +653,8 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontFamily: 'PlusJakartaSans_700Bold',
     textAlign: 'center',
-    backgroundColor: CaseUi.field,
+    backgroundColor: 'transparent',
     borderColor: CaseUi.line,
-    color: CaseUi.ink,
   },
   otpBoxFilled: {
     borderColor: CaseUi.orange,

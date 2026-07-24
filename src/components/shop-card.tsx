@@ -5,9 +5,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
 import { CaseUi } from '@/constants/caseUi';
-import { CASE_DEFAULT_DELIVERY_MINS, getMerchantLogoUri } from '@/constants/caseHome';
+import { CASE_DEFAULT_DELIVERY_MINS, getMerchantLogoUri, CASE_CATEGORY_META, type CaseCategoryId } from '@/constants/caseHome';
 import { FavoriteHeart } from '@/components/favorite-heart';
 import type { CaseMerchant } from '@/services/case';
+import { useThemeContext } from '@/context/ThemeContext';
 
 type Props = {
   merchant: CaseMerchant;
@@ -28,6 +29,8 @@ export const ShopCard = memo(function ShopCard({
   offerBadge,
   onPress,
 }: Props) {
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
   const mins = merchant.averageDeliveryTime ?? CASE_DEFAULT_DELIVERY_MINS;
   const open = merchant.isOpen !== false;
   const rating = merchant.averageRating ?? 0;
@@ -37,10 +40,19 @@ export const ShopCard = memo(function ShopCard({
   const minOrderLabel = merchant.minimumOrderAmount ? `Min J$${merchant.minimumOrderAmount}` : null;
 
   if (variant === 'list') {
+    const catMeta = merchant.businessType ? CASE_CATEGORY_META[merchant.businessType.toUpperCase() as CaseCategoryId] : null;
+    const catLabel = catMeta?.short || merchant.businessType;
     return (
       <Pressable
         onPress={() => onPress(merchant.id)}
-        style={({ pressed }) => [styles.listCard, pressed && styles.pressed]}
+        style={({ pressed }) => [
+          styles.listCard,
+          {
+            backgroundColor: isDark ? '#18181C' : CaseUi.white,
+            borderColor: isDark ? '#282830' : CaseUi.line,
+          },
+          pressed && styles.pressed,
+        ]}
       >
         <View style={styles.listImageWrap}>
           <Image source={{ uri: cover }} style={styles.listImage} contentFit="cover" transition={200} />
@@ -57,9 +69,12 @@ export const ShopCard = memo(function ShopCard({
         </View>
         <View style={styles.listBody}>
           <View style={styles.rowBetween}>
-            <Text style={styles.name} numberOfLines={1}>{merchant.restaurantName}</Text>
+            <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
+              {merchant.restaurantName}
+            </Text>
             <FavoriteHeart restaurantId={merchant.id} size={17} variant="header" />
           </View>
+          
           <View style={styles.metaRow}>
             {hasRating ? (
               <View style={styles.ratingPill}>
@@ -71,12 +86,29 @@ export const ShopCard = memo(function ShopCard({
                 <Text style={styles.newPillText}>New</Text>
               </View>
             )}
-            <View style={styles.metaDotGroup}>
-              <Ionicons name="time-outline" size={12} color={CaseUi.muted} />
-              <Text style={styles.meta}>{mins} mins</Text>
-            </View>
-            {minOrderLabel ? <Text style={styles.meta}>· {minOrderLabel}</Text> : null}
+            
+            {catLabel ? (
+              <View style={[styles.catTagPill, { backgroundColor: isDark ? '#24242A' : '#F4F4F5' }]}>
+                <Text style={[styles.catTagText, { color: isDark ? '#A1A1AA' : CaseUi.muted }]}>
+                  {catLabel}
+                </Text>
+              </View>
+            ) : null}
           </View>
+
+          <View style={[styles.metaRow, { marginTop: 4 }]}>
+            <View style={styles.metaDotGroup}>
+              <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
+              <Text style={[styles.meta, { color: colors.textSecondary }]}>{mins} mins</Text>
+            </View>
+            <Text style={[styles.metaDivider, { color: colors.textSecondary }]}>·</Text>
+            <Text style={[styles.meta, { color: colors.textSecondary }]}>
+              {minOrderLabel ?? 'No min'}
+            </Text>
+            <Text style={[styles.metaDivider, { color: colors.textSecondary }]}>·</Text>
+            <Text style={[styles.meta, { color: colors.textSecondary }]}>J$150 del.</Text>
+          </View>
+
           {open ? (
             <Text style={styles.openLabel}>Open now</Text>
           ) : (
@@ -119,7 +151,15 @@ export const ShopCard = memo(function ShopCard({
   return (
     <Pressable
       onPress={() => onPress(merchant.id)}
-      style={({ pressed }) => [{ width }, styles.hCard, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        { width },
+        styles.hCard,
+        {
+          backgroundColor: isDark ? '#18181C' : CaseUi.white,
+          borderColor: isDark ? '#282830' : 'rgba(0,0,0,0.06)',
+        },
+        pressed && styles.pressed,
+      ]}
     >
       <View style={styles.coverWrap}>
         <Image source={{ uri: cover }} style={styles.cover} contentFit="cover" transition={200} />
@@ -153,10 +193,10 @@ export const ShopCard = memo(function ShopCard({
         )}
       </View>
       <View style={styles.hBody}>
-        <Text style={styles.nameSm} numberOfLines={1}>
+        <Text style={[styles.nameSm, { color: colors.text }]} numberOfLines={1}>
           {merchant.restaurantName}
         </Text>
-        <Text style={styles.fee} numberOfLines={1}>
+        <Text style={[styles.fee, { color: colors.textSecondary }]} numberOfLines={1}>
           {minOrderLabel ?? 'No minimum order'}
         </Text>
       </View>
@@ -167,18 +207,22 @@ export const ShopCard = memo(function ShopCard({
 const styles = StyleSheet.create({
   hCard: {
     backgroundColor: CaseUi.white,
-    borderRadius: CaseUi.radius.lg,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: CaseUi.line,
+    borderColor: 'rgba(0,0,0,0.06)',
     overflow: 'hidden',
-    ...CaseUi.cardShadow,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
   },
-  coverWrap: { height: 106, backgroundColor: CaseUi.field },
+  coverWrap: { height: 114, backgroundColor: CaseUi.field },
   cover: { width: '100%', height: '100%' },
   coverScrim: { ...StyleSheet.absoluteFill },
   ribbon: {
     position: 'absolute',
-    top: 10,
+    top: 8,
     left: 0,
     backgroundColor: CaseUi.orange,
     paddingHorizontal: 9,
@@ -192,6 +236,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     right: 8,
+    zIndex: 10,
   },
   closedOverlay: {
     position: 'absolute',
@@ -323,4 +368,19 @@ const styles = StyleSheet.create({
   listBody: { flex: 1, justifyContent: 'center' },
   rowBetween: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'space-between' },
   pressed: { opacity: 0.92 },
+  catTagPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  catTagText: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 9,
+    textTransform: 'uppercase',
+  },
+  metaDivider: {
+    fontSize: 10,
+    marginHorizontal: 2,
+  },
 });

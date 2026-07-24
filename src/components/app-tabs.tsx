@@ -1,28 +1,40 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useMemo } from 'react';
 
 import { CaseUi } from '@/constants/caseUi';
 import { useCart } from '@/hooks/use-cart';
 import { getCartItemCount } from '@/lib/cartDisplay';
+import { useThemeContext } from '@/context/ThemeContext';
+import { useOrderHistoryQuery } from '@/hooks/queries/orders';
 
 const TAB_LABEL_FONT = 'PlusJakartaSans_600SemiBold';
+const TERMINAL = new Set(['DELIVERED', 'CANCELLED', 'REJECTED']);
 
 export default function AppTabs() {
   const insets = useSafeAreaInsets();
   const { cart } = useCart();
   const cartCount = getCartItemCount(cart);
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
+
+  const ordersQ = useOrderHistoryQuery();
+  const activeOrderCount = useMemo(() => {
+    const list = Array.isArray(ordersQ.data) ? ordersQ.data : [];
+    return list.filter((o) => !TERMINAL.has(String(o.orderStatus ?? '').toUpperCase())).length;
+  }, [ordersQ.data]);
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: CaseUi.orange,
-        tabBarInactiveTintColor: CaseUi.muted,
+        tabBarInactiveTintColor: isDark ? '#888888' : CaseUi.muted,
         tabBarStyle: {
-          backgroundColor: CaseUi.white,
+          backgroundColor: isDark ? '#121215' : CaseUi.white,
           borderTopWidth: 1,
-          borderTopColor: CaseUi.line,
+          borderTopColor: isDark ? '#222226' : CaseUi.line,
           height: 58 + Math.max(insets.bottom, 0),
           paddingBottom: Math.max(insets.bottom, 6),
           paddingTop: 6,
@@ -58,6 +70,12 @@ export default function AppTabs() {
         name="orders"
         options={{
           title: 'Orders',
+          tabBarBadge: activeOrderCount > 0 ? activeOrderCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: CaseUi.orange,
+            fontSize: 10,
+            fontFamily: TAB_LABEL_FONT,
+          },
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'receipt' : 'receipt-outline'} size={22} color={color} />
           ),

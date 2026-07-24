@@ -90,8 +90,12 @@ export function usePerfQuery(name: string, isFetching: boolean, dataUpdatedAt: n
     if (key === lastKey.current) return;
     lastKey.current = key;
 
-    const ageMs = Date.now() - dataUpdatedAt;
-    const source = isFetching ? '🌐 NETWORK' : `💾 CACHE (${Math.round(ageMs / 1000)}s old)`;
+    const ageMs = dataUpdatedAt > 0 ? Date.now() - dataUpdatedAt : 0;
+    const source = isFetching
+      ? '🌐 NETWORK'
+      : dataUpdatedAt > 0
+        ? `💾 CACHE (${Math.round(ageMs / 1000)}s old)`
+        : '🆕 INITIAL';
     console.log(`📊 [QUERY] ${name} → ${source}`);
   }, [name, isFetching, dataUpdatedAt]);
 }
@@ -99,7 +103,11 @@ export function usePerfQuery(name: string, isFetching: boolean, dataUpdatedAt: n
 /** @deprecated Prefer usePerfQuery in query hooks */
 export function perfQuery(name: string, isFetching: boolean, dataUpdatedAt: number): void {
   if (!__DEV__) return;
-  const ageMs = Date.now() - dataUpdatedAt;
-  const source = isFetching ? '🌐 NETWORK' : `💾 CACHE (${Math.round(ageMs / 1000)}s old)`;
+  const ageMs = dataUpdatedAt > 0 ? Date.now() - dataUpdatedAt : 0;
+  const source = isFetching
+    ? '🌐 NETWORK'
+    : dataUpdatedAt > 0
+      ? `💾 CACHE (${Math.round(ageMs / 1000)}s old)`
+      : '🆕 INITIAL';
   console.log(`📊 [QUERY] ${name} → ${source}`);
 }

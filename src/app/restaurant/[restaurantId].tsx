@@ -36,6 +36,7 @@ import { useCart } from '@/hooks/use-cart';
 import { getCartDisplayTotal, getCartItemCount, getCartRestaurantName } from '@/lib/cartDisplay';
 import { toast } from '@/lib/toast';
 import { useFloatingCartBottom, useFloatingCartScrollPadding } from '@/hooks/use-floating-cart-inset';
+import { useThemeContext } from '@/context/ThemeContext';
 
 function FoodTypeBadge({ type }: { type?: string }) {
   if (type === 'veg') {
@@ -128,31 +129,71 @@ const MenuItemRow = memo(function MenuItemRow({
   onAdd: (item: MenuItem) => void;
   showRecommendedBadge?: boolean;
 }) {
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
+  const busy = addingItemId === item._id;
+  const hasAddons = Boolean(item.addons?.length);
+
   return (
-    <View style={styles.menuRow}>
+    <View style={[styles.menuRow, { borderBottomColor: isDark ? '#27272A' : '#f8f8f8' }]}>
+      {/* Left: Thumbnail image */}
+      {item.images?.[0] ? (
+        <Image source={{ uri: item.images[0] }} style={styles.dishImageLeft} contentFit="cover" transition={200} />
+      ) : (
+        <View style={[styles.noPhotoImageLeft, { backgroundColor: isDark ? '#27272A' : '#f8f8f8' }]}>
+          <Ionicons name="fast-food-outline" size={24} color={isDark ? '#4E4E52' : '#cccccc'} />
+        </View>
+      )}
+
+      {/* Middle: Info */}
       <View style={styles.itemLeft}>
-        <FoodTypeBadge type={item.foodType} />
-        <ThemedText style={styles.itemName}>{item.itemName}</ThemedText>
-        {showRecommendedBadge ? (
-          <View style={{ flexDirection: 'row' }}>
-            <ThemedText style={{ fontSize: 10, color: '#0f8a5f', fontWeight: 'bold', backgroundColor: '#eefcf7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-              ★ Highly reordered
-            </ThemedText>
-          </View>
-        ) : null}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <FoodTypeBadge type={item.foodType} />
+          <ThemedText style={[styles.itemName, { color: colors.text }]} numberOfLines={1}>
+            {item.itemName}
+          </ThemedText>
+        </View>
+
         <View style={styles.priceRow}>
-          <ThemedText style={styles.price}>J${item.discountedPrice ?? item.price}</ThemedText>
+          <ThemedText style={[styles.price, { color: colors.text }]}>J${item.discountedPrice ?? item.price}</ThemedText>
           {!!item.discountedPrice ? (
             <ThemedText style={styles.originalPrice}>J${item.price}</ThemedText>
           ) : null}
         </View>
+
+        {showRecommendedBadge ? (
+          <View style={{ flexDirection: 'row', marginTop: 4 }}>
+            <View style={styles.bestsellerBadge}>
+              <ThemedText style={styles.bestsellerBadgeText}>Bestseller ‣</ThemedText>
+            </View>
+          </View>
+        ) : null}
+
         {!!item.shortDescription ? (
           <ThemedText themeColor="textSecondary" style={styles.itemDesc} numberOfLines={2}>
             {item.shortDescription}
           </ThemedText>
         ) : null}
       </View>
-      <MenuItemAddColumn item={item} onPress={onAdd} busy={addingItemId === item._id} />
+
+      {/* Right: Add button circular */}
+      <View style={styles.addBlockRight}>
+        <Pressable
+          onPress={() => onAdd(item)}
+          style={[styles.addCircleBtn, busy && { opacity: 0.65 }]}
+          disabled={busy}
+          hitSlop={8}
+        >
+          {busy ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Ionicons name="add" size={22} color="#FFFFFF" />
+          )}
+        </Pressable>
+        {hasAddons ? (
+          <ThemedText style={[styles.customisableTextRight, { color: CaseUi.orange }]}>Customisable</ThemedText>
+        ) : null}
+      </View>
     </View>
   );
 });
@@ -177,9 +218,11 @@ export default function RestaurantDetailScreen() {
   const restaurantLoading = restaurantQ.isLoading && !restaurantQ.data;
   const menuLoading = menuQ.isLoading && !menuQ.data;
   const restaurant: any = restaurantQ.data ?? null;
-  const isCatalogVertical = Boolean(
-    restaurant?.businessType && restaurant.businessType.toUpperCase() !== 'RESTAURANT',
-  );
+  const { colors: themeColors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
+  const isCatalogVertical = false;
+  const businessType = restaurant?.businessType?.toUpperCase() || 'RESTAURANT';
+  const isRestaurant = businessType === 'RESTAURANT';
   const items = useMemo(() => (menuQ.data ?? []) as MenuItem[], [menuQ.data]);
   const combosData = useMemo(() => (combosQ.data ?? []) as ComboItem[], [combosQ.data]);
   const coupons: Coupon[] = (couponsQ.data?.coupons ?? []) as Coupon[];
@@ -194,6 +237,7 @@ export default function RestaurantDetailScreen() {
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeMenuCat, setActiveMenuCat] = useState<string>('All');
   const [selectedFoodType, setSelectedFoodType] = useState<string | null>(null);
   const [showRecommendedOnly, setShowRecommendedOnly] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
@@ -278,6 +322,19 @@ export default function RestaurantDetailScreen() {
     });
     return Object.values(groups);
   }, [filteredItems, categoryNameMap]);
+
+  const categoriesList = useMemo(() => {
+    const names = groupedItems.map((g) => g.categoryName);
+    return ['All', ...names];
+  }, [groupedItems]);
+
+  const categoriesToRender = useMemo(() => {
+    const names = groupedItems.map((g) => g.categoryName);
+    if (activeMenuCat === 'All' || !names.includes(activeMenuCat)) {
+      return groupedItems;
+    }
+    return groupedItems.filter((g) => g.categoryName === activeMenuCat);
+  }, [groupedItems, activeMenuCat]);
 
   const handleAddToCart = useCallback(async (item: MenuItem) => {
     if (!item._id || !rid || addingItemId) return;
@@ -405,52 +462,30 @@ export default function RestaurantDetailScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        {/* Zomato Header Bar */}
-        <View style={[styles.headerBar, { backgroundColor: theme.backgroundElement }]}>
-          <Pressable onPress={() => router.back()} style={styles.headerBackBtn}>
-            <Ionicons name="arrow-back" size={24} color={theme.text} />
+      {/* Floating Back Button */}
+      <Pressable
+        onPress={() => router.back()}
+        style={[styles.floatingBackBtn, { top: Math.max(insets.top, 12) + 6 }]}
+        hitSlop={12}
+      >
+        <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+      </Pressable>
+
+      {restaurantLoading ? (
+        <StoreDetailSkeleton />
+      ) : error ? (
+        <ThemedView type="backgroundElement" style={[styles.errorCard, { margin: Spacing.three, marginTop: Math.max(insets.top, 12) + 60 }]}>
+          <ThemedText style={styles.errorText}>{error}</ThemedText>
+          <Pressable
+            onPress={() => {
+              void Promise.all([restaurantQ.refetch(), menuQ.refetch()]);
+            }}
+            style={styles.retryBtn}
+          >
+            <ThemedText style={styles.retryText}>Retry</ThemedText>
           </Pressable>
-          
-          <View style={styles.headerSearchContainer}>
-            <Ionicons name="search" size={16} color={theme.textSecondary} style={{ marginRight: 6 }} />
-            <TextInput
-              style={[styles.headerSearchInput, { color: theme.text }]}
-              placeholder={`Search in ${restaurant?.restaurantName || 'restaurant'}...`}
-              placeholderTextColor={theme.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {searchQuery.length > 0 && (
-              <Pressable onPress={() => setSearchQuery('')}>
-                <Ionicons name="close-circle" size={16} color={theme.textSecondary} />
-              </Pressable>
-            )}
-          </View>
-
-          <View style={styles.headerActions}>
-            <FavoriteHeart restaurantId={rid} variant="header" />
-            <Pressable style={styles.headerActionBtn}>
-              <Ionicons name="share-social-outline" size={22} color={theme.text} />
-            </Pressable>
-          </View>
-        </View>
-
-        {restaurantLoading ? (
-          <StoreDetailSkeleton />
-        ) : error ? (
-          <ThemedView type="backgroundElement" style={[styles.errorCard, { margin: Spacing.three }]}>
-            <ThemedText style={styles.errorText}>{error}</ThemedText>
-            <Pressable
-              onPress={() => {
-                void Promise.all([restaurantQ.refetch(), menuQ.refetch()]);
-              }}
-              style={styles.retryBtn}
-            >
-              <ThemedText style={styles.retryText}>Retry</ThemedText>
-            </Pressable>
-          </ThemedView>
-        ) : isCatalogVertical ? (
+        </ThemedView>
+      ) : isCatalogVertical ? (
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: scrollBottomPadding }}
@@ -630,389 +665,530 @@ export default function RestaurantDetailScreen() {
             </View>
           </ScrollView>
         ) : (
-          <ScrollView contentContainerStyle={{ paddingBottom: scrollBottomPadding }}>
-            <View style={[styles.sheet, { backgroundColor: theme.background }]}>
-              <>
-                {/* Zomato Restaurant Detail Card */}
-                <View style={[styles.restaurantCard, { backgroundColor: theme.backgroundElement }]}>
-                  <View style={styles.titleRow}>
-                    <View style={{ flex: 1, paddingRight: 8 }}>
-                      <ThemedText style={[styles.restaurantName, { color: theme.text }]}>
-                        {restaurant?.restaurantName}
-                      </ThemedText>
-                      <ThemedText themeColor="textSecondary" style={styles.cuisinesText}>
-                        {(restaurant?.cuisines ?? []).slice(0, 3).join(' · ') || 'Restaurant'}
-                      </ThemedText>
-                    </View>
-                    <View style={styles.ratingBox}>
-                      <View style={styles.ratingBadge}>
-                        <ThemedText style={styles.ratingNumber}>
-                          {Number(restaurant?.averageRating ?? 0).toFixed(1)} ⭐
-                        </ThemedText>
-                      </View>
-                      <ThemedText style={styles.ratingCount}>
-                        {restaurant?.totalRatings ? `${restaurant.totalRatings} ratings` : 'New'}
-                      </ThemedText>
-                    </View>
-                  </View>
+          <ScrollView
+            stickyHeaderIndices={[2]}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: scrollBottomPadding }}
+          >
+            {/* 0. Cover Banner Section */}
+            <View style={styles.bannerContainer}>
+              {restaurant?.bannerImages?.[0] || restaurant?.logo ? (
+                <Image
+                  source={{ uri: restaurant.bannerImages?.[0] ?? restaurant.logo }}
+                  style={styles.bannerImage}
+                  contentFit="cover"
+                  transition={200}
+                />
+              ) : (
+                <View style={[styles.bannerImage, styles.bannerPlaceholder]}>
+                  <Ionicons name="storefront-outline" size={44} color={CaseUi.muted} />
+                </View>
+              )}
+              <LinearGradient
+                colors={['rgba(0,0,0,0.3)', 'transparent', 'rgba(0,0,0,0.4)']}
+                style={StyleSheet.absoluteFill}
+                pointerEvents="none"
+              />
 
-                  <View style={styles.divider} />
+              {/* Store Logo floating over banner */}
+              <View style={[styles.bannerLogoContainer, { borderColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
+                {restaurant?.logo ? (
+                  <Image source={{ uri: restaurant.logo }} style={styles.bannerLogo} contentFit="contain" />
+                ) : (
+                  <Ionicons name="storefront" size={28} color={CaseUi.muted} />
+                )}
+              </View>
 
-                  <View style={styles.infoRow}>
-                    <Ionicons name="location" size={14} color={theme.primary} />
-                    <ThemedText themeColor="textSecondary" style={styles.infoText}>
-                      1 km · Kalyan
-                    </ThemedText>
-                  </View>
-                  <View style={[styles.infoRow, { marginTop: 6 }]}>
-                    <Ionicons name="time" size={14} color="#0f8a5f" />
-                    <ThemedText themeColor="textSecondary" style={styles.infoText}>
-                      {restaurant?.averageDeliveryTime ?? 30} mins · Schedule for later ▾
-                    </ThemedText>
-                  </View>
+              {/* Open/Closed Badge on banner */}
+              <View
+                style={[
+                  styles.bannerStatusBadge,
+                  { backgroundColor: restaurant?.isOpen === false ? 'rgba(239, 68, 68, 0.95)' : 'rgba(16, 185, 129, 0.95)' },
+                ]}
+              >
+                <View style={styles.bannerStatusDot} />
+                <ThemedText style={styles.bannerStatusText}>
+                  {restaurant?.isOpen === false ? 'Closed' : 'Open'}
+                </ThemedText>
+              </View>
+            </View>
 
-                  <Pressable
-                    onPress={() => setShowOffersModal(true)}
-                    style={styles.offerBanner}
-                  >
-                    <Ionicons name="pricetag" size={16} color={theme.primary} />
-                    <ThemedText style={styles.offerText}>
-                      {showOffersModal && couponCount > 0
-                        ? `${couponCount} offer${couponCount > 1 ? 's' : ''} available — Tap to view`
-                        : 'Tap to view offers'}
-                    </ThemedText>
-                    <Ionicons name="chevron-forward" size={14} color={theme.primary} style={{ marginLeft: 'auto' }} />
-                  </Pressable>
+            {/* 1. Store Details Info, Rating Columns, and Coupon Cards */}
+            <View style={[styles.detailsSection, { backgroundColor: theme.background }]}>
+              {/* Store Name */}
+              <ThemedText style={[styles.storeTitle, { color: theme.text }]}>
+                {restaurant?.restaurantName}
+              </ThemedText>
+
+              {/* Ratings & Metrics Column Grid */}
+              <View style={[styles.metricsContainer, { borderColor: isDark ? '#2D2D34' : '#E4E4E7' }]}>
+                {/* Rating */}
+                <View style={styles.metricCol}>
+                  <ThemedText style={[styles.metricValue, { color: theme.text }]}>
+                    ⭐ {Number(restaurant?.averageRating ?? 0).toFixed(1)}
+                  </ThemedText>
+                  <ThemedText themeColor="textSecondary" style={styles.metricSub}>
+                    ({restaurant?.totalRatings ?? 0} ratings)
+                  </ThemedText>
+                  <ThemedText themeColor="textSecondary" style={styles.metricLabel}>
+                    Rating
+                  </ThemedText>
                 </View>
 
-                {reviews.length > 0 ? (
-                  <View style={[styles.reviewsSection, { backgroundColor: theme.backgroundElement }]}>
-                    <ThemedText style={[styles.reviewsTitle, { color: theme.text }]}>What people say</ThemedText>
-                    {reviews.slice(0, 3).map((review: any, idx: number) => (
-                      <View key={review?._id ?? `review-${idx}`} style={styles.reviewCard}>
-                        <View style={styles.reviewHeader}>
-                          <ThemedText style={styles.reviewRating}>
-                            ⭐ {Number(review?.restaurantRating ?? review?.foodRating ?? 0).toFixed(1)}
-                          </ThemedText>
-                          {review?.createdAt ? (
-                            <ThemedText themeColor="textSecondary" style={styles.reviewDate}>
-                              {new Date(review.createdAt).toLocaleDateString()}
-                            </ThemedText>
-                          ) : null}
-                        </View>
-                        {review?.reviewText ? (
-                          <ThemedText themeColor="textSecondary" style={styles.reviewText} numberOfLines={3}>
-                            {review.reviewText}
-                          </ThemedText>
-                        ) : (
-                          <ThemedText themeColor="textSecondary" style={styles.reviewText}>
-                            Great experience!
-                          </ThemedText>
-                        )}
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
+                {/* Vertical Line */}
+                <View style={[styles.metricDivider, { backgroundColor: isDark ? '#2C2C32' : '#E4E4E7' }]} />
 
-                {/* Zomato Filter Pills Scroll */}
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.filtersScroll}
+                {/* Delivery Time */}
+                <View style={styles.metricCol}>
+                  <ThemedText style={[styles.metricValue, { color: theme.text }]}>
+                    {restaurant?.averageDeliveryTime ?? 25} mins
+                  </ThemedText>
+                  <ThemedText themeColor="textSecondary" style={styles.metricSub}>
+                    Avg Prep & Del
+                  </ThemedText>
+                  <ThemedText themeColor="textSecondary" style={styles.metricLabel}>
+                    Delivery time
+                  </ThemedText>
+                </View>
+
+                {/* Vertical Line */}
+                <View style={[styles.metricDivider, { backgroundColor: isDark ? '#2C2C32' : '#E4E4E7' }]} />
+
+                {/* Delivery Fee / Min Order */}
+                <View style={styles.metricCol}>
+                  <ThemedText style={[styles.metricValue, { color: theme.text }]}>
+                    JMD 120
+                  </ThemedText>
+                  <ThemedText themeColor="textSecondary" style={styles.metricSub}>
+                    {restaurant?.minimumOrderAmount ? `Min J$${restaurant.minimumOrderAmount}` : 'No minimum'}
+                  </ThemedText>
+                  <ThemedText themeColor="textSecondary" style={styles.metricLabel}>
+                    Delivery fee
+                  </ThemedText>
+                </View>
+              </View>
+
+              {/* Dynamic Coupon Offer Card */}
+              {coupons.length > 0 ? (
+                <Pressable
+                  onPress={() => setShowOffersModal(true)}
+                  style={[
+                    styles.offerPromoCard,
+                    { backgroundColor: isDark ? '#2D201A' : '#FFF5EE', borderColor: isDark ? '#5C3826' : '#FFE0CC' },
+                  ]}
                 >
-                  <Pressable
-                    onPress={() => setSelectedFoodType(selectedFoodType === 'veg' ? null : 'veg')}
-                    style={[
-                      styles.filterPill,
-                      selectedFoodType === 'veg' && { borderColor: '#0f8a5f', backgroundColor: '#eefcf7' },
-                    ]}
-                  >
-                    <View style={[styles.filterDot, { backgroundColor: '#0f8a5f', borderRadius: 999 }]} />
-                    <ThemedText
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <ThemedText style={[styles.offerPromoTitle, { color: isDark ? '#FF9F64' : '#E05A10' }]}>
+                      {coupons[0].discountType === 'PERCENTAGE'
+                        ? `Flat ${coupons[0].discountValue}% OFF${coupons[0].maximumDiscount ? ` up to JMD ${coupons[0].maximumDiscount}` : ''}`
+                        : `Flat JMD ${coupons[0].discountValue} OFF`}
+                    </ThemedText>
+                    <ThemedText style={[styles.offerPromoSub, { color: isDark ? '#D1A38C' : '#8A583C' }]}>
+                      Use code: {coupons[0].couponCode}
+                    </ThemedText>
+                  </View>
+                  <View style={[styles.offerPromoPercentCircle, { backgroundColor: CaseUi.orange }]}>
+                    <ThemedText style={{ color: '#FFFFFF', fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold' }}>%</ThemedText>
+                  </View>
+                </Pressable>
+              ) : (
+                <Pressable
+                  onPress={() => setShowOffersModal(true)}
+                  style={[
+                    styles.offerPromoCard,
+                    { backgroundColor: isDark ? '#2D201A' : '#FFF5EE', borderColor: isDark ? '#5C3826' : '#FFE0CC' },
+                  ]}
+                >
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <ThemedText style={[styles.offerPromoTitle, { color: isDark ? '#FF9F64' : '#E05A10' }]}>
+                      Flat 20% OFF up to JMD 300
+                    </ThemedText>
+                    <ThemedText style={[styles.offerPromoSub, { color: isDark ? '#D1A38C' : '#8A583C' }]}>
+                      Use code: FIRST20
+                    </ThemedText>
+                  </View>
+                  <View style={[styles.offerPromoPercentCircle, { backgroundColor: CaseUi.orange }]}>
+                    <ThemedText style={{ color: '#FFFFFF', fontSize: 18, fontFamily: 'PlusJakartaSans_800ExtraBold' }}>%</ThemedText>
+                  </View>
+                </Pressable>
+              )}
+
+              {/* Professional Search Input inside details container */}
+              <View style={[styles.inStoreSearchWrap, { backgroundColor: isDark ? '#1C1C1E' : '#F8F9FA', borderColor: isDark ? '#2D2D34' : '#E9ECEF' }]}>
+                <Ionicons name="search" size={20} color={isDark ? '#8E8E93' : '#6C757D'} />
+                <TextInput
+                  style={[styles.inStoreSearchInput, { color: theme.text }]}
+                  placeholder={`Search in ${restaurant?.restaurantName || 'store'}...`}
+                  placeholderTextColor={isDark ? '#8E8E93' : '#6C757D'}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                <Ionicons name="mic" size={20} color={isDark ? '#8E8E93' : '#6C757D'} style={{ marginLeft: 'auto' }} />
+              </View>
+
+              {/* Quick Filters Scroll */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8, marginTop: 12, paddingBottom: 4 }}
+              >
+                {isRestaurant && (
+                  <>
+                    <Pressable
+                      onPress={() => setSelectedFoodType(selectedFoodType === 'veg' ? null : 'veg')}
                       style={[
-                        styles.filterPillText,
-                        selectedFoodType === 'veg' && { color: '#0f8a5f', fontFamily: 'PlusJakartaSans_700Bold' },
+                        styles.filterPill,
+                        selectedFoodType === 'veg' && { borderColor: '#0f8a5f', backgroundColor: '#eefcf7' },
                       ]}
                     >
-                      Veg
-                    </ThemedText>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => setSelectedFoodType(selectedFoodType === 'egg' ? null : 'egg')}
-                    style={[
-                      styles.filterPill,
-                      selectedFoodType === 'egg' && { borderColor: '#d97706', backgroundColor: '#fefbeb' },
-                    ]}
-                  >
-                    <View style={[styles.filterDot, { backgroundColor: '#d97706', borderRadius: 999 }]} />
-                    <ThemedText
-                      style={[
-                        styles.filterPillText,
-                        selectedFoodType === 'egg' && { color: '#d97706', fontFamily: 'PlusJakartaSans_700Bold' },
-                      ]}
-                    >
-                      Egg
-                    </ThemedText>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => setSelectedFoodType(selectedFoodType === 'nonveg' ? null : 'nonveg')}
-                    style={[
-                      styles.filterPill,
-                      selectedFoodType === 'nonveg' && { borderColor: '#e23744', backgroundColor: '#fef2f2' },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.filterDot,
-                        {
-                          width: 0,
-                          height: 0,
-                          borderLeftWidth: 4,
-                          borderRightWidth: 4,
-                          borderBottomWidth: 8,
-                          borderStyle: 'solid',
-                          borderLeftColor: 'transparent',
-                          borderRightColor: 'transparent',
-                          borderBottomColor: '#e23744',
-                          backgroundColor: 'transparent',
-                        },
-                      ]}
-                    />
-                    <ThemedText
-                      style={[
-                        styles.filterPillText,
-                        selectedFoodType === 'nonveg' && { color: '#e23744', fontFamily: 'PlusJakartaSans_700Bold' },
-                      ]}
-                    >
-                      Non-Veg
-                    </ThemedText>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => setShowRecommendedOnly(!showRecommendedOnly)}
-                    style={[
-                      styles.filterPill,
-                      showRecommendedOnly && { borderColor: theme.primary, backgroundColor: theme.primarySoft },
-                    ]}
-                  >
-                    <Ionicons
-                      name={showRecommendedOnly ? 'star' : 'star-outline'}
-                      size={12}
-                      color={showRecommendedOnly ? theme.primary : theme.textSecondary}
-                    />
-                    <ThemedText
-                      style={[
-                        styles.filterPillText,
-                        showRecommendedOnly && { color: theme.primary, fontFamily: 'PlusJakartaSans_700Bold' },
-                      ]}
-                    >
-                      Bestsellers
-                    </ThemedText>
-                  </Pressable>
-                </ScrollView>
-
-                {/* Grouped Category Accordion */}
-                <View style={{ marginTop: Spacing.two }}>
-                  {menuLoading ? (
-                    <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-                      <ActivityIndicator size="small" color={theme.primary} />
-                      <ThemedText themeColor="textSecondary" style={{ marginTop: 8 }}>
-                        Loading menu…
+                      <View style={[styles.filterDot, { backgroundColor: '#0f8a5f', borderRadius: 999 }]} />
+                      <ThemedText
+                        style={[
+                          styles.filterPillText,
+                          selectedFoodType === 'veg' && { color: '#0f8a5f', fontFamily: 'PlusJakartaSans_700Bold' },
+                        ]}
+                      >
+                        Veg
                       </ThemedText>
-                    </View>
-                  ) : null}
+                    </Pressable>
 
-                  {/* Your Orders and Collections Accordion */}
-                  {!selectedFoodType && !searchQuery && userPastOrders.length > 0 && (
-                    <View style={styles.categorySection}>
-                      <Pressable
-                        onPress={() => toggleCategory('PastOrders')}
-                        style={styles.categoryHeader}
+                    <Pressable
+                      onPress={() => setSelectedFoodType(selectedFoodType === 'egg' ? null : 'egg')}
+                      style={[
+                        styles.filterPill,
+                        selectedFoodType === 'egg' && { borderColor: '#d97706', backgroundColor: '#fefbeb' },
+                      ]}
+                    >
+                      <View style={[styles.filterDot, { backgroundColor: '#d97706', borderRadius: 999 }]} />
+                      <ThemedText
+                        style={[
+                          styles.filterPillText,
+                          selectedFoodType === 'egg' && { color: '#d97706', fontFamily: 'PlusJakartaSans_700Bold' },
+                        ]}
                       >
-                        <ThemedText style={[styles.categoryTitle, { color: theme.text }]}>
-                          Your Orders and Collections ({userPastOrders.length})
-                        </ThemedText>
-                        <Ionicons
-                          name={isCategoryCollapsed('PastOrders') ? 'chevron-down' : 'chevron-up'}
-                          size={18}
-                          color={theme.textSecondary}
-                        />
-                      </Pressable>
-                      
-                      {!isCategoryCollapsed('PastOrders') && (
-                        <View style={styles.categoryList}>
-                          {userPastOrders.map((it) => (
-                            <View key={`past-${it._id}`} style={styles.menuRow}>
-                              {/* Left Details */}
-                              <View style={styles.itemLeft}>
-                                <FoodTypeBadge type={it.foodType} />
-                                <ThemedText style={[styles.itemName, { color: theme.text }]}>
-                                  {it.itemName}
-                                </ThemedText>
-                                
-                                <ThemedText themeColor="textSecondary" style={{ fontSize: 11, color: theme.textSecondary, marginTop: 2 }}>
-                                  {it.pastOrderText}
-                                </ThemedText>
+                        Egg
+                      </ThemedText>
+                    </Pressable>
 
-                                <View style={styles.priceRow}>
-                                  <ThemedText style={[styles.price, { color: theme.text }]}>
-                                    J${it.discountedPrice ?? it.price}
-                                  </ThemedText>
-                                </View>
-                              </View>
-
-                              <MenuItemAddColumn
-                                item={it}
-                                onPress={handleAddClick}
-                                busy={addingItemId === it._id}
-                              />
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                    </View>
-                  )}
-
-                  {/* Most ordered together section */}
-                  {!searchQuery && mostOrderedTogether.length > 0 && (
-                    <View style={styles.categorySection}>
-                      <Pressable
-                        onPress={() => toggleCategory('Combos')}
-                        style={styles.categoryHeader}
+                    <Pressable
+                      onPress={() => setSelectedFoodType(selectedFoodType === 'nonveg' ? null : 'nonveg')}
+                      style={[
+                        styles.filterPill,
+                        selectedFoodType === 'nonveg' && { borderColor: '#e23744', backgroundColor: '#fef2f2' },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.filterDot,
+                          {
+                            width: 0,
+                            height: 0,
+                            borderLeftWidth: 4,
+                            borderRightWidth: 4,
+                            borderBottomWidth: 8,
+                            borderStyle: 'solid',
+                            borderLeftColor: 'transparent',
+                            borderRightColor: 'transparent',
+                            borderBottomColor: '#e23744',
+                            backgroundColor: 'transparent',
+                          },
+                        ]}
+                      />
+                      <ThemedText
+                        style={[
+                          styles.filterPillText,
+                          selectedFoodType === 'nonveg' && { color: '#e23744', fontFamily: 'PlusJakartaSans_700Bold' },
+                        ]}
                       >
-                        <ThemedText style={[styles.categoryTitle, { color: theme.text }]}>
-                          Most ordered together ({mostOrderedTogether.length})
-                        </ThemedText>
-                        <Ionicons
-                          name={isCategoryCollapsed('Combos') ? 'chevron-down' : 'chevron-up'}
-                          size={18}
-                          color={theme.textSecondary}
-                        />
-                      </Pressable>
+                        Non-Veg
+                      </ThemedText>
+                    </Pressable>
+                  </>
+                )}
 
-                      {!isCategoryCollapsed('Combos') && (
-                        <ScrollView
-                          horizontal
-                          showsHorizontalScrollIndicator={false}
-                          contentContainerStyle={styles.combosScroll}
-                        >
-                          {mostOrderedTogether.map((combo) => (
-                            <View key={combo.id} style={[styles.comboCard, { backgroundColor: theme.backgroundElement }]}>
-                              <View style={styles.comboImageContainer}>
-                                <Image source={{ uri: combo.image }} style={styles.comboImage} contentFit="cover" transition={200} />
-                                <View style={styles.comboTagBadge}>
-                                  <ThemedText style={styles.comboTagBadgeText}>{combo.tag}</ThemedText>
-                                </View>
-                              </View>
-                              <View style={styles.comboDetails}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                  <FoodTypeBadge type={combo.foodType} />
-                                  <ThemedText style={[styles.comboTitle, { color: theme.text }]} numberOfLines={1}>
-                                    {combo.title}
-                                  </ThemedText>
-                                </View>
-                                <View style={styles.comboFooter}>
-                                  <ThemedText style={styles.comboPrice}>J${combo.price}</ThemedText>
-                                  <Pressable
-                                    onPress={() => {
-                                      if (combo.mainItem) {
-                                        handleAddClick(combo.mainItem);
-                                      }
-                                    }}
-                                    style={styles.comboAddBtn}
-                                  >
-                                    <ThemedText style={styles.comboAddBtnText}>ADD</ThemedText>
-                                  </Pressable>
-                                </View>
-                              </View>
-                            </View>
-                          ))}
-                        </ScrollView>
-                      )}
-                    </View>
-                  )}
+                <Pressable
+                  onPress={() => setShowRecommendedOnly(!showRecommendedOnly)}
+                  style={[
+                    styles.filterPill,
+                    showRecommendedOnly && { borderColor: theme.primary, backgroundColor: theme.primarySoft },
+                  ]}
+                >
+                  <Ionicons
+                    name={showRecommendedOnly ? 'star' : 'star-outline'}
+                    size={12}
+                    color={showRecommendedOnly ? theme.primary : theme.textSecondary}
+                  />
+                  <ThemedText
+                    style={[
+                      styles.filterPillText,
+                      showRecommendedOnly && { color: theme.primary, fontFamily: 'PlusJakartaSans_700Bold' },
+                    ]}
+                  >
+                    Bestsellers
+                  </ThemedText>
+                </Pressable>
+              </ScrollView>
+            </View>
 
-                  {/* Recommended for you Accordion Section */}
-                  {recommendedItems.length > 0 && (
-                    <View style={styles.categorySection}>
-                      <Pressable
-                        onPress={() => toggleCategory('Recommended')}
-                        style={styles.categoryHeader}
+            {/* 2. Sticky Category Icons Ribbon (floating scroll view index 2) */}
+            <View style={[styles.stickyRibbonContainer, { backgroundColor: theme.backgroundElement, borderBottomColor: isDark ? '#27272A' : '#E4E4E7' }]}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.ribbonScrollContent}
+              >
+                {categoriesList.map((catName) => {
+                  const isActive = activeMenuCat === catName;
+                  const nameCount = catName === 'All'
+                    ? filteredItems.length
+                    : (groupedItems.find((g) => g.categoryName === catName)?.items.length ?? 0);
+                  
+                  // Emoji Resolver
+                  let emoji = '🍱';
+                  const lowerCat = catName.toLowerCase();
+                  if (lowerCat.includes('burger')) emoji = '🍔';
+                  else if (lowerCat.includes('pizza')) emoji = '🍕';
+                  else if (lowerCat.includes('chicken') || lowerCat.includes('wing')) emoji = '🍗';
+                  else if (lowerCat.includes('beverage') || lowerCat.includes('drink') || lowerCat.includes('juice') || lowerCat.includes('soda')) emoji = '🥤';
+                  else if (lowerCat.includes('wrap') || lowerCat.includes('roll') || lowerCat.includes('sandwich')) emoji = '🌯';
+                  else if (lowerCat.includes('dessert') || lowerCat.includes('cake') || lowerCat.includes('sweet') || lowerCat.includes('ice cream')) emoji = '🍰';
+                  else if (lowerCat.includes('sides') || lowerCat.includes('fries') || lowerCat.includes('salad')) emoji = '🍟';
+                  else if (lowerCat.includes('grocery') || lowerCat.includes('fruit') || lowerCat.includes('veg') || lowerCat.includes('produce')) emoji = '🍎';
+                  else if (lowerCat.includes('pharmacy') || lowerCat.includes('medicine') || lowerCat.includes('pill') || lowerCat.includes('tablet')) emoji = '💊';
+                  else if (lowerCat.includes('supplement') || lowerCat.includes('vitamin') || lowerCat.includes('wellness')) emoji = '⚗️';
+                  else if (lowerCat.includes('skincare') || lowerCat.includes('cream') || lowerCat.includes('lotion')) emoji = '🧴';
+                  else if (lowerCat.includes('first aid') || lowerCat.includes('bandage') || lowerCat.includes('care')) emoji = '🩹';
+                  else if (lowerCat.includes('electronics') || lowerCat.includes('phone') || lowerCat.includes('cable') || lowerCat.includes('charger')) emoji = '🔌';
+                  else if (lowerCat.includes('flower') || lowerCat.includes('bouquet') || lowerCat.includes('gift')) emoji = '💐';
+                  else if (lowerCat.includes('clothing') || lowerCat.includes('shirt') || lowerCat.includes('wear')) emoji = '👕';
+                  else if (lowerCat.includes('book') || lowerCat.includes('stationery') || lowerCat.includes('pen')) emoji = '📚';
+                  else if (lowerCat.includes('cleaning') || lowerCat.includes('laundry') || lowerCat.includes('wash')) emoji = '🧺';
+                  else if (lowerCat.includes('baby') || lowerCat.includes('diaper')) emoji = '🍼';
+                  else if (lowerCat.includes('all')) emoji = '🏠';
+
+                  return (
+                    <Pressable
+                      key={catName}
+                      onPress={() => setActiveMenuCat(catName)}
+                      style={styles.ribbonTabBtn}
+                    >
+                      <View
+                        style={[
+                          styles.ribbonTabIconWrap,
+                          {
+                            backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                            borderColor: isActive ? CaseUi.orange : (isDark ? '#2C2C30' : '#E4E4E7'),
+                          },
+                        ]}
                       >
-                        <ThemedText style={[styles.categoryTitle, { color: theme.text }]}>
-                          Recommended ({recommendedItems.length})
-                        </ThemedText>
-                        <Ionicons
-                          name={isCategoryCollapsed('Recommended') ? 'chevron-down' : 'chevron-up'}
-                          size={18}
-                          color={theme.textSecondary}
-                        />
-                      </Pressable>
-                      
-                      {!isCategoryCollapsed('Recommended') && (
-                        <View style={styles.categoryList}>
-                          {recommendedItems.map((it) => (
-                            <MenuItemRow
-                              key={`rec-${it._id}`}
-                              item={it}
-                              addingItemId={addingItemId}
-                              onAdd={handleAddClick}
-                              showRecommendedBadge
-                            />
-                          ))}
-                        </View>
-                      )}
-                    </View>
-                  )}
+                        <ThemedText style={{ fontSize: 24 }}>{emoji}</ThemedText>
+                      </View>
+                      <ThemedText
+                        style={[
+                          styles.ribbonTabText,
+                          { color: isActive ? CaseUi.orange : theme.text },
+                          isActive && { fontFamily: 'PlusJakartaSans_800ExtraBold' },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {catName}
+                      </ThemedText>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
 
-                  {groupedItems.length === 0 ? (
-                    <ThemedText themeColor="textSecondary" style={{ textAlign: 'center', marginTop: 32 }}>
-                      No items match your filters.
+            {/* 3. Products List */}
+            <View style={[styles.menuListSheet, { backgroundColor: theme.background, marginTop: Spacing.one }]}>
+              {menuLoading ? (
+                <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+                  <ActivityIndicator size="small" color={theme.primary} />
+                  <ThemedText themeColor="textSecondary" style={{ marginTop: 8 }}>
+                    Loading menu…
+                  </ThemedText>
+                </View>
+              ) : null}
+
+              {/* Your Orders and Collections Section (only on 'All' tab) */}
+              {activeMenuCat === 'All' && !selectedFoodType && !searchQuery && userPastOrders.length > 0 && (
+                <View style={styles.categorySection}>
+                  <Pressable
+                    onPress={() => toggleCategory('PastOrders')}
+                    style={styles.categoryHeader}
+                  >
+                    <ThemedText style={[styles.categoryTitle, { color: theme.text }]}>
+                      Your Orders and Collections ({userPastOrders.length})
                     </ThemedText>
-                  ) : (
-                    groupedItems.map((group) => {
-                      const isCollapsed = isCategoryCollapsed(group.categoryName);
-                      return (
-                        <View key={group.categoryName} style={styles.categorySection}>
-                          <Pressable
-                            onPress={() => toggleCategory(group.categoryName)}
-                            style={styles.categoryHeader}
-                          >
+                    <Ionicons
+                      name={isCategoryCollapsed('PastOrders') ? 'chevron-down' : 'chevron-up'}
+                      size={18}
+                      color={theme.textSecondary}
+                    />
+                  </Pressable>
+                  
+                  {!isCategoryCollapsed('PastOrders') && (
+                    <View style={styles.categoryList}>
+                      {userPastOrders.map((it) => (
+                        <MenuItemRow
+                          key={`past-${it._id}`}
+                          item={it}
+                          addingItemId={addingItemId}
+                          onAdd={handleAddClick}
+                          showRecommendedBadge={Boolean(it.isRecommended)}
+                        />
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Most ordered together section (only on 'All' tab) */}
+              {activeMenuCat === 'All' && !searchQuery && mostOrderedTogether.length > 0 && (
+                <View style={styles.categorySection}>
+                  <Pressable
+                    onPress={() => toggleCategory('Combos')}
+                    style={styles.categoryHeader}
+                  >
+                    <ThemedText style={[styles.categoryTitle, { color: theme.text }]}>
+                      Most ordered together ({mostOrderedTogether.length})
+                    </ThemedText>
+                    <Ionicons
+                      name={isCategoryCollapsed('Combos') ? 'chevron-down' : 'chevron-up'}
+                      size={18}
+                      color={theme.textSecondary}
+                    />
+                  </Pressable>
+
+                  {!isCategoryCollapsed('Combos') && (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.combosScroll}
+                    >
+                      {mostOrderedTogether.map((combo) => (
+                        <View key={combo.id} style={[styles.comboCard, { backgroundColor: theme.backgroundElement }]}>
+                          <View style={styles.comboImageContainer}>
+                            <Image source={{ uri: combo.image }} style={styles.comboImage} contentFit="cover" transition={200} />
+                            <View style={styles.comboTagBadge}>
+                              <ThemedText style={styles.comboTagBadgeText}>{combo.tag}</ThemedText>
+                            </View>
+                          </View>
+                          <View style={styles.comboDetails}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <FoodTypeBadge type={combo.foodType} />
+                              <ThemedText style={[styles.comboTitle, { color: theme.text }]} numberOfLines={1}>
+                                {combo.title}
+                              </ThemedText>
+                            </View>
+                            <View style={styles.comboFooter}>
+                              <ThemedText style={[styles.comboPrice, { color: theme.text }]}>J${combo.price}</ThemedText>
+                              <Pressable
+                                onPress={() => {
+                                  if (combo.mainItem) {
+                                    handleAddClick(combo.mainItem);
+                                  }
+                                }}
+                                style={styles.comboAddBtn}
+                              >
+                                <ThemedText style={styles.comboAddBtnText}>ADD</ThemedText>
+                              </Pressable>
+                            </View>
+                          </View>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+              )}
+
+              {/* Recommended for you Section (only on 'All' tab) */}
+              {activeMenuCat === 'All' && recommendedItems.length > 0 && (
+                <View style={styles.categorySection}>
+                  <Pressable
+                    onPress={() => toggleCategory('Recommended')}
+                    style={styles.categoryHeader}
+                  >
+                    <ThemedText style={[styles.categoryTitle, { color: theme.text }]}>
+                      Recommended ({recommendedItems.length})
+                    </ThemedText>
+                    <Ionicons
+                      name={isCategoryCollapsed('Recommended') ? 'chevron-down' : 'chevron-up'}
+                      size={18}
+                      color={theme.textSecondary}
+                    />
+                  </Pressable>
+                  
+                  {!isCategoryCollapsed('Recommended') && (
+                    <View style={styles.categoryList}>
+                      {recommendedItems.map((it) => (
+                        <MenuItemRow
+                          key={`rec-${it._id}`}
+                          item={it}
+                          addingItemId={addingItemId}
+                          onAdd={handleAddClick}
+                          showRecommendedBadge
+                        />
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {categoriesToRender.length === 0 ? (
+                <ThemedText themeColor="textSecondary" style={{ textAlign: 'center', marginTop: 32 }}>
+                  No items match your filters.
+                </ThemedText>
+              ) : (
+                categoriesToRender.map((group) => {
+                  const isAllTab = activeMenuCat === 'All';
+                  const isCollapsed = !isAllTab ? false : isCategoryCollapsed(group.categoryName);
+                  return (
+                    <View key={group.categoryName} style={styles.categorySection}>
+                      {isAllTab ? (
+                        <Pressable
+                          onPress={() => toggleCategory(group.categoryName)}
+                          style={styles.categoryHeader}
+                        >
+                          <View style={{ flex: 1 }}>
                             <ThemedText style={[styles.categoryTitle, { color: theme.text }]}>
                               {group.categoryName} ({group.items.length})
                             </ThemedText>
-                            <Ionicons
-                              name={isCollapsed ? 'chevron-down' : 'chevron-up'}
-                              size={18}
-                              color={theme.textSecondary}
-                            />
-                          </Pressable>
-
-                          {!isCollapsed && (
-                            <View style={styles.categoryList}>
-                              {group.items.map((it) => (
-                                <MenuItemRow
-                                  key={it._id}
-                                  item={it}
-                                  addingItemId={addingItemId}
-                                  onAdd={handleAddClick}
-                                  showRecommendedBadge={Boolean(it.isRecommended)}
-                                />
-                              ))}
-                            </View>
-                          )}
+                          </View>
+                          <Ionicons
+                            name={isCollapsed ? 'chevron-down' : 'chevron-up'}
+                            size={18}
+                            color={theme.textSecondary}
+                          />
+                        </Pressable>
+                      ) : (
+                        <View style={styles.categoryHeader}>
+                          <ThemedText style={[styles.categoryTitle, { color: theme.text }]}>
+                            {group.categoryName} ({group.items.length})
+                          </ThemedText>
                         </View>
-                      );
-                    })
-                  )}
-                </View>
-              </>
+                      )}
+
+                      {!isCollapsed && (
+                        <View style={styles.categoryList}>
+                          {group.items.map((it) => (
+                            <MenuItemRow
+                              key={it._id}
+                              item={it}
+                              addingItemId={addingItemId}
+                              onAdd={handleAddClick}
+                              showRecommendedBadge={Boolean(it.isRecommended)}
+                            />
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })
+              )}
             </View>
           </ScrollView>
         )}
-      </SafeAreaView>
 
       {/* Zomato Customize Addons Drawer Modal */}
       <Modal
@@ -1431,6 +1607,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f3f3',
+    paddingHorizontal: 16,
   },
   categoryTitle: {
     fontSize: 16,
@@ -1447,6 +1624,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f8f8f8',
     gap: 16,
+    paddingHorizontal: 16,
   },
   itemLeft: {
     flex: 1,
@@ -1860,6 +2038,7 @@ const styles = StyleSheet.create({
   combosScroll: {
     paddingVertical: 8,
     gap: 12,
+    paddingHorizontal: 16,
   },
   comboCard: {
     width: 200,
@@ -2002,6 +2181,264 @@ const styles = StyleSheet.create({
   },
   couponFooterText: {
     fontSize: 11,
+  },
+  stickyTabsContainer: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    zIndex: 10,
+  },
+  tabsScrollContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  menuTabButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  menuTabButtonText: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 12,
+  },
+  menuListSheet: {
+    flex: 1,
+  },
+  bannerContainer: {
+    width: '100%',
+    height: 220,
+    backgroundColor: '#000000',
+    position: 'relative',
+  },
+  bannerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  bannerPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  bannerLogoContainer: {
+    position: 'absolute',
+    bottom: -30,
+    left: 16,
+    width: 80,
+    height: 80,
+    borderRadius: 16,
+    borderWidth: 3,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+    zIndex: 2,
+  },
+  bannerLogo: {
+    width: '100%',
+    height: '100%',
+  },
+  bannerStatusBadge: {
+    position: 'absolute',
+    bottom: 12,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    zIndex: 2,
+  },
+  bannerStatusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FFFFFF',
+  },
+  bannerStatusText: {
+    color: '#FFFFFF',
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 11,
+  },
+  floatingBackBtn: {
+    position: 'absolute',
+    left: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 99,
+  },
+  detailsSection: {
+    paddingHorizontal: 16,
+    paddingTop: 42,
+    paddingBottom: 16,
+  },
+  storeTitle: {
+    fontSize: 22,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    marginTop: 4,
+  },
+  metricsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderRadius: 16,
+    marginTop: 16,
+  },
+  metricCol: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  metricValue: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+  },
+  metricSub: {
+    fontSize: 10,
+    fontFamily: 'PlusJakartaSans_500Medium',
+  },
+  metricLabel: {
+    fontSize: 9,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  metricDivider: {
+    width: 1,
+    height: 32,
+  },
+  offerPromoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 16,
+    gap: 12,
+  },
+  offerPromoTitle: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 14,
+  },
+  offerPromoSub: {
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontSize: 11,
+  },
+  offerPromoPercentCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inStoreSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    height: 48,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginTop: 16,
+    gap: 10,
+  },
+  inStoreSearchInput: {
+    flex: 1,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontSize: 13,
+    padding: 0,
+  },
+  stickyRibbonContainer: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    zIndex: 10,
+  },
+  ribbonScrollContent: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  ribbonTabBtn: {
+    alignItems: 'center',
+    gap: 6,
+    width: 72,
+  },
+  ribbonTabIconWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  ribbonTabText: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  dishImageLeft: {
+    width: 76,
+    height: 76,
+    borderRadius: 14,
+    backgroundColor: '#f3f3f3',
+  },
+  noPhotoImageLeft: {
+    width: 76,
+    height: 76,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bestsellerBadge: {
+    backgroundColor: '#FFEAD2',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  bestsellerBadgeText: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 9,
+    color: '#E05A10',
+  },
+  addBlockRight: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingRight: 4,
+  },
+  addCircleBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: CaseUi.orange,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: CaseUi.orange,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  customisableTextRight: {
+    marginTop: 4,
+    fontSize: 9,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    textAlign: 'center',
   },
 });
 

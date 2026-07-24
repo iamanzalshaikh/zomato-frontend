@@ -3,54 +3,47 @@ import {
   Dimensions,
   FlatList,
   Image,
-  ImageBackground,
   StyleSheet,
   Text,
   View,
-  type ImageSourcePropType,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { ONBOARDING_LOGO, ONBOARDING_SLIDE_IMAGES } from '@/constants/onboardingAssets';
+import { ONBOARDING_GRAPHICS } from '@/constants/onboardingAssets';
 import { PressableScale } from '@/components/pressable-scale';
+import { CaseUi } from '@/constants/caseUi';
+import { useThemeContext } from '@/context/ThemeContext';
 
-const BRAND = '#ff5a00';
-const BRAND_DARK = '#c94400';
-const INK = '#1a120c';
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-const SLIDES: Array<{
-  title: string;
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  image: ImageSourcePropType;
-  accent: string;
-}> = [
+const SLIDES = [
   {
-    title: 'Discover nearby food',
-    subtitle: 'Explore top restaurants, trending dishes, and cuisines curated for you.',
-    icon: 'restaurant',
-    image: ONBOARDING_SLIDE_IMAGES[0],
-    accent: '#ff8a3d',
+    id: 'stores',
+    titlePrefix: 'Your Favorite Stores, ',
+    titleHighlight: 'Delivered',
+    subtitle: 'Order from your favorite restaurants, groceries, pharmacies and more.',
+    graphic: ONBOARDING_GRAPHICS[0],
+    ctaLabel: 'Next',
   },
   {
-    title: 'Track every order live',
-    subtitle: 'Watch your meal move from kitchen to doorstep with real-time updates.',
-    icon: 'bicycle',
-    image: ONBOARDING_SLIDE_IMAGES[1],
-    accent: '#ffb347',
+    id: 'speed',
+    titlePrefix: 'Lightning Fast ',
+    titleHighlight: 'Delivery',
+    subtitle: 'We deliver in minutes with real-time tracking every step of the way.',
+    graphic: ONBOARDING_GRAPHICS[1],
+    ctaLabel: 'Next',
   },
   {
-    title: 'Fast & secure checkout',
-    subtitle: 'Pay with COD or online — smooth, safe, and ready in seconds.',
-    icon: 'shield-checkmark',
-    image: ONBOARDING_SLIDE_IMAGES[2],
-    accent: '#ff6b35',
+    id: 'security',
+    titlePrefix: 'Safe, Secure ',
+    titleHighlight: '& Reliable',
+    subtitle: 'Secure payments, verified partners and 24/7 support for you.',
+    graphic: ONBOARDING_GRAPHICS[2],
+    ctaLabel: 'Get Started',
   },
 ];
 
@@ -60,109 +53,94 @@ function goToLogin(router: ReturnType<typeof useRouter>) {
 
 export default function OnboardingCarouselScreen() {
   const router = useRouter();
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
   const [index, setIndex] = useState(0);
   const listRef = useRef<FlatList>(null);
-  const { width, height } = Dimensions.get('window');
 
   const isLast = index === SLIDES.length - 1;
   const slide = SLIDES[index];
 
   function onScrollEnd(e: NativeSyntheticEvent<NativeScrollEvent>) {
-    const i = Math.round(e.nativeEvent.contentOffset.x / width);
-    setIndex(i);
+    const i = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+    if (i >= 0 && i < SLIDES.length) {
+      setIndex(i);
+    }
+  }
+
+  function handleNext() {
+    if (isLast) {
+      goToLogin(router);
+    } else {
+      listRef.current?.scrollToIndex({ index: index + 1, animated: true });
+    }
   }
 
   return (
-    <View style={styles.root}>
-      <FlatList
-        ref={listRef}
-        data={SLIDES}
-        horizontal
-        pagingEnabled
-        bounces={false}
-        style={StyleSheet.absoluteFill}
-        showsHorizontalScrollIndicator={false}
-        keyExtractor={(_, i) => `slide-${i}`}
-        onMomentumScrollEnd={onScrollEnd}
-        getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
-        renderItem={({ item }) => (
-          <View style={{ width, height }}>
-            <ImageBackground source={item.image} style={styles.heroBg} resizeMode="cover">
-              <LinearGradient
-                colors={['rgba(0,0,0,0.08)', 'rgba(26,18,12,0.25)', INK]}
-                locations={[0, 0.55, 1]}
-                style={StyleSheet.absoluteFill}
-              />
-            </ImageBackground>
-          </View>
-        )}
-      />
-
-      <SafeAreaView style={styles.overlay} pointerEvents="box-none">
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <SafeAreaView style={styles.safe}>
+        {/* Top bar with Skip button */}
         <View style={styles.topBar}>
-          <View style={styles.brandChip}>
-            <Image source={ONBOARDING_LOGO} style={styles.logo} resizeMode="contain" />
-            <View>
-              <Text style={styles.brandName}>QuickBite</Text>
-              <Text style={styles.brandSub}>Delivered fresh, delivered fast</Text>
-            </View>
-          </View>
+          <View style={{ flex: 1 }} />
           {!isLast ? (
             <PressableScale onPress={() => goToLogin(router)} hitSlop={12} style={styles.skipBtn}>
-              <Text style={styles.skipText}>Skip</Text>
+              <Text style={[styles.skipText, { color: colors.textSecondary }]}>Skip</Text>
             </PressableScale>
           ) : (
-            <View style={{ width: 52 }} />
+            <View style={{ height: 32 }} />
           )}
         </View>
 
-        <View style={styles.bottomPanel}>
-          <Animated.View key={`slide-content-${index}`} entering={FadeIn.duration(280)}>
-            <View style={[styles.iconRing, { borderColor: slide.accent }]}>
-              <Ionicons name={slide.icon} size={22} color={slide.accent} />
-            </View>
+        {/* Dynamic header text */}
+        <Animated.View key={`slide-head-${index}`} entering={FadeInDown.duration(280)} style={styles.headerBlock}>
+          <Text style={[styles.title, { color: colors.text }]}>
+            {slide.titlePrefix}
+            <Text style={styles.titleHighlight}>{slide.titleHighlight}</Text>
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{slide.subtitle}</Text>
+        </Animated.View>
 
-            <Text style={styles.title}>{slide.title}</Text>
-            <Text style={styles.subtitle}>{slide.subtitle}</Text>
-          </Animated.View>
+        {/* Central 3D graphic carousel */}
+        <View style={styles.carouselWrap}>
+          <FlatList
+            ref={listRef}
+            data={SLIDES}
+            horizontal
+            pagingEnabled
+            bounces={false}
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item) => item.id}
+            onMomentumScrollEnd={onScrollEnd}
+            getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
+            renderItem={({ item }) => (
+              <View style={styles.slideGraphicItem}>
+                <Image
+                  source={item.graphic}
+                  style={styles.graphicImage}
+                  resizeMode="contain"
+                />
+              </View>
+            )}
+          />
+        </View>
 
-          <View style={styles.dots}>
-            {SLIDES.map((s, i) => (
+        {/* Bottom controls: Pagination dots & CTA button */}
+        <View style={styles.bottomBar}>
+          <View style={styles.dotsRow}>
+            {SLIDES.map((_, i) => (
               <View
-                key={s.title}
+                key={`dot-${i}`}
                 style={[
                   styles.dot,
-                  i === index ? styles.dotActive : styles.dotIdle,
-                  i === index && { backgroundColor: s.accent },
+                  i === index ? styles.dotActive : styles.dotInactive,
                 ]}
               />
             ))}
           </View>
 
-          <PressableScale
-            onPress={() => {
-              if (isLast) {
-                goToLogin(router);
-                return;
-              }
-              listRef.current?.scrollToIndex({ index: index + 1, animated: true });
-            }}
-            style={styles.cta}
-          >
-            <LinearGradient
-              colors={[BRAND, BRAND_DARK]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.ctaGradient}
-            >
-              <Text style={styles.ctaText}>{isLast ? 'Get started' : 'Continue'}</Text>
-              <Ionicons name={isLast ? 'arrow-forward' : 'chevron-forward'} size={20} color="#fff" />
-            </LinearGradient>
+          <PressableScale onPress={handleNext} style={styles.ctaButton}>
+            <Text style={styles.ctaText}>{slide.ctaLabel}</Text>
           </PressableScale>
-
-          <Text style={styles.stepHint}>
-            {index + 1} of {SLIDES.length}
-          </Text>
         </View>
       </SafeAreaView>
     </View>
@@ -172,146 +150,109 @@ export default function OnboardingCarouselScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: INK,
+    backgroundColor: '#FAF8F5',
   },
-  heroBg: {
+  safe: {
     flex: 1,
-    width: '100%',
-  },
-  overlay: {
-    ...StyleSheet.absoluteFill,
     justifyContent: 'space-between',
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    justifyContent: 'flex-end',
+    paddingHorizontal: 24,
     paddingTop: 8,
   },
-  brandChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderRadius: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-  },
-  logo: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#fff',
-  },
-  brandName: {
-    color: '#fff',
-    fontSize: 16,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    letterSpacing: -0.3,
-  },
-  brandSub: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 10,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    marginTop: 1,
-  },
   skipBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
   skipText: {
-    color: '#fff',
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: '#8C827A',
   },
-  bottomPanel: {
-    paddingHorizontal: 24,
-    paddingBottom: 12,
-    paddingTop: 22,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    backgroundColor: INK,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  iconRing: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 2,
+  headerBlock: {
+    paddingHorizontal: 28,
+    marginTop: 8,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,90,0,0.14)',
-    marginBottom: 14,
   },
   title: {
-    color: '#fff',
     fontSize: 26,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
-    letterSpacing: -0.5,
-    lineHeight: 32,
+    color: CaseUi.ink,
+    textAlign: 'center',
+    letterSpacing: -0.4,
+    lineHeight: 34,
+  },
+  titleHighlight: {
+    color: CaseUi.orange,
   },
   subtitle: {
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: 'PlusJakartaSans_500Medium',
-    lineHeight: 22,
-    marginTop: 8,
-    maxWidth: 340,
+    color: '#7A726A',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: 10,
+    maxWidth: 320,
   },
-  dots: {
+  carouselWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    marginVertical: 10,
+  },
+  slideGraphicItem: {
+    width: SCREEN_W,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  graphicImage: {
+    width: SCREEN_W * 0.85,
+    height: SCREEN_H * 0.38,
+  },
+  bottomBar: {
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+    alignItems: 'center',
+  },
+  dotsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
-    marginTop: 20,
-    marginBottom: 18,
+    marginBottom: 24,
   },
   dot: {
     height: 8,
-    borderRadius: 99,
-  },
-  dotIdle: {
-    width: 8,
-    backgroundColor: 'rgba(255,255,255,0.28)',
+    borderRadius: 4,
   },
   dotActive: {
-    width: 28,
+    width: 24,
+    backgroundColor: CaseUi.orange,
   },
-  cta: {
+  dotInactive: {
+    width: 8,
+    backgroundColor: '#E6E0D8',
+  },
+  ctaButton: {
+    width: '100%',
+    height: 52,
     borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: BRAND,
-    shadowOpacity: 0.45,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-  },
-  ctaGradient: {
-    flexDirection: 'row',
+    backgroundColor: CaseUi.orange,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
+    shadowColor: CaseUi.orange,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   ctaText: {
-    color: '#fff',
     fontSize: 16,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
-  stepHint: {
-    textAlign: 'center',
-    marginTop: 14,
-    color: 'rgba(255,255,255,0.38)',
-    fontSize: 12,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    letterSpacing: 0.5,
+    color: '#FFFFFF',
   },
 });

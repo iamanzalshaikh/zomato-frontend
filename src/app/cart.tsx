@@ -20,6 +20,7 @@ import { ThemedView } from '@/components/themed-view';
 import { CaseUi } from '@/constants/caseUi';
 import { useCart } from '@/hooks/use-cart';
 import { toast } from '@/lib/toast';
+import { useThemeContext } from '@/context/ThemeContext';
 import {
   useClearCartMutation,
   useRemoveCartItemMutation,
@@ -77,6 +78,8 @@ export default function CartScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { cart, loading } = useCart();
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 8 : 0);
   const checkoutBarPaddingBottom = bottomInset + 10;
   const checkoutBarHeight = 108 + checkoutBarPaddingBottom;
@@ -149,6 +152,17 @@ export default function CartScreen() {
         .catch((err) => console.log('Error fetching recommendations', err));
     }
   }, [restaurant?._id, cart?.items]);
+
+  // Build a menuItemId -> imageUrl lookup from already-fetched recommendations + all items
+  const menuItemImageMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    recommendations.forEach((item) => {
+      if (item.images && item.images.length > 0) {
+        map[item._id] = item.images[0];
+      }
+    });
+    return map;
+  }, [recommendations]);
 
   const caseItems = useMemo(() => mapCartToCaseItems(cart), [cart]);
   const quoteInput = useMemo(() => {
@@ -245,29 +259,29 @@ export default function CartScreen() {
   const total = quote?.totalJmd ?? cart.grandTotal ?? subtotal;
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <View style={styles.headerRow}>
+        <View style={[styles.headerRow, { borderBottomColor: isDark ? '#222226' : CaseUi.line }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}>
-            <Pressable onPress={() => router.back()} style={styles.iconCircle}>
-              <Ionicons name="arrow-back" size={20} color={CaseUi.ink} />
+            <Pressable onPress={() => router.back()} style={[styles.iconCircle, { backgroundColor: isDark ? '#1F1F24' : CaseUi.field }]}>
+              <Ionicons name="arrow-back" size={20} color={colors.text} />
             </Pressable>
             <View style={{ flex: 1 }}>
-              <Text style={styles.headerTitle} numberOfLines={1}>
+              <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
                 {restaurant?.restaurantName || 'Your order'}
               </Text>
               <Pressable
                 onPress={() => router.push('/(onboarding)/delivery-point')}
                 style={styles.locationSelector}
               >
-                <Text style={styles.locationText} numberOfLines={1}>
+                <Text style={[styles.locationText, { color: colors.textSecondary }]} numberOfLines={1}>
                   Deliver to <Text style={styles.locationTextStrong}>{deliveryPointName}</Text>
                 </Text>
                 <Ionicons name="chevron-down" size={12} color={CaseUi.muted} />
               </Pressable>
             </View>
           </View>
-          <Pressable onPress={handleClearCart} style={styles.iconCircle}>
+          <Pressable onPress={handleClearCart} style={[styles.iconCircle, { backgroundColor: isDark ? '#1F1F24' : CaseUi.field }]}>
             <Ionicons name="trash-outline" size={18} color={CaseUi.danger} />
           </Pressable>
         </View>
@@ -277,72 +291,80 @@ export default function CartScreen() {
           contentContainerStyle={[styles.scrollBody, { paddingBottom: checkoutBarHeight + 16 }]}
         >
           {/* Cart items */}
-          <View style={styles.itemsCard}>
+          <View style={[styles.itemsCard, { backgroundColor: isDark ? '#141417' : CaseUi.white, borderColor: isDark ? '#27272A' : CaseUi.line }]}>
             {cart.items.map((it) => {
               const portionName =
                 it.addons && it.addons.length > 0
                   ? it.addons.map((a: { name: string }) => a.name.replace('Portion: ', '')).join(', ')
                   : null;
+              const itemImage = menuItemImageMap[it.menuItemId] ?? null;
+              const restaurantName =
+                typeof restaurant === 'object' && restaurant?.restaurantName
+                  ? restaurant.restaurantName
+                  : 'Store';
 
               return (
-                <View key={it._id} style={styles.cartItemRow}>
-                  <View style={{ flexDirection: 'row', flex: 1, gap: 10 }}>
-                    <View style={{ marginTop: 3 }}>
-                      <FoodTypeDot itemName={it.itemName} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.itemNameText}>{it.itemName}</Text>
-                      {portionName ? <Text style={styles.itemPortionText}>{portionName}</Text> : null}
-                      <Pressable
-                        onPress={() =>
-                          router.push({
-                            pathname: '/restaurant/[restaurantId]',
-                            params: { restaurantId: restaurant?._id },
-                          })
-                        }
-                        style={styles.editItemBtn}
-                      >
-                        <Text style={styles.editItemText}>Edit</Text>
-                        <Ionicons name="caret-forward" size={10} color={CaseUi.orange} />
-                      </Pressable>
-                    </View>
+                <View key={it._id} style={[styles.cartItemRow, { borderBottomColor: isDark ? '#27272A' : CaseUi.line }]}>
+                  {/* Thumbnail */}
+                  <View style={[styles.itemThumb, { backgroundColor: isDark ? '#222228' : CaseUi.field }]}>
+                    {itemImage ? (
+                      <Image
+                        source={{ uri: itemImage }}
+                        style={styles.itemThumbImg}
+                        contentFit="cover"
+                        transition={200}
+                      />
+                    ) : (
+                      <Ionicons name="fast-food-outline" size={24} color={CaseUi.muted} />
+                    )}
                   </View>
 
-                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                    <View style={styles.quantityContainer}>
-                      <Pressable
-                        disabled={mutating}
-                        onPress={async () => {
-                          if (it.quantity <= 1) {
-                            Alert.alert('Remove item', `Remove ${it.itemName}?`, [
-                              { text: 'Cancel', style: 'cancel' },
-                              {
-                                text: 'Remove',
-                                style: 'destructive',
-                                onPress: async () => {
-                                  await removeLine.mutateAsync({ itemId: it._id });
-                                  toast.info(`${it.itemName} removed from cart`);
-                                },
+                  {/* Info */}
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={[styles.itemNameText, { color: colors.text }]} numberOfLines={1}>{it.itemName}</Text>
+                    {portionName ? (
+                      <Text style={[styles.itemPortionText, { color: colors.textSecondary }]} numberOfLines={1}>{portionName}</Text>
+                    ) : (
+                      <Text style={[styles.itemStoreName, { color: colors.textSecondary }]} numberOfLines={1}>{restaurantName}</Text>
+                    )}
+                    <Text style={[styles.itemPriceText, { color: isDark ? '#FF9F64' : CaseUi.ink }]}>JMD {it.price * it.quantity}</Text>
+                  </View>
+
+                  {/* Inline qty pill */}
+                  <View style={[styles.quantityContainer, { borderColor: isDark ? '#3F3F46' : CaseUi.line }]}>
+                    <Pressable
+                      disabled={mutating}
+                      onPress={async () => {
+                        if (it.quantity <= 1) {
+                          Alert.alert('Remove item', `Remove ${it.itemName}?`, [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Remove',
+                              style: 'destructive',
+                              onPress: async () => {
+                                await removeLine.mutateAsync({ itemId: it._id });
+                                toast.info(`${it.itemName} removed from cart`);
                               },
-                            ]);
-                          } else {
-                            await updateLine.mutateAsync({ itemId: it._id, quantity: it.quantity - 1 });
-                          }
-                        }}
-                        style={styles.qtyBtn}
-                      >
-                        <Ionicons name="remove" size={14} color="#FFFFFF" />
-                      </Pressable>
-                      <Text style={styles.qtyValueText}>{it.quantity}</Text>
-                      <Pressable
-                        disabled={mutating}
-                        onPress={() => updateLine.mutateAsync({ itemId: it._id, quantity: it.quantity + 1 })}
-                        style={styles.qtyBtn}
-                      >
-                        <Ionicons name="add" size={14} color="#FFFFFF" />
-                      </Pressable>
-                    </View>
-                    <Text style={styles.itemPriceText}>J${it.price * it.quantity}</Text>
+                            },
+                          ]);
+                        } else {
+                          await updateLine.mutateAsync({ itemId: it._id, quantity: it.quantity - 1 });
+                        }
+                      }}
+                      style={styles.qtyBtn}
+                      hitSlop={6}
+                    >
+                      <Ionicons name="remove" size={14} color={isDark ? '#AAAAAA' : '#555555'} />
+                    </Pressable>
+                    <Text style={[styles.qtyValueText, { color: colors.text }]}>{it.quantity}</Text>
+                    <Pressable
+                      disabled={mutating}
+                      onPress={() => updateLine.mutateAsync({ itemId: it._id, quantity: it.quantity + 1 })}
+                      style={styles.qtyBtn}
+                      hitSlop={6}
+                    >
+                      <Ionicons name="add" size={14} color={isDark ? '#AAAAAA' : '#555555'} />
+                    </Pressable>
                   </View>
                 </View>
               );
@@ -460,81 +482,92 @@ export default function CartScreen() {
             </View>
           )}
 
-          {/* Coupon */}
-          <View style={styles.couponCard}>
-            <View style={styles.couponRow}>
-              <Ionicons name="pricetag-outline" size={18} color={CaseUi.orange} />
-              <View style={{ flex: 1 }}>
+          {/* Peach Promo Coupon Card */}
+          <View
+            style={[
+              styles.couponCardPeach,
+              { backgroundColor: isDark ? '#2D201A' : '#FFF5EE', borderColor: isDark ? '#5C3826' : '#FFE0CC' }
+            ]}
+          >
+            <View style={{ flex: 1, gap: 2 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="pricetag" size={14} color={CaseUi.orange} />
                 {quote?.discountAmount ? (
-                  <Text style={styles.couponCodeTitle}>
-                    Saved J${quote.discountAmount} with &apos;{couponCode}&apos;
+                  <Text style={[styles.couponCodeTitle, { color: isDark ? '#FF9F64' : '#E05A10' }]}>
+                    Saved JMD {quote.discountAmount} with &apos;{couponCode}&apos;
                   </Text>
                 ) : (
-                  <Text style={styles.couponCodeTitle}>
+                  <Text style={[styles.couponCodeTitle, { color: isDark ? '#FF9F64' : '#E05A10' }]}>
                     {suggestedCoupon
-                      ? `Try '${suggestedCoupon.couponCode}' — ${formatCouponDescription(suggestedCoupon)}`
+                      ? `Try '${suggestedCoupon.couponCode}'`
                       : 'Have a coupon code?'}
                   </Text>
                 )}
               </View>
-              {couponCode ? (
-                <Pressable onPress={() => applyCouponCode('')} style={styles.applyButton}>
-                  <Text style={styles.applyButtonText}>REMOVE</Text>
-                </Pressable>
-              ) : (
-                <View style={styles.couponInputRow}>
-                  <TextInput
-                    value={couponCode}
-                    onChangeText={setCouponCode}
-                    onBlur={() => applyCouponCode(couponCode)}
-                    placeholder="Enter code"
-                    placeholderTextColor={CaseUi.muted}
-                    autoCapitalize="characters"
-                    style={styles.couponMiniInput}
-                  />
-                  <Pressable
-                    disabled={!couponCode.trim()}
-                    onPress={() => applyCouponCode(couponCode)}
-                    style={styles.applyButton}
-                  >
-                    <Text style={styles.applyButtonText}>APPLY</Text>
-                  </Pressable>
-                </View>
-              )}
+              <Text style={[styles.couponCodeDesc, { color: isDark ? '#D1A38C' : '#8A583C' }]}>
+                {suggestedCoupon
+                  ? formatCouponDescription(suggestedCoupon)
+                  : 'Enter promo code at checkout for maximum discount'}
+              </Text>
             </View>
+
+            {couponCode ? (
+              <Pressable onPress={() => applyCouponCode('')} style={styles.applyButtonCircle}>
+                <Ionicons name="close-circle" size={20} color={CaseUi.orange} />
+              </Pressable>
+            ) : (
+              <View style={[styles.couponInputRow, { backgroundColor: isDark ? '#3D2A20' : '#FFFFFF', borderColor: isDark ? '#5C3826' : '#FFE0CC' }]}>
+                <TextInput
+                  value={couponCode}
+                  onChangeText={setCouponCode}
+                  onBlur={() => applyCouponCode(couponCode)}
+                  placeholder="Enter code"
+                  placeholderTextColor={isDark ? '#8A583C' : '#A88D7E'}
+                  autoCapitalize="characters"
+                  style={[styles.couponMiniInput, { color: isDark ? '#FF9F64' : '#E05A10' }]}
+                />
+                <Pressable
+                  disabled={!couponCode.trim()}
+                  onPress={() => applyCouponCode(couponCode)}
+                  style={styles.applyButton}
+                >
+                  <Text style={styles.applyButtonText}>APPLY</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
 
           {/* Bill breakdown — driven by the real /public/quote API, same as Checkout */}
-          <View style={styles.billDetailsCard}>
-            <Text style={styles.billDetailsTitle}>Bill Details</Text>
+          <View style={[styles.billDetailsCard, { backgroundColor: isDark ? '#141417' : CaseUi.white, borderColor: isDark ? '#27272A' : CaseUi.line }]}>
+            <Text style={[styles.billDetailsTitle, { color: colors.text }]}>Bill Details</Text>
             {quoteQ.isFetching && !quote ? (
               <ActivityIndicator color={CaseUi.orange} style={{ marginVertical: 8 }} />
             ) : (
               <>
-                <Row label="Item Total" value={`J$${subtotal}`} color={CaseUi.ink} />
+                <Row label="Item Total" value={`JMD ${subtotal}`} color={colors.text} />
                 <Row
                   label="Delivery Fee"
-                  value={quote?.deliveryFee ? `J$${quote.deliveryFee}` : deliveryPointId ? 'FREE' : 'Set at checkout'}
-                  color={CaseUi.ink}
+                  value={quote?.deliveryFee ? `JMD ${quote.deliveryFee}` : deliveryPointId ? 'FREE' : 'Set at checkout'}
+                  color={colors.text}
                 />
                 {quote && quote.multiStoreFee > 0 ? (
-                  <Row label="Multi-store Fee" value={`J$${quote.multiStoreFee}`} color={CaseUi.ink} />
+                  <Row label="Multi-store Fee" value={`JMD ${quote.multiStoreFee}`} color={colors.text} />
                 ) : null}
                 {quote && quote.discountAmount > 0 ? (
-                  <Row label="Coupon Discount" value={`-J$${quote.discountAmount}`} color={CaseUi.success} />
+                  <Row label="Coupon Discount" value={`-JMD ${quote.discountAmount}`} color={CaseUi.success} />
                 ) : null}
-                <View style={styles.cardSeparator} />
-                <Row label="Total" value={`J$${total}`} color={CaseUi.orange} bold />
+                <View style={[styles.cardSeparator, { backgroundColor: isDark ? '#27272A' : CaseUi.line }]} />
+                <Row label="Total" value={`JMD ${total}`} color={CaseUi.orange} bold />
               </>
             )}
           </View>
         </ScrollView>
 
-        <View style={[styles.bottomCheckoutBar, { paddingBottom: checkoutBarPaddingBottom }]}>
+        <View style={[styles.bottomCheckoutBar, { backgroundColor: isDark ? '#141417' : CaseUi.white, borderTopColor: isDark ? '#27272A' : CaseUi.line, paddingBottom: checkoutBarPaddingBottom }]}>
           <Pressable onPress={() => setShowPaymentModal(true)} style={styles.paymentMethodSelect}>
             <View>
               <Text style={styles.payUsingLabel}>PAY USING</Text>
-              <Text style={styles.payUsingMethod}>
+              <Text style={[styles.payUsingMethod, { color: colors.text }]}>
                 {paymentMethod === 'BANK_TRANSFER' ? 'Bank Transfer' : 'Cash on Delivery'}
               </Text>
             </View>
@@ -543,7 +576,7 @@ export default function CartScreen() {
           <Pressable disabled={mutating} onPress={() => router.push('/checkout')} style={styles.placeOrderBtn}>
             <View style={styles.placeOrderInner}>
               <View style={{ alignItems: 'flex-start' }}>
-                <Text style={styles.btnTotalText}>J${total}</Text>
+                <Text style={styles.btnTotalText}>JMD {total}</Text>
                 <Text style={styles.btnTotalLabel}>TOTAL</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -673,11 +706,20 @@ const styles = StyleSheet.create({
   cartItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: CaseUi.line,
   },
+  itemThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 10,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  itemThumbImg: { width: '100%', height: '100%' },
   foodTypeBorder: {
     width: 13,
     height: 13,
@@ -698,27 +740,33 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   itemNameText: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: CaseUi.ink },
-  itemPortionText: { fontSize: 12, color: CaseUi.muted, marginTop: 2 },
-  editItemBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 6, alignSelf: 'flex-start' },
+  itemStoreName: { fontSize: 12, color: CaseUi.muted, fontFamily: 'PlusJakartaSans_500Medium' },
+  itemPortionText: { fontSize: 12, color: CaseUi.muted, fontFamily: 'PlusJakartaSans_500Medium' },
+  editItemBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 4, alignSelf: 'flex-start' },
   editItemText: { color: CaseUi.orange, fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold' },
   quantityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 8,
-    backgroundColor: CaseUi.orange,
-    overflow: 'hidden',
-    height: 32,
-    width: 80,
+    borderWidth: 1,
+    paddingHorizontal: 4,
+    paddingVertical: 3,
+    gap: 2,
+    flexShrink: 0,
   },
-  qtyBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%' },
+  qtyBtn: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   qtyValueText: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 13,
-    color: '#FFFFFF',
-    width: 24,
+    minWidth: 18,
     textAlign: 'center',
   },
-  itemPriceText: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: CaseUi.ink, marginTop: 2 },
+  itemPriceText: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: CaseUi.ink },
   addMoreRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 14 },
   addMoreText: { color: CaseUi.orange, fontSize: 13, fontFamily: 'PlusJakartaSans_700Bold' },
   actionCapsule: {
@@ -776,30 +824,39 @@ const styles = StyleSheet.create({
   recContent: { padding: 6, gap: 2 },
   recItemName: { fontSize: 10, color: CaseUi.ink, fontFamily: 'PlusJakartaSans_700Bold', flex: 1 },
   recItemPrice: { fontSize: 10, color: CaseUi.muted, fontFamily: 'PlusJakartaSans_800ExtraBold' },
-  couponCard: {
-    backgroundColor: CaseUi.white,
-    borderRadius: CaseUi.radius.lg,
-    padding: 14,
+  couponCardPeach: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: CaseUi.line,
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+    justifyContent: 'space-between',
     ...CaseUi.softShadow,
   },
-  couponRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  couponCodeTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: CaseUi.ink },
+  couponCodeTitle: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 14,
+  },
+  couponCodeDesc: {
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 12,
+  },
   couponInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: CaseUi.line,
-    borderRadius: 8,
+    borderRadius: 10,
     paddingHorizontal: 8,
-    height: 32,
-    backgroundColor: CaseUi.field,
-    width: 130,
+    height: 38,
+    width: 140,
   },
-  couponMiniInput: { flex: 1, color: CaseUi.ink, fontSize: 10, fontFamily: 'PlusJakartaSans_700Bold', paddingVertical: 0 },
+  couponMiniInput: { flex: 1, fontSize: 11, fontFamily: 'PlusJakartaSans_700Bold', paddingVertical: 0 },
   applyButton: { paddingHorizontal: 8, justifyContent: 'center', alignItems: 'center' },
   applyButtonText: { color: CaseUi.orange, fontSize: 11, fontFamily: 'PlusJakartaSans_800ExtraBold' },
+  applyButtonTextAction: { color: CaseUi.orange, fontSize: 13, fontFamily: 'PlusJakartaSans_800ExtraBold' },
+  applyButtonTextWrap: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#FFE0CC' },
+  applyButtonCircle: { padding: 4 },
   billDetailsCard: {
     backgroundColor: CaseUi.white,
     borderRadius: CaseUi.radius.lg,

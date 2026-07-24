@@ -46,6 +46,7 @@ function normalizeCaseAsOrder(o: CaseOrder): Order & CaseOrder {
       longitude: 0,
     },
     estimatedPreparationTime: o.estimatedPreparationTime ?? undefined,
+    riderId: o.riderId ?? undefined,
     createdAt: o.createdAt as string | undefined,
   };
 }

@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { CaseUi } from '@/constants/caseUi';
+import { useThemeContext } from '@/context/ThemeContext';
 
 type Props = {
   width?: number | `${number}%`;
@@ -24,6 +25,8 @@ export const SkeletonBlock = memo(function SkeletonBlock({
   radius = 10,
   style,
 }: Props) {
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
   const [blockWidth, setBlockWidth] = useState(typeof width === 'number' ? width : 0);
   const sweep = useSharedValue(-1);
 
@@ -43,7 +46,12 @@ export const SkeletonBlock = memo(function SkeletonBlock({
     <View
       style={[
         styles.base,
-        { width: width as number | `${number}%`, height, borderRadius: radius },
+        {
+          backgroundColor: isDark ? '#222228' : CaseUi.field,
+          width: width as number | `${number}%`,
+          height,
+          borderRadius: radius,
+        },
         style,
       ]}
       onLayout={(e) => setBlockWidth(e.nativeEvent.layout.width)}
@@ -51,7 +59,11 @@ export const SkeletonBlock = memo(function SkeletonBlock({
       {blockWidth > 0 ? (
         <Animated.View style={[StyleSheet.absoluteFill, anim]}>
           <LinearGradient
-            colors={['transparent', 'rgba(255,255,255,0.55)', 'transparent']}
+            colors={
+              isDark
+                ? ['transparent', 'rgba(255,255,255,0.08)', 'transparent']
+                : ['transparent', 'rgba(255,255,255,0.55)', 'transparent']
+            }
             start={{ x: 0, y: 0.5 }}
             end={{ x: 1, y: 0.5 }}
             style={StyleSheet.absoluteFill}
@@ -112,33 +124,35 @@ export function CategoryListSkeleton() {
 }
 
 export function HomeSkeleton() {
+  const { colors } = useThemeContext();
   return (
-    <View style={styles.homePad}>
-      <View style={styles.homeHeader}>
-        <View style={{ flex: 1, gap: 8 }}>
-          <SkeletonBlock width="40%" height={12} />
-          <SkeletonBlock width="55%" height={20} />
-          <SkeletonBlock width="35%" height={12} />
-        </View>
-        <SkeletonBlock width={36} height={36} radius={18} />
-        <SkeletonBlock width={36} height={36} radius={18} />
-      </View>
-      <SkeletonBlock width="100%" height={52} radius={16} style={{ marginTop: 16 }} />
-      <View style={[styles.row, { marginTop: 18 }]}>
+    <View style={[styles.homePad, { backgroundColor: 'transparent' }]}>
+      {/* Category tiles */}
+      <View style={[styles.row, { marginTop: 14, justifyContent: 'space-between' }]}>
         {[0, 1, 2, 3, 4].map((i) => (
           <View key={i} style={{ alignItems: 'center', gap: 6 }}>
-            <SkeletonBlock width={64} height={64} radius={20} />
-            <SkeletonBlock width={48} height={10} radius={4} />
+            <SkeletonBlock width={60} height={60} radius={22} />
+            <SkeletonBlock width={44} height={10} radius={4} />
           </View>
         ))}
       </View>
-      <SkeletonBlock width="100%" height={132} radius={22} style={{ marginTop: 18 }} />
-      <SkeletonBlock width="45%" height={18} style={{ marginTop: 22 }} />
+
+      {/* Banner promo card */}
+      <SkeletonBlock width="100%" height={160} radius={24} style={{ marginTop: 20 }} />
+
+      {/* Section title */}
+      <SkeletonBlock width="45%" height={18} style={{ marginTop: 24 }} />
+
+      {/* Horizontal shop cards */}
       <View style={[styles.row, { marginTop: 12 }]}>
         {[0, 1, 2].map((i) => (
-          <SkeletonBlock key={i} width={148} height={168} radius={22} />
+          <SkeletonBlock key={i} width={140} height={168} radius={22} />
         ))}
       </View>
+
+      {/* List cards */}
+      <SkeletonBlock width="100%" height={88} radius={18} style={{ marginTop: 20 }} />
+      <SkeletonBlock width="100%" height={88} radius={18} style={{ marginTop: 12 }} />
     </View>
   );
 }

@@ -14,7 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -24,6 +24,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { ThemedView } from '@/components/themed-view';
+import { useThemeContext } from '@/context/ThemeContext';
 import { PressableScale } from '@/components/pressable-scale';
 import { FloatingCartBar } from '@/components/floating-cart-bar';
 import { ShopCard } from '@/components/shop-card';
@@ -59,33 +60,562 @@ const PAGE_BG = '#FBF7F2';
 const PROMOS = [
   {
     id: 'free-del',
-    title: 'Free delivery today',
-    sub: 'On every campus order above J$500',
-    cta: 'Start ordering',
-    image: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=700&auto=format&fit=crop&q=80',
-    action: 'ALL' as CaseCategoryId,
-  },
-  {
-    id: 'pharmacy',
-    title: 'Pharmacy, dropped off',
-    sub: 'Rx & wellness essentials to your dorm',
-    cta: 'Shop pharmacy',
-    image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=700&auto=format&fit=crop&q=80',
-    action: 'PHARMACY' as CaseCategoryId,
+    eyebrow: '⚡ CAMPUS SPECIAL',
+    badgeBg: '#FF5A00',
+    title: 'Free Delivery Today',
+    sub: 'On every campus food & store order above J$500',
+    cta: 'Order Now',
+    image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=900&auto=format&fit=crop&q=80',
+    gradientColors: ['transparent', 'rgba(15, 8, 5, 0.25)', 'rgba(15, 8, 5, 0.92)'],
+    action: 'RESTAURANT' as CaseCategoryId,
   },
   {
     id: 'grocery',
-    title: 'Fresh groceries, fast',
-    sub: 'Campus-essential staples in minutes',
-    cta: 'Browse grocery',
-    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=700&auto=format&fit=crop&q=80',
+    eyebrow: '🛒 FLASH GROCERY',
+    badgeBg: '#10B981',
+    title: 'Fresh Groceries, Fast',
+    sub: 'Snacks, drinks & dorm staples dropped in minutes',
+    cta: 'Browse Grocery',
+    image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=900&auto=format&fit=crop&q=80',
+    gradientColors: ['transparent', 'rgba(4, 28, 16, 0.25)', 'rgba(4, 28, 16, 0.92)'],
     action: 'GROCERY' as CaseCategoryId,
+  },
+  {
+    id: 'pharmacy',
+    eyebrow: '💊 EXPRESS PHARMACY',
+    badgeBg: '#0EA5E9',
+    title: 'Pharmacy & Wellness',
+    sub: 'Rx, first-aid & wellness essentials delivered to dorms',
+    cta: 'Shop Pharmacy',
+    image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=900&auto=format&fit=crop&q=80',
+    gradientColors: ['transparent', 'rgba(5, 15, 35, 0.25)', 'rgba(5, 15, 35, 0.92)'],
+    action: 'PHARMACY' as CaseCategoryId,
+  },
+  {
+    id: 'store',
+    eyebrow: 'ðŸ›ï¸ CAMPUS STORE',
+    badgeBg: '#8B5CF6',
+    title: 'Tech, Supplies & Gear',
+    sub: 'Dorm essentials, cables & stationery dropped fast',
+    cta: 'Browse Store',
+    image: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=900&auto=format&fit=crop&q=80',
+    gradientColors: ['transparent', 'rgba(25, 10, 45, 0.25)', 'rgba(25, 10, 45, 0.92)'],
+    action: 'STORE' as CaseCategoryId,
   },
 ];
 
 const GET_ANYTHING_IMG = require('../../../assets/flowimages/stitch_quickbite_food_delivery_app_user_panel/stitch_quickbite_food_delivery_app_user_panel/warm_flat_style_illustration_of_a_food_delivery_rider_on_a_scooter_driving/screen.png');
 
 const TERMINAL_STATUSES = new Set(['DELIVERED', 'CANCELLED', 'REJECTED']);
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  heroBgContainer: {
+    position: 'absolute',
+    top: -120,
+    left: 0,
+    right: 0,
+    height: 440,
+    overflow: 'hidden',
+  },
+  heroWash: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  glowBig: {
+    position: 'absolute',
+    top: 60,
+    right: -50,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  glowSmall: {
+    position: 'absolute',
+    top: 210,
+    left: -40,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+  },
+  safe: { flex: 1 },
+  utilityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: PAD,
+    paddingTop: 4,
+    gap: 10,
+  },
+  locPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: SCREEN_W * 0.42,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: CaseUi.field,
+    borderWidth: 1,
+    borderColor: CaseUi.line,
+  },
+  locPillText: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 12,
+    color: CaseUi.ink,
+    flexShrink: 1,
+  },
+  utilityRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  walletPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: CaseUi.white,
+    ...CaseUi.softShadow,
+  },
+  walletAmt: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 12, color: CaseUi.ink },
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CaseUi.white,
+    ...CaseUi.softShadow,
+  },
+  badge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    paddingHorizontal: 3,
+    backgroundColor: CaseUi.orange,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: CaseUi.line,
+  },
+  badgeText: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 8,
+    color: '#FFFFFF',
+  },
+  avatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    overflow: 'hidden',
+    backgroundColor: CaseUi.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.85)',
+  },
+  avatarLetter: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    color: CaseUi.orange,
+    fontSize: 14,
+  },
+  greetBlock: { paddingHorizontal: PAD, marginTop: 20 },
+  greetLine: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 28,
+    letterSpacing: -0.6,
+    color: CaseUi.ink,
+  },
+  greetWave: {},
+  greetSub: {
+    marginTop: 6,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontSize: 14,
+    color: CaseUi.muted,
+  },
+  search: {
+    marginHorizontal: PAD,
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: 44,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: CaseUi.field,
+    ...CaseUi.cardShadow,
+  },
+  searchIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: CaseUi.orangeSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchPh: {
+    flex: 1,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 13,
+    color: CaseUi.muted,
+  },
+  micWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: CaseUi.field,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trackCard: {
+    marginHorizontal: PAD,
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: CaseUi.radius.lg,
+    backgroundColor: CaseUi.white,
+    borderWidth: 1,
+    borderColor: CaseUi.line,
+    ...CaseUi.softShadow,
+  },
+  trackIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: CaseUi.orangeSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trackTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: CaseUi.ink },
+  trackSub: { marginTop: 2, fontFamily: 'PlusJakartaSans_500Medium', fontSize: 11, color: CaseUi.muted },
+  trackCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: CaseUi.orange,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  trackCtaText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 11 },
+  catSectionContainer: {
+    marginTop: 26,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  catFixedWrap: {
+    paddingLeft: PAD,
+    paddingRight: 4,
+  },
+  catDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: 'rgba(0,0,0,0.08)',
+    marginRight: 4,
+    alignSelf: 'center',
+  },
+  catScrollContent: {
+    paddingRight: PAD,
+    gap: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 0,
+  },
+  catItem: { width: 64, alignItems: 'center' },
+  catTile: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.04)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  catTileSelected: {
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    transform: [{ scale: 1.06 }],
+    shadowOpacity: 0.16,
+    elevation: 4,
+  },
+  catLabel: {
+    marginTop: 5,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontSize: 10,
+    color: CaseUi.muted,
+    textAlign: 'center',
+  },
+  catLabelOn: {
+    color: CaseUi.ink,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+  },
+  promoBlock: { marginTop: 18, marginHorizontal: PAD },
+  promo: {
+    height: 172,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  promoBg: { ...StyleSheet.absoluteFill },
+  promoCopy: { padding: 18 },
+  promoBadgePill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  promoBadgeText: {
+    color: '#FFFFFF',
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  promoTitle: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 22,
+    color: '#FFFFFF',
+    letterSpacing: -0.3,
+    lineHeight: 26,
+  },
+  promoSub: {
+    marginTop: 4,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.88)',
+  },
+  promoBottomRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  promoCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: CaseUi.white,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  promoCtaText: {
+    color: CaseUi.ink,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 11,
+  },
+  cardEmbeddedDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.38)',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  cardDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+  },
+  cardDotOn: {
+    width: 16,
+    borderRadius: 8,
+  },
+  sectionHead: {
+    marginTop: 28,
+    marginHorizontal: PAD,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  sectionTitle: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 18,
+    color: CaseUi.ink,
+    letterSpacing: -0.3,
+  },
+  sectionSubtitle: {
+    marginTop: 2,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 12,
+    color: CaseUi.muted,
+  },
+  seeAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingBottom: 2 },
+  seeAll: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 13,
+    color: CaseUi.orange,
+  },
+  hPad: { paddingLeft: PAD, paddingRight: PAD, gap: 12, paddingBottom: 2 },
+  listPad: { paddingHorizontal: PAD },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
+  gridCell: { width: '50%', paddingHorizontal: 5 },
+  empty: {
+    marginHorizontal: PAD,
+    marginTop: 28,
+    alignItems: 'center',
+    paddingVertical: 36,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+    backgroundColor: CaseUi.field,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    backgroundColor: CaseUi.orangeSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  emptyTitle: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 17,
+    color: CaseUi.ink,
+  },
+  emptySub: {
+    marginTop: 8,
+    textAlign: 'center',
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 13,
+    lineHeight: 19,
+    color: CaseUi.muted,
+  },
+  emptyCta: {
+    marginTop: 18,
+    backgroundColor: CaseUi.orange,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  emptyCtaText: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 13,
+    color: '#FFFFFF',
+  },
+  getAnything: {
+    marginHorizontal: PAD,
+    marginTop: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderRadius: 22,
+    overflow: 'hidden',
+  },
+  getImg: { width: 56, height: 56, borderRadius: 16 },
+  getEyebrow: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 10,
+    color: CaseUi.orangeDeep,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  getTitle: {
+    marginTop: 2,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 15,
+    color: CaseUi.ink,
+  },
+  getSub: {
+    marginTop: 2,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 11,
+    color: CaseUi.muted,
+  },
+  getCta: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CaseUi.orange,
+  },
+  // ── Active order sticky banner ──────────────────────────────────────────────
+  activeOrderBanner: {
+    position: 'absolute',
+    bottom: 12,
+    left: 16,
+    right: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    ...CaseUi.cardShadow,
+  },
+  activeOrderBannerInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  activeOrderIconDot: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  activeOrderBannerTitle: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 13,
+    color: CaseUi.ink,
+  },
+  activeOrderBannerSub: {
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 11,
+    color: CaseUi.muted,
+    marginTop: 1,
+  },
+  activeOrderBannerTrack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: CaseUi.orange,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    flexShrink: 0,
+  },
+  activeOrderBannerTrackText: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 11,
+    color: '#FFFFFF',
+  },
+});
+
 
 function greetingForHour(h: number) {
   if (h < 5) return 'Still up';
@@ -118,11 +648,12 @@ function SectionHeader({
   onAction?: () => void;
   delay?: number;
 }) {
+  const { colors } = useThemeContext();
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(320)} style={styles.sectionHead}>
       <View style={{ flex: 1 }}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {subtitle ? <Text style={styles.sectionSubtitle}>{subtitle}</Text> : null}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
+        {subtitle ? <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>{subtitle}</Text> : null}
       </View>
       {onAction ? (
         <PressableScale onPress={onAction} hitSlop={10} style={styles.seeAllBtn}>
@@ -146,8 +677,14 @@ function CategoryTile({
   index: number;
 }) {
   const meta = CASE_CATEGORY_META[id];
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
+  const enteringAnim = id === 'ALL'
+    ? FadeIn.delay(40).duration(300)
+    : FadeInRight.delay(40 + index * 25).duration(300);
+
   return (
-    <Animated.View entering={FadeInRight.delay(60 + index * 35).duration(320)}>
+    <Animated.View entering={enteringAnim} style={styles.catItem}>
       <PressableScale
         onPress={onPress}
         style={styles.catItem}
@@ -156,16 +693,18 @@ function CategoryTile({
         <View
           style={[
             styles.catTile,
-            { backgroundColor: selected ? CaseUi.orange : meta.color },
+            { backgroundColor: selected ? meta.color : isDark ? '#1C1C22' : meta.bg },
+            selected && styles.catTileSelected,
+            isDark && !selected && { borderWidth: 1, borderColor: '#2A2A32' },
           ]}
         >
           <Ionicons
             name={meta.icon}
-            size={26}
-            color={selected ? '#FFFFFF' : CaseUi.ink}
+            size={24}
+            color={selected ? '#FFFFFF' : meta.color}
           />
         </View>
-        <Text style={[styles.catLabel, selected && styles.catLabelOn]} numberOfLines={1}>
+        <Text style={[styles.catLabel, { color: isDark ? '#E5E5EA' : CaseUi.ink }, selected && styles.catLabelOn]} numberOfLines={1}>
           {meta.short}
         </Text>
       </PressableScale>
@@ -197,6 +736,7 @@ function ShopGrid({
 
 export default function HomeScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const tabBarHeight = useTabBarHeight();
   const { cart } = useCart();
   const addToCart = useAddToCartMutation();
@@ -250,10 +790,12 @@ export default function HomeScreen() {
   const firstName = user?.fullName?.trim()?.split(/\s+/)[0] || 'there';
   const greet = greetingForHour(new Date().getHours());
 
-  const activeOrder = useMemo(() => {
+  const activeOrders = useMemo(() => {
     const list = ordersQ.data ?? [];
-    return list.find((o) => !TERMINAL_STATUSES.has(String(o.orderStatus ?? '').toUpperCase())) ?? null;
+    return list.filter((o) => !TERMINAL_STATUSES.has(String(o.orderStatus ?? '').toUpperCase()));
   }, [ordersQ.data]);
+
+  const activeOrder = activeOrders[0] ?? null;
 
   const shopsByType = useMemo(() => {
     const map: Record<string, typeof popularShops> = {};
@@ -268,11 +810,18 @@ export default function HomeScreen() {
   const popularIds = useMemo(() => popularShops.slice(0, 12).map((m) => m.id), [popularShops]);
   const offerBadges = useRestaurantOfferBadges(popularIds);
 
+  const shopsForProducts = useMemo(() => {
+    const list = activeCat === 'ALL'
+      ? popularShops
+      : popularShops.filter((m) => (m.businessType ?? 'STORE').toUpperCase() === activeCat);
+    return list.slice(0, 8);
+  }, [popularShops, activeCat]);
+
   const productMenusQ = useQueries({
-    queries: popularShops.slice(0, 8).map((m) => ({
+    queries: shopsForProducts.map((m) => ({
       queryKey: caseKeys.menu(m.id),
       queryFn: () => fetchCaseMerchantMenu(m.id),
-      enabled: popularShops.length > 0,
+      enabled: shopsForProducts.length > 0,
       staleTime: 3 * 60_000,
     })),
   });
@@ -280,7 +829,7 @@ export default function HomeScreen() {
   const productsWithRestaurant = useMemo(() => {
     const out: (ProductCardItem & { restaurantId: string })[] = [];
     productMenusQ.forEach((q, i) => {
-      const merchant = popularShops[i];
+      const merchant = shopsForProducts[i];
       const menu = q.data;
       if (!merchant || !menu?.items?.length) return;
       menu.items.slice(0, 3).forEach((it) => {
@@ -305,17 +854,25 @@ export default function HomeScreen() {
       });
     });
     return out.slice(0, 16);
-  }, [productMenusQ, popularShops, deliveryMins]);
+  }, [productMenusQ, shopsForProducts, deliveryMins]);
 
   const cartCount = getCartItemCount(cart);
   const cartTotal = getCartDisplayTotal(cart);
   const cartRestaurantName = getCartRestaurantName(cart);
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([bootstrapQ.refetch(), allMerchantsQ.refetch(), walletQ.refetch(), ordersQ.refetch()]);
+    await Promise.all([
+      bootstrapQ.refetch(),
+      allMerchantsQ.refetch(),
+      walletQ.refetch(),
+      ordersQ.refetch(),
+      queryClient.invalidateQueries({ queryKey: caseKeys.all }),
+    ]);
     setRefreshing(false);
-  }, [bootstrapQ, allMerchantsQ, walletQ, ordersQ]);
+  }, [bootstrapQ, allMerchantsQ, walletQ, ordersQ, queryClient]);
 
   const openMerchant = useCallback(
     (id: string) => router.push(`/restaurant/${id}`),
@@ -324,11 +881,6 @@ export default function HomeScreen() {
 
   const openCategory = (id: CaseCategoryId) => {
     setActiveCat(id);
-    if (id === 'GET_ANYTHING') {
-      router.push('/get-anything');
-      return;
-    }
-    router.push({ pathname: '/category/[businessType]', params: { businessType: id } });
   };
 
   const onAddProduct = async (item: ProductCardItem & { restaurantId: string }) => {
@@ -354,23 +906,28 @@ export default function HomeScreen() {
 
   return (
     <ThemedView style={styles.root}>
-      <LinearGradient
-        pointerEvents="none"
-        colors={['#241005', '#FF6A1A', PAGE_BG]}
-        locations={[0, 0.42, 1]}
-        style={styles.heroWash}
-      />
-      <View pointerEvents="none" style={styles.glowBig} />
-      <View pointerEvents="none" style={styles.glowSmall} />
-
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: tabBarHeight + (cartCount > 0 ? 80 : 20) }}
+          contentContainerStyle={{ paddingBottom: tabBarHeight + (cartCount > 0 && activeOrder ? 132 : cartCount > 0 || activeOrder ? 80 : 20) }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CaseUi.orange} />
           }
         >
+          <View style={styles.heroBgContainer} pointerEvents="none">
+            <LinearGradient
+              colors={
+                isDark
+                  ? ['#1C1C24', '#141417', colors.background]
+                  : ['#FF7A00', '#FF8C20', colors.background]
+              }
+              locations={[0, 0.42, 1]}
+              style={styles.heroWash}
+            />
+            <View style={[styles.glowBig, isDark && { backgroundColor: 'rgba(255,255,255,0.02)' }]} />
+            <View style={[styles.glowSmall, isDark && { backgroundColor: 'rgba(255,255,255,0.01)' }]} />
+          </View>
+
           {/* Utility row */}
           <Animated.View entering={FadeInDown.duration(360)} style={styles.utilityRow}>
             <PressableScale
@@ -390,19 +947,19 @@ export default function HomeScreen() {
 
             <View style={styles.utilityRight}>
               <PressableScale
-                style={styles.walletPill}
+                style={[styles.walletPill, { backgroundColor: isDark ? '#1C1C22' : colors.cardBg }]}
                 onPress={() => router.push('/wallet')}
                 accessibilityLabel={`Wallet balance J$${walletBalance.toFixed(0)}`}
               >
                 <Ionicons name="wallet" size={13} color={CaseUi.orange} />
-                <Text style={styles.walletAmt}>J${walletBalance.toFixed(0)}</Text>
+                <Text style={[styles.walletAmt, { color: isDark ? '#FFFFFF' : CaseUi.ink }]}>J${walletBalance.toFixed(0)}</Text>
               </PressableScale>
               <PressableScale
-                style={styles.iconBtn}
+                style={[styles.iconBtn, { backgroundColor: isDark ? '#1C1C22' : colors.cardBg }]}
                 onPress={() => router.push('/notifications')}
                 accessibilityLabel="Notifications"
               >
-                <Ionicons name="notifications-outline" size={17} color={CaseUi.ink} />
+                <Ionicons name="notifications-outline" size={17} color={isDark ? '#FFFFFF' : CaseUi.ink} />
                 {unreadCount > 0 ? (
                   <Animated.View entering={ZoomIn.duration(200)} style={styles.badge}>
                     <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
@@ -410,7 +967,7 @@ export default function HomeScreen() {
                 ) : null}
               </PressableScale>
               <PressableScale
-                style={styles.avatar}
+                style={[styles.avatar, { backgroundColor: isDark ? '#1C1C22' : colors.cardBg }]}
                 onPress={() => router.push('/(tabs)/profile')}
                 accessibilityLabel="Profile"
               >
@@ -435,77 +992,72 @@ export default function HomeScreen() {
               {greet}, {firstName} <Text style={styles.greetWave}>👋</Text>
             </Text>
             <Text style={styles.greetSub}>
-              {activeOrder ? 'Your order is on its way' : 'What are you craving today?'}
+              What are you craving today?
             </Text>
           </Animated.View>
 
           {/* Floating search bar */}
-          <Animated.View entering={FadeInDown.delay(80).duration(360)}>
+          <Animated.View
+            entering={FadeInDown.delay(80).duration(360)}
+            style={{ marginHorizontal: PAD, marginTop: 22, height: 44 }}
+          >
             <PressableScale
-              style={styles.search}
+              style={[
+                styles.search,
+                {
+                  backgroundColor: isDark ? '#18181C' : colors.inputBg,
+                  borderColor: isDark ? '#27272A' : 'transparent',
+                  borderWidth: isDark ? 1 : 0,
+                },
+              ]}
               onPress={() => router.push('/search')}
               scaleTo={0.985}
             >
               <View style={styles.searchIconWrap}>
                 <Ionicons name="search" size={18} color={CaseUi.orange} />
               </View>
-              <Text style={styles.searchPh} numberOfLines={1}>
-                Search food, grocery, pharmacy…
+              <Text style={[styles.searchPh, { color: isDark ? '#A0A0A0' : CaseUi.muted }]} numberOfLines={1}>
+                Search food, grocery, pharmacy...
               </Text>
-              <View style={styles.micWrap}>
-                <Ionicons name="mic-outline" size={17} color={CaseUi.muted} />
+              <View style={[styles.micWrap, { backgroundColor: isDark ? '#222228' : CaseUi.field }]}>
+                <Ionicons name="mic-outline" size={17} color={CaseUi.orange} />
               </View>
             </PressableScale>
           </Animated.View>
-
-          {/* Active order tracker */}
-          {activeOrder ? (
-            <Animated.View entering={FadeInDown.delay(100).duration(340)}>
-              <PressableScale
-                style={styles.trackCard}
-                onPress={() => router.push({ pathname: '/order/track/[orderId]', params: { orderId: activeOrder.id } })}
-              >
-                <View style={styles.trackIconWrap}>
-                  <Ionicons name={activeOrderCopy(activeOrder.orderStatus).icon} size={20} color={CaseUi.orange} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.trackTitle}>{activeOrderCopy(activeOrder.orderStatus).label}</Text>
-                  <Text style={styles.trackSub} numberOfLines={1}>
-                    Order #{String(activeOrder.orderNumber ?? activeOrder.id).slice(-6).toUpperCase()}
-                    {activeOrder.deliveryPoint?.name ? ` · ${activeOrder.deliveryPoint.name}` : ''}
-                  </Text>
-                </View>
-                <View style={styles.trackCta}>
-                  <Text style={styles.trackCtaText}>Track</Text>
-                  <Ionicons name="arrow-forward" size={13} color="#FFFFFF" />
-                </View>
-              </PressableScale>
-            </Animated.View>
-          ) : null}
 
           {loadingHome ? (
             <HomeSkeleton />
           ) : (
             <>
-              {/* Categories */}
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.catRow}
-                style={styles.catScroll}
-              >
-                {CASE_HOME_CATEGORY_ROW.map((id, i) => (
+              {/* Categories: Fixed 'ALL' button + Scrollable rest */}
+              <Animated.View entering={FadeIn.delay(60).duration(350)} style={styles.catSectionContainer}>
+                <View style={styles.catFixedWrap}>
                   <CategoryTile
-                    key={id}
-                    id={id}
-                    index={i}
-                    selected={activeCat === id}
-                    onPress={() => openCategory(id)}
+                    id="ALL"
+                    index={0}
+                    selected={activeCat === 'ALL'}
+                    onPress={() => openCategory('ALL')}
                   />
-                ))}
-              </ScrollView>
+                </View>
+                <View style={styles.catDivider} />
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.catScrollContent}
+                >
+                  {(['RESTAURANT', 'GROCERY', 'PHARMACY', 'STORE', 'GET_ANYTHING'] as CaseCategoryId[]).map((id, i) => (
+                    <CategoryTile
+                      key={id}
+                      id={id}
+                      index={i + 1}
+                      selected={activeCat === id}
+                      onPress={() => openCategory(id)}
+                    />
+                  ))}
+                </ScrollView>
+              </Animated.View>
 
-              {/* Promo carousel — full-bleed image cards */}
+              {/* Promo carousel â€” full-bleed image cards */}
               <Animated.View entering={FadeIn.delay(80).duration(400)} style={styles.promoBlock}>
                 <ScrollView
                   ref={promoRef}
@@ -514,7 +1066,7 @@ export default function HomeScreen() {
                   snapToInterval={PROMO_W + 12}
                   snapToAlignment="start"
                   showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ paddingHorizontal: PAD, gap: 12 }}
+                  contentContainerStyle={{ gap: 12 }}
                   onMomentumScrollEnd={onPromoScroll}
                 >
                   {PROMOS.map((p) => (
@@ -522,38 +1074,63 @@ export default function HomeScreen() {
                       <View style={styles.promo}>
                         <Image source={{ uri: p.image }} style={styles.promoBg} contentFit="cover" />
                         <LinearGradient
-                          colors={['transparent', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.86)']}
-                          locations={[0, 0.45, 1]}
+                          colors={p.gradientColors as any}
+                          locations={[0, 0.35, 1]}
                           style={StyleSheet.absoluteFill}
                         />
                         <View style={styles.promoCopy}>
-                          <Text style={styles.promoEyebrow}>Campus offer</Text>
+                          <View style={[styles.promoBadgePill, { backgroundColor: p.badgeBg }]}>
+                            <Text style={styles.promoBadgeText}>{p.eyebrow}</Text>
+                          </View>
                           <Text style={styles.promoTitle}>{p.title}</Text>
                           <Text style={styles.promoSub}>{p.sub}</Text>
-                          <View style={styles.promoCta}>
-                            <Text style={styles.promoCtaText}>{p.cta}</Text>
-                            <Ionicons name="arrow-forward" size={13} color={CaseUi.ink} />
+                          <View style={styles.promoBottomRow}>
+                            <View style={styles.promoCta}>
+                              <Text style={styles.promoCtaText}>{p.cta}</Text>
+                              <Ionicons name="arrow-forward" size={13} color={CaseUi.ink} />
+                            </View>
+
+                            {/* Embedded Pagination Indicator Pills INSIDE card bottom right */}
+                            <View style={styles.cardEmbeddedDots}>
+                              {PROMOS.map((item, i) => (
+                                <View
+                                  key={item.id}
+                                  style={[
+                                    styles.cardDot,
+                                    i === promoIndex && [
+                                      styles.cardDotOn,
+                                      { backgroundColor: item.badgeBg },
+                                    ],
+                                  ]}
+                                />
+                              ))}
+                            </View>
                           </View>
                         </View>
                       </View>
                     </PressableScale>
                   ))}
                 </ScrollView>
-                <View style={styles.dots}>
-                  {PROMOS.map((p, i) => (
-                    <View key={p.id} style={[styles.dot, i === promoIndex && styles.dotOn]} />
-                  ))}
-                </View>
               </Animated.View>
 
               {popularShops.length === 0 ? (
-                <Animated.View entering={FadeInUp.duration(400)} style={styles.empty}>
-                  <View style={styles.emptyIcon}>
+                <Animated.View
+                  entering={FadeInUp.duration(400)}
+                  style={[
+                    styles.empty,
+                    {
+                      backgroundColor: isDark ? '#141417' : colors.inputBg,
+                      borderColor: isDark ? '#27272A' : 'transparent',
+                      borderWidth: isDark ? 1 : 0,
+                    },
+                  ]}
+                >
+                  <View style={[styles.emptyIcon, isDark && { backgroundColor: 'rgba(255,90,0,0.12)' }]}>
                     <Ionicons name="storefront-outline" size={32} color={CaseUi.orange} />
                   </View>
-                  <Text style={styles.emptyTitle}>No shops nearby yet</Text>
-                  <Text style={styles.emptySub}>
-                    Pick a campus delivery point — we’ll show food, grocery, pharmacy & stores.
+                  <Text style={[styles.emptyTitle, { color: colors.text }]}>No shops nearby yet</Text>
+                  <Text style={[styles.emptySub, { color: colors.textSecondary }]}>
+                    Pick a campus delivery point â€” weâ€™ll show food, grocery, pharmacy & stores.
                   </Text>
                   <PressableScale
                     style={styles.emptyCta}
@@ -569,18 +1146,29 @@ export default function HomeScreen() {
               ) : (
                 <>
                   <SectionHeader
-                    title="Popular near you"
-                    subtitle="Trending across campus right now"
+                    title={activeCat === 'ALL' ? 'Popular near you' : CASE_CATEGORY_META[activeCat]?.label || 'Popular near you'}
+                    subtitle={activeCat === 'ALL' ? 'Trending across campus right now' : `Best ${CASE_CATEGORY_META[activeCat]?.label?.toLowerCase() || 'items'} near you`}
                     delay={120}
-                    onAction={() => openCategory('ALL')}
+                    onAction={() => {
+                      if (activeCat === 'GET_ANYTHING') {
+                        router.push('/get-anything');
+                      } else {
+                        const cat = activeCat === 'ALL' ? 'RESTAURANT' : activeCat;
+                        router.push(`/category/${cat.toLowerCase()}`);
+                      }
+                    }}
                   />
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.hPad}
                   >
-                    {popularShops.slice(0, 12).map((m, i) => (
-                      <Animated.View key={m.id} entering={FadeInRight.delay(40 + i * 28).duration(300)}>
+                    {(activeCat === 'ALL' ? popularShops : (shopsByType[activeCat] || [])).slice(0, 12).map((m, i) => (
+                      <Animated.View
+                        key={m.id}
+                        entering={FadeInRight.delay(40 + i * 28).duration(300)}
+                        style={{ width: 156 }}
+                      >
                         <ShopCard
                           merchant={m}
                           index={i}
@@ -595,8 +1183,8 @@ export default function HomeScreen() {
                   {productsWithRestaurant.length > 0 ? (
                     <>
                       <SectionHeader
-                        title="Trending dishes"
-                        subtitle="Fresh picks, ready to order"
+                        title="Explore Products"
+                        subtitle="Discover what's popular across campus"
                         delay={140}
                         onAction={() => router.push('/search')}
                       />
@@ -609,11 +1197,17 @@ export default function HomeScreen() {
                           <Animated.View
                             key={`${p.restaurantId}-${p.id}`}
                             entering={FadeInRight.delay(30 + i * 24).duration(300)}
+                            style={{ width: 148 }}
                           >
                             <ProductCard
                               item={p}
                               width={148}
-                              onPress={() => router.push(`/restaurant/${p.restaurantId}`)}
+                              onPress={() =>
+                                router.push({
+                                  pathname: '/product-detail',
+                                  params: { restaurantId: p.restaurantId, itemId: p.id },
+                                })
+                              }
                               onAdd={() => onAddProduct(p)}
                             />
                           </Animated.View>
@@ -622,13 +1216,13 @@ export default function HomeScreen() {
                     </>
                   ) : null}
 
-                  {(shopsByType.RESTAURANT?.length ?? 0) > 0 ? (
+                  {(activeCat === 'ALL' || activeCat === 'RESTAURANT') && (shopsByType.RESTAURANT?.length ?? 0) > 0 ? (
                     <>
                       <SectionHeader
                         title="Top-rated restaurants"
                         subtitle="Highest rated by students like you"
                         delay={160}
-                        onAction={() => openCategory('RESTAURANT')}
+                        onAction={() => router.push('/category/restaurant')}
                       />
                       <View style={styles.listPad}>
                         {shopsByType.RESTAURANT!.slice(0, 4).map((m, i) => (
@@ -645,13 +1239,13 @@ export default function HomeScreen() {
                     </>
                   ) : null}
 
-                  {(shopsByType.GROCERY?.length ?? 0) > 0 ? (
+                  {(activeCat === 'ALL' || activeCat === 'GROCERY') && (shopsByType.GROCERY?.length ?? 0) > 0 ? (
                     <>
                       <SectionHeader
                         title="Groceries near you"
                         subtitle="Campus-essential staples"
                         delay={180}
-                        onAction={() => openCategory('GROCERY')}
+                        onAction={() => router.push('/category/grocery')}
                       />
                       <View style={styles.listPad}>
                         <ShopGrid shops={shopsByType.GROCERY!.slice(0, 6)} onPress={openMerchant} />
@@ -659,13 +1253,13 @@ export default function HomeScreen() {
                     </>
                   ) : null}
 
-                  {(shopsByType.PHARMACY?.length ?? 0) > 0 ? (
+                  {(activeCat === 'ALL' || activeCat === 'PHARMACY') && (shopsByType.PHARMACY?.length ?? 0) > 0 ? (
                     <>
                       <SectionHeader
                         title="Pharmacy essentials"
                         subtitle="Health & wellness, delivered"
                         delay={200}
-                        onAction={() => openCategory('PHARMACY')}
+                        onAction={() => router.push('/category/pharmacy')}
                       />
                       <View style={styles.listPad}>
                         <ShopGrid shops={shopsByType.PHARMACY!.slice(0, 6)} onPress={openMerchant} />
@@ -673,13 +1267,13 @@ export default function HomeScreen() {
                     </>
                   ) : null}
 
-                  {(shopsByType.STORE?.length ?? 0) > 0 ? (
+                  {(activeCat === 'ALL' || activeCat === 'STORE') && (shopsByType.STORE?.length ?? 0) > 0 ? (
                     <>
                       <SectionHeader
                         title="Campus stores"
                         subtitle="Stationery, tech & more"
                         delay={220}
-                        onAction={() => openCategory('STORE')}
+                        onAction={() => router.push('/category/store')}
                       />
                       <View style={styles.listPad}>
                         <ShopGrid shops={shopsByType.STORE!.slice(0, 6)} onPress={openMerchant} />
@@ -690,19 +1284,25 @@ export default function HomeScreen() {
               )}
 
               <Animated.View entering={FadeInUp.delay(140).duration(400)}>
-                <PressableScale style={styles.getAnything} onPress={() => router.push('/get-anything')}>
+                <PressableScale
+                  style={[
+                    styles.getAnything,
+                    isDark && { backgroundColor: '#1C1C22', borderColor: '#27272A', borderWidth: 1 },
+                  ]}
+                  onPress={() => router.push('/get-anything')}
+                >
                   <LinearGradient
-                    colors={[CaseUi.orangeSoft, '#FFE4CC']}
+                    colors={isDark ? ['#24140A', '#1C120C'] : [CaseUi.orangeSoft, '#FFE4CC']}
                     style={StyleSheet.absoluteFill}
                   />
                   <Image source={GET_ANYTHING_IMG} style={styles.getImg} contentFit="cover" />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.getEyebrow}>Campus request</Text>
-                    <Text style={styles.getTitle}>Need something else?</Text>
-                    <Text style={styles.getSub}>Custom pickup & delivery anywhere on campus</Text>
+                    <Text style={[styles.getTitle, { color: isDark ? '#FFFFFF' : CaseUi.ink }]}>Need something else?</Text>
+                    <Text style={[styles.getSub, { color: isDark ? '#A0A0A5' : CaseUi.muted }]}>Custom pickup & delivery anywhere on campus</Text>
                   </View>
-                  <View style={styles.getCta}>
-                    <Ionicons name="arrow-forward" size={16} color={CaseUi.white} />
+                  <View style={[styles.getCta, { backgroundColor: colors.cardBg, ...CaseUi.softShadow }]}>
+                    <Ionicons name="arrow-forward" size={16} color={colors.text} />
                   </View>
                 </PressableScale>
               </Animated.View>
@@ -716,390 +1316,46 @@ export default function HomeScreen() {
           total={cartTotal}
           restaurantName={cartRestaurantName}
           onPress={() => router.push('/(tabs)/cart')}
-          bottom={tabBarHeight - 8}
+          bottom={activeOrder ? 68 : 12}
         />
+
+        {/* Slim sticky active-order tracking banner */}
+        {activeOrder ? (
+          <Animated.View
+            entering={FadeInDown.duration(300)}
+            style={[
+              styles.activeOrderBanner,
+              {
+                backgroundColor: isDark ? '#1A1A1E' : '#FFFFFF',
+                borderTopColor: isDark ? '#27272A' : CaseUi.line,
+                borderColor: isDark ? '#27272A' : CaseUi.line,
+              },
+            ]}
+          >
+            <PressableScale
+              onPress={() => router.push({ pathname: '/order/track/[orderId]', params: { orderId: String(activeOrder.id) } })}
+              style={styles.activeOrderBannerInner}
+            >
+              <View style={[styles.activeOrderIconDot, { backgroundColor: CaseUi.orangeSoft }]}>
+                <Ionicons name={activeOrderCopy(activeOrder.orderStatus).icon} size={16} color={CaseUi.orange} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.activeOrderBannerTitle, { color: isDark ? '#FFFFFF' : CaseUi.ink }]}>
+                  🚚 Order in Progress
+                </Text>
+                <Text style={[styles.activeOrderBannerSub, { color: isDark ? '#888888' : CaseUi.muted }]} numberOfLines={1}>
+                  {activeOrder.restaurant?.restaurantName ?? 'Store'} · {activeOrderCopy(activeOrder.orderStatus).label}
+                  {activeOrders.length > 1 ? ` (+${activeOrders.length - 1} more)` : ''}
+                </Text>
+              </View>
+              <View style={styles.activeOrderBannerTrack}>
+                <Text style={styles.activeOrderBannerTrackText}>Track</Text>
+                <Ionicons name="arrow-forward" size={12} color="#FFFFFF" />
+              </View>
+            </PressableScale>
+          </Animated.View>
+        ) : null}
       </SafeAreaView>
     </ThemedView>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: PAGE_BG },
-  heroWash: { position: 'absolute', top: 0, left: 0, right: 0, height: 320 },
-  glowBig: {
-    position: 'absolute',
-    top: -60,
-    right: -50,
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-  },
-  glowSmall: {
-    position: 'absolute',
-    top: 90,
-    left: -40,
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-  },
-  safe: { flex: 1 },
-  utilityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: PAD,
-    paddingTop: 4,
-    gap: 10,
-  },
-  locPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    maxWidth: SCREEN_W * 0.42,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
-  },
-  locPillText: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 12,
-    color: '#FFFFFF',
-    flexShrink: 1,
-  },
-  utilityRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  walletPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 14,
-    backgroundColor: CaseUi.white,
-    ...CaseUi.softShadow,
-  },
-  walletAmt: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 12, color: CaseUi.ink },
-  iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: CaseUi.white,
-    ...CaseUi.softShadow,
-  },
-  badge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
-    paddingHorizontal: 3,
-    backgroundColor: CaseUi.orange,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: CaseUi.white,
-  },
-  badgeText: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 8,
-    color: CaseUi.white,
-  },
-  avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    overflow: 'hidden',
-    backgroundColor: CaseUi.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.85)',
-  },
-  avatarLetter: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    color: CaseUi.orange,
-    fontSize: 14,
-  },
-  greetBlock: { paddingHorizontal: PAD, marginTop: 20 },
-  greetLine: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 28,
-    letterSpacing: -0.6,
-    color: '#FFFFFF',
-  },
-  greetWave: { fontSize: 24 },
-  greetSub: {
-    marginTop: 6,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-  },
-  search: {
-    marginHorizontal: PAD,
-    marginTop: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    height: 54,
-    paddingHorizontal: 12,
-    borderRadius: 18,
-    backgroundColor: CaseUi.white,
-    ...CaseUi.cardShadow,
-  },
-  searchIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: CaseUi.orangeSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchPh: {
-    flex: 1,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    fontSize: 14,
-    color: CaseUi.muted,
-  },
-  micWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: CaseUi.field,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  trackCard: {
-    marginHorizontal: PAD,
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    borderRadius: CaseUi.radius.lg,
-    backgroundColor: CaseUi.white,
-    borderWidth: 1,
-    borderColor: CaseUi.line,
-    ...CaseUi.softShadow,
-  },
-  trackIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: CaseUi.orangeSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  trackTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: CaseUi.ink },
-  trackSub: { marginTop: 2, fontFamily: 'PlusJakartaSans_500Medium', fontSize: 11, color: CaseUi.muted },
-  trackCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: CaseUi.orange,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  trackCtaText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 11 },
-  catScroll: { marginTop: 20 },
-  catRow: { paddingHorizontal: PAD, gap: 16 },
-  catItem: { width: 68, alignItems: 'center' },
-  catTile: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  catLabel: {
-    marginTop: 7,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 11,
-    color: CaseUi.muted,
-    textAlign: 'center',
-  },
-  catLabelOn: {
-    color: CaseUi.ink,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-  },
-  promoBlock: { marginTop: 20 },
-  promo: {
-    height: 168,
-    borderRadius: 26,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-  },
-  promoBg: { ...StyleSheet.absoluteFill },
-  promoCopy: { padding: 20 },
-  promoEyebrow: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 10,
-    color: 'rgba(255,255,255,0.75)',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  promoTitle: {
-    marginTop: 6,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 22,
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
-  },
-  promoSub: {
-    marginTop: 4,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.88)',
-  },
-  promoCta: {
-    marginTop: 14,
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: CaseUi.white,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 12,
-  },
-  promoCtaText: {
-    color: CaseUi.ink,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 12,
-  },
-  dots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 12,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: CaseUi.line,
-  },
-  dotOn: {
-    width: 18,
-    backgroundColor: CaseUi.orange,
-  },
-  sectionHead: {
-    marginTop: 28,
-    marginHorizontal: PAD,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  sectionTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 18,
-    color: CaseUi.ink,
-    letterSpacing: -0.3,
-  },
-  sectionSubtitle: {
-    marginTop: 2,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    fontSize: 12,
-    color: CaseUi.muted,
-  },
-  seeAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingBottom: 2 },
-  seeAll: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 13,
-    color: CaseUi.orange,
-  },
-  hPad: { paddingHorizontal: PAD, gap: 12, paddingBottom: 2 },
-  listPad: { paddingHorizontal: PAD },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -5 },
-  gridCell: { width: '50%', paddingHorizontal: 5 },
-  empty: {
-    marginHorizontal: PAD,
-    marginTop: 28,
-    alignItems: 'center',
-    paddingVertical: 36,
-    paddingHorizontal: 20,
-    borderRadius: 24,
-    backgroundColor: CaseUi.field,
-  },
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 22,
-    backgroundColor: CaseUi.orangeSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  emptyTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 17,
-    color: CaseUi.ink,
-  },
-  emptySub: {
-    marginTop: 8,
-    textAlign: 'center',
-    fontFamily: 'PlusJakartaSans_500Medium',
-    fontSize: 13,
-    lineHeight: 19,
-    color: CaseUi.muted,
-  },
-  emptyCta: {
-    marginTop: 18,
-    backgroundColor: CaseUi.orange,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 14,
-  },
-  emptyCtaText: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 13,
-    color: CaseUi.white,
-  },
-  getAnything: {
-    marginHorizontal: PAD,
-    marginTop: 28,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 16,
-    borderRadius: 22,
-    overflow: 'hidden',
-  },
-  getImg: { width: 56, height: 56, borderRadius: 16 },
-  getEyebrow: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 10,
-    color: CaseUi.orangeDeep,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  getTitle: {
-    marginTop: 2,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 15,
-    color: CaseUi.ink,
-  },
-  getSub: {
-    marginTop: 2,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    fontSize: 11,
-    color: CaseUi.muted,
-  },
-  getCta: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: CaseUi.orange,
-  },
-});

@@ -33,6 +33,7 @@ import { useFloatingCartBottom, useFloatingCartScrollPadding } from '@/hooks/use
 import { useAddToCartMutation } from '@/hooks/queries/cart';
 import { getCartDisplayTotal, getCartItemCount, getCartRestaurantName } from '@/lib/cartDisplay';
 import { fetchCaseMerchantMenu } from '@/services/case';
+import { useThemeContext } from '@/context/ThemeContext';
 
 type ProductRow = {
   id: string;
@@ -129,6 +130,8 @@ const LIST_FILTERS = ['Filter', 'Sort', 'Fastest', 'Offers'] as const;
 
 export default function CategoryListingScreen() {
   const router = useRouter();
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
   const { businessType: raw } = useLocalSearchParams<{ businessType: string }>();
   const initial = ((raw ?? 'ALL').toUpperCase() || 'ALL') as CaseCategoryId;
   const [active, setActive] = useState<CaseCategoryId>(
@@ -305,21 +308,21 @@ export default function CategoryListingScreen() {
   };
 
   return (
-    <ThemedView style={styles.root}>
+    <ThemedView style={[styles.root, { backgroundColor: colors.background }]}>
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={onBack} style={styles.iconBtn} hitSlop={8}>
-            <Ionicons name="arrow-back" size={22} color={CaseUi.ink} />
+            <Ionicons name="arrow-back" size={22} color={colors.text} />
           </Pressable>
-          <Text style={styles.title} numberOfLines={1}>
+          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
             {title}
           </Text>
           <Pressable style={styles.iconBtn} onPress={() => router.push('/search')}>
-            <Ionicons name="search-outline" size={20} color={CaseUi.ink} />
+            <Ionicons name="search-outline" size={20} color={colors.text} />
           </Pressable>
           <Pressable style={styles.iconBtn} onPress={() => router.push('/(tabs)/cart')}>
-            <Ionicons name="cart-outline" size={20} color={CaseUi.ink} />
+            <Ionicons name="cart-outline" size={20} color={colors.text} />
             {cartCount > 0 ? (
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>{cartCount}</Text>
@@ -329,10 +332,19 @@ export default function CategoryListingScreen() {
         </View>
 
         {/* Search */}
-        <Pressable style={styles.search} onPress={() => router.push('/search')}>
-          <Ionicons name="search" size={15} color={CaseUi.muted} />
-          <Text style={styles.searchPh}>Search in {title}…</Text>
-          <Ionicons name="mic-outline" size={15} color={CaseUi.muted} />
+        <Pressable
+          style={[
+            styles.search,
+            {
+              backgroundColor: isDark ? '#18181C' : CaseUi.field,
+              borderColor: isDark ? '#27272A' : CaseUi.line,
+            },
+          ]}
+          onPress={() => router.push('/search')}
+        >
+          <Ionicons name="search" size={15} color={colors.textSecondary} />
+          <Text style={[styles.searchPh, { color: colors.textSecondary }]}>Search in {title}…</Text>
+          <Ionicons name="mic-outline" size={15} color={CaseUi.orange} />
         </Pressable>
 
         {/* Ribbon: business types only on ALL · product chips on vertical pages */}
@@ -438,7 +450,7 @@ export default function CategoryListingScreen() {
                     key={m.id}
                     merchant={m}
                     index={i}
-                    variant="compact"
+                    variant="list"
                     onPress={(id) => router.push(`/restaurant/${id}`)}
                   />
                 ))}
@@ -517,7 +529,7 @@ export default function CategoryListingScreen() {
                       key={`more-${m.id}`}
                       merchant={m}
                       index={i}
-                      variant="compact"
+                      variant="list"
                       onPress={(id) => router.push(`/restaurant/${id}`)}
                     />
                   ))}
@@ -538,7 +550,7 @@ export default function CategoryListingScreen() {
                       key={m.id}
                       merchant={m}
                       index={i}
-                      variant="compact"
+                      variant="list"
                       onPress={(id) => router.push(`/restaurant/${id}`)}
                     />
                   ))}
@@ -612,7 +624,7 @@ export default function CategoryListingScreen() {
                       key={m.id}
                       merchant={m}
                       index={i}
-                      variant="compact"
+                      variant="list"
                       onPress={(id) => router.push(`/restaurant/${id}`)}
                     />
                   ))}
@@ -655,7 +667,7 @@ export default function CategoryListingScreen() {
                       key={m.id}
                       merchant={m}
                       index={i}
-                      variant="compact"
+                      variant="list"
                       onPress={(id) => router.push(`/restaurant/${id}`)}
                     />
                   ))}
@@ -681,7 +693,7 @@ export default function CategoryListingScreen() {
                       key={m.id}
                       merchant={m}
                       index={i}
-                      variant="compact"
+                      variant="list"
                       onPress={(id) => router.push(`/restaurant/${id}`)}
                     />
                   ))}
@@ -766,9 +778,10 @@ function Section({
   onSeeAll?: () => void;
   seeAllLabel?: string;
 }) {
+  const { colors } = useThemeContext();
   return (
     <View style={styles.sectionHead}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
       {onSeeAll ? (
         <Pressable onPress={onSeeAll}>
           <Text style={styles.seeAll}>{seeAllLabel}</Text>

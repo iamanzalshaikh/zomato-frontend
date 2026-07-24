@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/state-views';
 import { CaseUi } from '@/constants/caseUi';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { useFavoritesQuery, useToggleFavoriteMutation } from '@/hooks/queries/favorites';
+import { ShopCard } from '@/components/shop-card';
 
 export default function FavoritesListScreen() {
   const router = useRouter();
@@ -55,27 +56,16 @@ export default function FavoritesListScreen() {
             }
             renderItem={({ item, index }: { item: any; index: number }) => {
               const id = String(item._id ?? item.id);
+              // Normalize merchant schema for ShopCard
+              const merchant = { ...item, id };
               return (
                 <Animated.View entering={FadeInDown.delay(Math.min(index, 8) * 40).duration(260)}>
-                  <PressableScale
-                    onPress={() => router.push({ pathname: '/restaurant/[restaurantId]', params: { restaurantId: id } })}
-                    style={styles.card}
-                  >
-                    {item.logo ? (
-                      <Image source={{ uri: item.logo }} style={styles.logo} />
-                    ) : (
-                      <View style={[styles.logo, styles.logoPlaceholder]}>
-                        <Ionicons name="storefront-outline" size={20} color={CaseUi.muted} />
-                      </View>
-                    )}
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.name}>{item.restaurantName ?? 'Store'}</Text>
-                      <Text style={styles.meta}>{item.averageDeliveryTime ?? 25} min</Text>
-                    </View>
-                    <PressableScale onPress={() => toggleFavMut.mutate({ restaurantId: id, has: true })} hitSlop={8}>
-                      <Ionicons name="heart" size={22} color={CaseUi.orange} />
-                    </PressableScale>
-                  </PressableScale>
+                  <ShopCard
+                    merchant={merchant}
+                    index={index}
+                    variant="list"
+                    onPress={(shopId) => router.push({ pathname: '/restaurant/[restaurantId]', params: { restaurantId: shopId } })}
+                  />
                 </Animated.View>
               );
             }}

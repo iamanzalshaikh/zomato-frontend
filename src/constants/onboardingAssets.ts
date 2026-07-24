@@ -1,16 +1,15 @@
-/** Bundled QuickBite onboarding artwork (offline-safe, no remote URLs). */
-export const ONBOARDING_LOGO = require(
-  '@/assets/flowimages/stitch_quickbite_food_delivery_app_user_panel/stitch_quickbite_food_delivery_app_user_panel/quickbite_fork_and_flame_logo/screen.png',
-);
+export const RIDER_FULL = require('@/assets/images/onboarding/rider_full.png');
+export const SPLASH_GRAPHIC = require('@/assets/images/onboarding/splash_graphic.png');
+export const SPLASH_CARD = require('@/assets/images/onboarding/splash_card.png');
 
-export const ONBOARDING_SLIDE_IMAGES = [
-  require(
-    '@/assets/flowimages/stitch_quickbite_food_delivery_app_user_panel/stitch_quickbite_food_delivery_app_user_panel/a_beautiful_vibrant_food_photography_collage_featuring_various_dishes_like/screen.png',
-  ),
-  require(
-    '@/assets/flowimages/stitch_quickbite_food_delivery_app_user_panel/stitch_quickbite_food_delivery_app_user_panel/warm_flat_style_illustration_of_a_food_delivery_rider_on_a_scooter_driving/screen.png',
-  ),
-  require(
-    '@/assets/flowimages/stitch_quickbite_food_delivery_app_user_panel/stitch_quickbite_food_delivery_app_user_panel/flat_style_illustration_of_a_smartphone_with_signal_waves_or_a_shield_icon/screen.png',
-  ),
+export const ONBOARDING_GRAPHICS = [
+  require('@/assets/images/onboarding/onboarding_1_graphic.png'),
+  require('@/assets/images/onboarding/onboarding_2_graphic.png'),
+  require('@/assets/images/onboarding/onboarding_3_graphic.png'),
+] as const;
+
+export const ONBOARDING_CARDS = [
+  require('@/assets/images/onboarding/onboarding_1_card.png'),
+  require('@/assets/images/onboarding/onboarding_2_card.png'),
+  require('@/assets/images/onboarding/onboarding_3_card.png'),
 ] as const;

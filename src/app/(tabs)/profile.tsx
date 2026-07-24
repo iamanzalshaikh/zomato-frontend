@@ -24,6 +24,7 @@ import {
   useDeleteAccountMutation,
 } from '@/hooks/queries/profile';
 import { V1_WALLET_ENABLED } from '@/config/features';
+import { useThemeContext } from '@/context/ThemeContext';
 
 function OptionRow({
   icon,
@@ -53,6 +54,7 @@ function OptionRow({
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const { themePreference, setThemePreference } = useThemeContext();
   const q = useProfileQuery();
 
   const addresses = useMemo(() => {
@@ -284,6 +286,36 @@ export default function ProfileScreen() {
           {/* Settings / General Options Card */}
           <Animated.View entering={FadeInDown.delay(120).duration(320)} style={styles.sectionCard}>
             <Text style={styles.cardTitle}>Settings</Text>
+            <OptionRow
+              icon="color-palette-outline"
+              label="App Theme"
+              onPress={() => {
+                Alert.alert(
+                  'Choose App Theme',
+                  'Select how SD-Services looks on your device:',
+                  [
+                    {
+                      text: 'System Default (Auto)',
+                      onPress: () => void setThemePreference('system'),
+                    },
+                    {
+                      text: 'Light Mode ☀️',
+                      onPress: () => void setThemePreference('light'),
+                    },
+                    {
+                      text: 'Dark Mode 🌙',
+                      onPress: () => void setThemePreference('dark'),
+                    },
+                    { text: 'Cancel', style: 'cancel' },
+                  ]
+                );
+              }}
+              trailing={
+                <Text style={{ fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: CaseUi.orange }}>
+                  {themePreference === 'system' ? 'System (Auto)' : themePreference === 'dark' ? 'Dark 🌙' : 'Light ☀️'} ›
+                </Text>
+              }
+            />
             <OptionRow icon="person-outline" label="Edit profile" onPress={() => router.push('/edit-profile')} />
             <OptionRow icon="notifications-outline" label="Notifications" onPress={() => router.push('/notifications')} />
             {V1_WALLET_ENABLED ? (

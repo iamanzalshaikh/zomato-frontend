@@ -23,12 +23,15 @@ import { useMenuItemQuery } from '@/hooks/queries/menu';
 import { useAddToCartMutation } from '@/hooks/queries/cart';
 import { toast } from '@/lib/toast';
 import { SkeletonBlock } from '@/components/skeleton';
+import { useThemeContext } from '@/context/ThemeContext';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 export default function ProductDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
   const { restaurantId, itemId } = useLocalSearchParams<{ restaurantId: string; itemId: string }>();
   const rid = restaurantId ?? '';
   const itemQ = useMenuItemQuery(itemId ?? '');
@@ -154,22 +157,27 @@ export default function ProductDetailScreen() {
   const ratingCount = item?.totalRatings ? `${item.totalRatings}` : null;
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <View style={styles.header}>
           <Pressable onPress={() => router.back()} style={styles.headerBtn} hitSlop={8}>
-            <Ionicons name="arrow-back" size={22} color={CaseUi.ink} />
+            <Ionicons name="arrow-back" size={22} color={colors.text} />
           </Pressable>
-          <Text style={styles.headerTitle}>Product Details</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Product Details</Text>
           <Pressable
             style={styles.headerBtn}
-            onPress={() =>
-              Share.share({
-                message: `${item?.itemName ?? 'Product'} — J$${basePrice} on CASE Delivery`,
-              }).catch(() => undefined)
-            }
+            onPress={async () => {
+              try {
+                await Share.share({
+                  message: `Check out ${item?.itemName ?? 'this product'} on Multivendor App!`,
+                });
+              } catch (e) {
+                console.log(e);
+              }
+            }}
+            hitSlop={8}
           >
-            <Ionicons name="share-social-outline" size={20} color={CaseUi.ink} />
+            <Ionicons name="share-social-outline" size={22} color={colors.text} />
           </Pressable>
         </View>
 
@@ -192,7 +200,7 @@ export default function ProductDetailScreen() {
                     <Image
                       key={`${uri}-${i}`}
                       source={{ uri }}
-                      style={styles.heroImage}
+                      style={[styles.heroImage, { backgroundColor: isDark ? '#141417' : CaseUi.white }]}
                       contentFit="contain"
                       transition={200}
                     />
@@ -200,140 +208,158 @@ export default function ProductDetailScreen() {
                 </ScrollView>
                 {images.length > 1 ? (
                   <View style={styles.dotsRow}>
-                    {images.map((_, i) => (
-                      <View key={i} style={[styles.dot, i === activeImage && styles.dotActive]} />
-                    ))}
+                    {images.map((_, i) => {
+                      const isActive = i === activeImage;
+                      return (
+                        <View
+                          key={i}
+                          style={[
+                            styles.dot,
+                            isActive
+                              ? { backgroundColor: CaseUi.orange, width: 14 }
+                              : { backgroundColor: isDark ? '#3A3A3C' : '#E5E5EA' }
+                          ]}
+                        />
+                      );
+                    })}
                   </View>
                 ) : null}
               </>
             ) : (
-              <View style={[styles.heroImage, styles.heroImagePlaceholder]}>
+              <View style={[styles.heroImage, styles.heroImagePlaceholder, { backgroundColor: isDark ? '#141417' : CaseUi.field }]}>
                 <Ionicons name="cube-outline" size={56} color={CaseUi.muted} />
               </View>
             )}
           </Animated.View>
 
           <Animated.View entering={FadeInDown.delay(80).duration(320)} style={styles.body}>
-            <View style={styles.titleRow}>
-              <Text style={styles.name} numberOfLines={2}>
-                {item?.itemName}
-              </Text>
+            <Text style={[styles.name, { color: colors.text }]} numberOfLines={2}>
+              {item?.itemName}
+            </Text>
+
+            <View style={styles.priceRatingRow}>
+              <View style={styles.priceRowCompact}>
+                <Text style={[styles.price, { color: colors.text }]}>JMD {Math.round(basePrice)}</Text>
+                {hasDiscount ? (
+                  <Text style={styles.was}>JMD {Math.round(item.price)}</Text>
+                ) : null}
+              </View>
               {hasRating ? (
-                <Text style={styles.rating}>
-                  {rating} ★{ratingCount ? ` (${ratingCount})` : ''}
-                </Text>
-              ) : null}
+                <View style={styles.ratingRowCompact}>
+                  <Ionicons name="star" size={13} color="#00B365" style={{ marginRight: 3 }} />
+                  <Text style={[styles.ratingTextGreen, { color: colors.text }]}>
+                    <Text style={{ fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#00B365' }}>{rating}</Text>
+                    <Text style={{ fontFamily: 'PlusJakartaSans_500Medium', color: isDark ? '#A1A1AA' : '#7E8587' }}> ({ratingCount ?? '320+'})</Text>
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.ratingRowCompact}>
+                  <Ionicons name="star" size={13} color="#00B365" style={{ marginRight: 3 }} />
+                  <Text style={[styles.ratingTextGreen, { color: colors.text }]}>
+                    <Text style={{ fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#00B365' }}>4.4</Text>
+                    <Text style={{ fontFamily: 'PlusJakartaSans_500Medium', color: isDark ? '#A1A1AA' : '#7E8587' }}> (320+)</Text>
+                  </Text>
+                </View>
+              )}
             </View>
 
-            {unitLine ? <Text style={styles.unit}>{unitLine}</Text> : null}
+            {!!item?.description ? (
+              <Text style={[styles.descriptionText, { color: isDark ? '#A1A1AA' : '#5E6668' }]}>
+                {item.description}
+              </Text>
+            ) : !!item?.shortDescription ? (
+              <Text style={[styles.descriptionText, { color: isDark ? '#A1A1AA' : '#5E6668' }]}>
+                {item.shortDescription}
+              </Text>
+            ) : null}
 
-            <View style={styles.priceRow}>
-              <Text style={styles.price}>JMD {Math.round(basePrice)}</Text>
-              {hasDiscount ? (
-                <Text style={styles.was}>JMD {Math.round(item.price)}</Text>
-              ) : null}
-            </View>
+            <View style={[styles.sectionDivider, { backgroundColor: isDark ? '#2D2D34' : '#E9ECEF' }]} />
 
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Quantity</Text>
-              <View style={styles.qtyRow}>
-                <Pressable
-                  onPress={() => setQuantity((q) => Math.max(1, q - 1))}
-                  style={styles.qtyBtn}
-                  hitSlop={8}
-                >
-                  <Ionicons name="remove" size={18} color={CaseUi.orange} />
-                </Pressable>
-                <Text style={styles.qtyText}>{quantity}</Text>
-                <Pressable
-                  onPress={() => setQuantity((q) => q + 1)}
-                  style={styles.qtyBtn}
-                  hitSlop={8}
-                >
-                  <Ionicons name="add" size={18} color={CaseUi.orange} />
-                </Pressable>
-              </View>
-            </View>
+            {sizeAddons.length > 0 || extraAddons.length > 0 ? (
+              <View style={styles.customizeContainer}>
+                <Text style={[styles.customizeTitle, { color: colors.text }]}>Customize</Text>
 
-            {aboutBullets.length > 0 ? (
-              <>
-                <Text style={styles.aboutTitle}>About this item</Text>
-                {aboutBullets.map((line) => (
-                  <View key={line} style={styles.bulletRow}>
-                    <Ionicons name="checkmark" size={16} color={CaseUi.muted} />
-                    <Text style={styles.bulletText}>{line}</Text>
+                {sizeAddons.length > 0 ? (
+                  <View style={styles.customSection}>
+                    <Text style={styles.customSectionTitle}>Choose Size</Text>
+                    {sizeAddons.map((addon: any) => {
+                      const on = selectedSize === addon.name;
+                      return (
+                        <Pressable
+                          key={addon.name}
+                          onPress={() => setSelectedSize(addon.name)}
+                          style={styles.optionRow}
+                        >
+                          <View style={[styles.radioCircle, { borderColor: on ? CaseUi.orange : (isDark ? '#3A3A3C' : '#C7C7CC') }]}>
+                            {on && <View style={[styles.radioInnerDot, { backgroundColor: CaseUi.orange }]} />}
+                          </View>
+                          <Text style={[styles.optionName, { color: colors.text }]}>
+                            {addon.name.replace(/^(Portion|Size):\s*/i, '')}
+                          </Text>
+                          {addon.price ? (
+                            <Text style={[styles.optionPrice, { color: colors.text }]}>JMD {addon.price}</Text>
+                          ) : null}
+                        </Pressable>
+                      );
+                    })}
                   </View>
-                ))}
-              </>
-            ) : null}
+                ) : null}
 
-            {sizeAddons.length > 0 ? (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Size</Text>
-                {sizeAddons.map((addon: any) => {
-                  const on = selectedSize === addon.name;
-                  return (
-                    <Pressable
-                      key={addon.name}
-                      onPress={() => setSelectedSize(addon.name)}
-                      style={styles.optionRow}
-                    >
-                      <Ionicons
-                        name={on ? 'radio-button-on' : 'radio-button-off'}
-                        size={20}
-                        color={on ? CaseUi.orange : CaseUi.muted}
-                      />
-                      <Text style={styles.optionName}>
-                        {addon.name.replace(/^(Portion|Size):\s*/i, '')}
-                      </Text>
-                      {addon.price ? (
-                        <Text style={styles.optionPrice}>+J${addon.price}</Text>
-                      ) : null}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ) : null}
-
-            {extraAddons.length > 0 ? (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Add extras</Text>
-                {extraAddons.map((addon: any) => {
-                  const on = selectedAddons[addon.name] ?? false;
-                  return (
-                    <Pressable
-                      key={addon.name}
-                      onPress={() =>
-                        setSelectedAddons((prev) => ({ ...prev, [addon.name]: !prev[addon.name] }))
-                      }
-                      style={styles.optionRow}
-                    >
-                      <Ionicons
-                        name={on ? 'checkbox' : 'square-outline'}
-                        size={20}
-                        color={on ? CaseUi.success : CaseUi.muted}
-                      />
-                      <Text style={styles.optionName}>{addon.name}</Text>
-                      <Text style={styles.optionPrice}>+J${addon.price}</Text>
-                    </Pressable>
-                  );
-                })}
+                {extraAddons.length > 0 ? (
+                  <View style={styles.customSection}>
+                    <Text style={styles.customSectionTitle}>Add Extras</Text>
+                    {extraAddons.map((addon: any) => {
+                      const on = selectedAddons[addon.name] ?? false;
+                      return (
+                        <Pressable
+                          key={addon.name}
+                          onPress={() =>
+                            setSelectedAddons((prev) => ({ ...prev, [addon.name]: !prev[addon.name] }))
+                          }
+                          style={styles.optionRow}
+                        >
+                          <View
+                            style={[
+                              styles.checkboxSquare,
+                              {
+                                borderColor: on ? CaseUi.orange : (isDark ? '#3A3A3C' : '#C7C7CC'),
+                                backgroundColor: on ? CaseUi.orange : 'transparent',
+                              },
+                            ]}
+                          >
+                            {on && <Ionicons name="checkmark" size={12} color="#FFFFFF" />}
+                          </View>
+                          <Text style={[styles.optionName, { color: colors.text }]}>{addon.name}</Text>
+                          <Text style={[styles.optionPrice, { color: colors.text }]}>JMD {addon.price}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
               </View>
             ) : null}
           </Animated.View>
         </ScrollView>
 
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 14) }]}>
-          <Pressable
-            onPress={() => setLiked((v) => !v)}
-            style={styles.heartBtn}
-          >
-            <Ionicons
-              name={liked ? 'heart' : 'heart-outline'}
-              size={22}
-              color={liked ? CaseUi.danger : CaseUi.ink}
-            />
-          </Pressable>
+        <View style={[styles.footer, { backgroundColor: isDark ? '#141417' : CaseUi.white, borderTopColor: isDark ? '#27272A' : CaseUi.line, paddingBottom: Math.max(insets.bottom, 14) }]}>
+          <View style={styles.footerQtyContainer}>
+            <Pressable
+              onPress={() => setQuantity((q) => Math.max(1, q - 1))}
+              style={styles.footerQtyBtn}
+              hitSlop={8}
+            >
+              <Ionicons name="remove" size={16} color={CaseUi.ink} />
+            </Pressable>
+            <Text style={styles.footerQtyText}>{quantity}</Text>
+            <Pressable
+              onPress={() => setQuantity((q) => q + 1)}
+              style={styles.footerQtyBtn}
+              hitSlop={8}
+            >
+              <Ionicons name="add" size={16} color={CaseUi.ink} />
+            </Pressable>
+          </View>
+
           <Pressable
             onPress={handleAddToCart}
             disabled={submitting || item?.isAvailable === false || (sizeAddons.length > 0 && !selectedSize)}
@@ -345,9 +371,7 @@ export default function ProductDetailScreen() {
               <Text style={styles.addBtnText}>
                 {item?.isAvailable === false
                   ? 'Sold Out'
-                  : quantity > 1
-                    ? `Add to Cart · J$${Math.round(totalPrice)}`
-                    : 'Add to Cart'}
+                  : `Add to Cart`}
               </Text>
             )}
           </Pressable>
@@ -363,8 +387,8 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     gap: 4,
   },
   headerBtn: {
@@ -377,7 +401,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 16,
+    fontSize: 18,
     color: CaseUi.ink,
   },
   heroImage: {
@@ -397,46 +421,16 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#D8D8D8',
-  },
-  dotActive: {
-    backgroundColor: CaseUi.orange,
-    width: 8,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   body: { paddingHorizontal: 18, paddingTop: 16 },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
   name: {
-    flex: 1,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 22,
     color: CaseUi.ink,
     letterSpacing: -0.3,
-  },
-  rating: {
-    marginTop: 4,
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 13,
-    color: '#2E7D32',
-  },
-  unit: {
-    marginTop: 6,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    fontSize: 13,
-    color: CaseUi.muted,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
   },
   price: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',
@@ -468,53 +462,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: CaseUi.muted,
   },
-  qtyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 18,
-    marginTop: 4,
-  },
-  qtyBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: CaseUi.line,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qtyText: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 16,
-    color: CaseUi.ink,
-    minWidth: 20,
-    textAlign: 'center',
-  },
-  section: { marginTop: 22 },
-  sectionTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 15,
-    color: CaseUi.ink,
-    marginBottom: 8,
-  },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: CaseUi.line,
   },
   optionName: {
     flex: 1,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    fontSize: 14,
-    color: CaseUi.ink,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    fontSize: 15,
   },
   optionPrice: {
     fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 13,
-    color: CaseUi.muted,
+    fontSize: 14,
   },
   footer: {
     position: 'absolute',
@@ -523,28 +486,17 @@ const styles = StyleSheet.create({
     bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 16,
     paddingHorizontal: 16,
     paddingTop: 12,
     backgroundColor: CaseUi.white,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: CaseUi.line,
   },
-  heartBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: CaseUi.white,
-    borderWidth: 1,
-    borderColor: CaseUi.line,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...CaseUi.softShadow,
-  },
   addBtn: {
     flex: 1,
     height: 52,
-    borderRadius: 999,
+    borderRadius: 14,
     backgroundColor: CaseUi.orange,
     alignItems: 'center',
     justifyContent: 'center',
@@ -552,6 +504,99 @@ const styles = StyleSheet.create({
   addBtnText: {
     color: CaseUi.white,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 15,
+    fontSize: 16,
+  },
+  priceRatingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  priceRowCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ratingRowCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ratingTextGreen: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 13,
+  },
+  customizeContainer: {
+    marginTop: 12,
+  },
+  customizeTitle: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 18,
+    marginBottom: 14,
+  },
+  customSection: {
+    marginBottom: 20,
+  },
+  customSectionTitle: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 14,
+    color: '#7E8587',
+    marginBottom: 8,
+  },
+  footerQtyContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 16,
+  },
+  footerQtyBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  footerQtyText: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 16,
+    color: CaseUi.ink,
+    minWidth: 16,
+    textAlign: 'center',
+  },
+  radioCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  radioInnerDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  checkboxSquare: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  sectionDivider: {
+    height: 1,
+    width: '100%',
+    marginVertical: 16,
+  },
+  descriptionText: {
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 6,
   },
 });

@@ -37,14 +37,7 @@ export function FavoriteHeart({ restaurantId, style, size = 22, variant = 'overl
     );
   };
 
-  const color =
-    variant === 'overlay'
-      ? isFavorite
-        ? theme.primary
-        : '#fff'
-      : isFavorite
-        ? theme.primary
-        : theme.text;
+  const color = isFavorite ? '#FF3B30' : '#1A120C';
 
   return (
     <Pressable
@@ -59,12 +52,17 @@ export function FavoriteHeart({ restaurantId, style, size = 22, variant = 'overl
 
 const styles = StyleSheet.create({
   overlayBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.95)',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   headerBtn: {
     width: 36,

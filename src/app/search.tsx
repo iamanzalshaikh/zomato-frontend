@@ -23,6 +23,8 @@ import { PressableScale } from '@/components/pressable-scale';
 import { SkeletonBlock } from '@/components/skeleton';
 import { EmptyState } from '@/components/state-views';
 import { CaseUi } from '@/constants/caseUi';
+import { ShopCard } from '@/components/shop-card';
+import { useThemeContext } from '@/context/ThemeContext';
 import { CASE_CATEGORY_META, CASE_SHOP_CATEGORIES } from '@/constants/caseHome';
 import { useGlobalSearchQuery, useTrendingSearchesQuery } from '@/hooks/queries/search';
 import { useRecommendedRestaurantsQuery } from '@/hooks/queries/restaurants';
@@ -77,40 +79,19 @@ interface RestaurantSearchItemProps {
   onPress: () => void;
 }
 
-const RestaurantSearchItem = memo(({ item, index, onPress }: RestaurantSearchItemProps) => (
-  <Animated.View entering={FadeInDown.delay(Math.min(index, 8) * 30).duration(240)}>
-    <PressableScale onPress={onPress} style={[styles.restaurantRowCard, item.isOpen === false && styles.dimmed]}>
-      <Image
-        source={item.logo && item.logo.length > 0
-          ? { uri: item.logo }
-          : { uri: 'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=150&auto=format&fit=crop&q=80' }
-        }
-        style={styles.restaurantRowImage}
-        transition={200}
-        contentFit="cover"
+const RestaurantSearchItem = memo(({ item, index, onPress }: RestaurantSearchItemProps) => {
+  const merchant = { ...item, id: item._id };
+  return (
+    <Animated.View entering={FadeInDown.delay(Math.min(index, 8) * 30).duration(240)}>
+      <ShopCard
+        merchant={merchant as any}
+        index={index}
+        variant="list"
+        onPress={onPress}
       />
-      <View style={{ flex: 1, gap: 4 }}>
-        <Text style={styles.restaurantRowName} numberOfLines={1}>{item.restaurantName}</Text>
-        <Text style={styles.restaurantRowSub} numberOfLines={1}>
-          {(item.cuisines ?? []).slice(0, 3).join(' • ') || 'Multi-cuisine'}
-        </Text>
-        <View style={styles.restaurantMetadataRow}>
-          <View style={styles.badgeRatingPill}>
-            <Ionicons name="star" size={10} color="#FFFFFF" />
-            <Text style={styles.badgeRatingText}>{(item.averageRating ?? 4.4).toFixed(1)}</Text>
-          </View>
-          <Text style={styles.restaurantMetadataText}>
-            {item.averageDeliveryTime ?? 30} mins{item.distanceKm ? ` · ${item.distanceKm.toFixed(1)} km` : ''}
-          </Text>
-        </View>
-        {item.isOpen === false ? (
-          <Text style={styles.closedText}>Currently closed</Text>
-        ) : null}
-      </View>
-      <Ionicons name="chevron-forward" size={16} color={CaseUi.muted} />
-    </PressableScale>
-  </Animated.View>
-));
+    </Animated.View>
+  );
+});
 RestaurantSearchItem.displayName = 'RestaurantSearchItem';
 
 interface FoodSearchItemProps {
@@ -121,10 +102,21 @@ interface FoodSearchItemProps {
 }
 
 const FoodSearchItem = memo(({ item, index, onAddPress, onRestaurantPress }: FoodSearchItemProps) => {
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
   const isClosed = item.restaurantId?.isOpen === false;
   return (
     <Animated.View entering={FadeInDown.delay(Math.min(index, 8) * 30).duration(240)}>
-      <View style={[styles.foodRowCard, isClosed && styles.dimmed]}>
+      <View
+        style={[
+          styles.foodRowCard,
+          {
+            backgroundColor: isDark ? '#18181C' : CaseUi.white,
+            borderColor: isDark ? '#282830' : CaseUi.line,
+          },
+          isClosed && styles.dimmed,
+        ]}
+      >
         <Image
           source={item.images && item.images.length > 0 && item.images[0]
             ? { uri: item.images[0] }
@@ -139,11 +131,11 @@ const FoodSearchItem = memo(({ item, index, onAddPress, onRestaurantPress }: Foo
             <View style={[styles.typeDot, { borderColor: item.foodType === 'veg' ? CaseUi.success : CaseUi.danger }]}>
               <View style={[styles.typeDotInner, { backgroundColor: item.foodType === 'veg' ? CaseUi.success : CaseUi.danger }]} />
             </View>
-            <Text style={styles.foodRowName} numberOfLines={1}>{item.itemName}</Text>
+            <Text style={[styles.foodRowName, { color: colors.text }]} numberOfLines={1}>{item.itemName}</Text>
           </View>
           <Text style={styles.foodRowPrice}>J${Math.round(item.price)}</Text>
           <PressableScale onPress={onRestaurantPress}>
-            <Text style={styles.foodSellerText} numberOfLines={1}>
+            <Text style={[styles.foodSellerText, { color: colors.textSecondary }]} numberOfLines={1}>
               by {item.restaurantId.restaurantName} · {(item.restaurantId.averageRating ?? 4.4).toFixed(1)} ★
             </Text>
           </PressableScale>
@@ -151,7 +143,11 @@ const FoodSearchItem = memo(({ item, index, onAddPress, onRestaurantPress }: Foo
         <PressableScale
           onPress={onAddPress}
           disabled={isClosed}
-          style={[styles.addBtn, isClosed && styles.addBtnDisabled]}
+          style={[
+            styles.addBtn,
+            isClosed && styles.addBtnDisabled,
+            isClosed && { backgroundColor: isDark ? '#27272A' : CaseUi.field, borderColor: isDark ? '#3F3F46' : CaseUi.line },
+          ]}
         >
           <Text style={[styles.addBtnText, isClosed && styles.addBtnTextDisabled]}>
             {isClosed ? 'CLOSED' : 'ADD'}
@@ -167,6 +163,8 @@ export default function SearchScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const addMutation = useAddToCartMutation();
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
 
   const [q, setQ] = useState('');
   const [debounced, setDebounced] = useState('');
@@ -234,6 +232,18 @@ export default function SearchScreen() {
       await storageRemoveItem('recent_searches');
     } catch (e) {
       console.log('Error clearing recent searches', e);
+    }
+  };
+
+  const deleteRecentSearch = async (index: number) => {
+    try {
+      setRecentSearches((prev) => {
+        const updated = prev.filter((_, i) => i !== index);
+        void storageSetItem('recent_searches', JSON.stringify(updated));
+        return updated;
+      });
+    } catch (e) {
+      console.log('Error deleting recent search', e);
     }
   };
 
@@ -341,75 +351,79 @@ export default function SearchScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        {/* Header: back, title, wallet, notifications, avatar */}
+        {/* Header: back button + search bar */}
         <Animated.View entering={FadeInDown.duration(280)} style={styles.headerRow}>
-          <PressableScale onPress={() => router.back()} style={styles.headerBackBtn}>
-            <Ionicons name="arrow-back" size={20} color={CaseUi.ink} />
+          <PressableScale
+            onPress={() => router.back()}
+            style={[styles.headerBackBtn, { backgroundColor: isDark ? '#1F1F24' : CaseUi.field }]}
+          >
+            <Ionicons name="arrow-back" size={20} color={colors.text} />
           </PressableScale>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cravingTitle}>Search</Text>
-            <Text style={styles.headerSub}>Find stores, products or anything</Text>
-          </View>
-          <PressableScale onPress={() => router.push('/wallet')} style={styles.walletPill}>
-            <Ionicons name="wallet-outline" size={13} color={CaseUi.orange} />
-            <Text style={styles.walletPillText}>J${walletBalance.toFixed(0)}</Text>
-          </PressableScale>
-          <PressableScale onPress={() => router.push('/notifications')} style={styles.headerIconBtn}>
-            <Ionicons name="notifications-outline" size={19} color={CaseUi.ink} />
-          </PressableScale>
-          <PressableScale onPress={() => router.push('/(tabs)/profile')} style={styles.avatar}>
-            {user?.profileImage ? (
-              <Image source={{ uri: user.profileImage }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          <View
+            style={[
+              styles.searchBarCompact,
+              {
+                backgroundColor: isDark ? '#18181C' : CaseUi.field,
+                borderColor: isDark ? '#27272A' : CaseUi.line,
+              },
+            ]}
+          >
+            <Ionicons name="search" size={17} color={colors.textSecondary} />
+            <TextInput
+              value={q}
+              onChangeText={setQ}
+              placeholder="Search restaurants, cuisines, or dishes..."
+              placeholderTextColor={colors.textSecondary}
+              style={[styles.searchInput, { color: colors.text }]}
+              returnKeyType="search"
+            />
+            {q.length > 0 ? (
+              <PressableScale onPress={() => setQ('')} style={styles.iconPadding} hitSlop={6}>
+                <Ionicons name="close-circle" size={18} color={CaseUi.muted} />
+              </PressableScale>
             ) : (
-              <Text style={styles.avatarLetter}>{user?.fullName?.charAt(0).toUpperCase() ?? 'U'}</Text>
+              <PressableScale onPress={() => toast.info('Listening feature coming soon!', 'Voice search')} style={styles.iconPadding} hitSlop={6}>
+                <Ionicons name="mic-outline" size={18} color={CaseUi.orange} />
+              </PressableScale>
             )}
-          </PressableScale>
+          </View>
         </Animated.View>
 
-        {/* Category quick filters */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryFilterRow}
-        >
-          {CASE_SHOP_CATEGORIES.map((catId) => {
-            const meta = CASE_CATEGORY_META[catId];
-            return (
-              <PressableScale
-                key={catId}
-                onPress={() =>
-                  router.push({ pathname: '/category/[businessType]', params: { businessType: catId } })
-                }
-                style={styles.categoryFilterChip}
-              >
-                <Ionicons name={meta.icon} size={15} color={CaseUi.ink} />
-                <Text style={styles.categoryFilterText}>{meta.label}</Text>
-              </PressableScale>
-            );
-          })}
-        </ScrollView>
-
-        {/* Search Bar with Magnifier, Voice mic & Clear */}
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={17} color={CaseUi.muted} />
-          <TextInput
-            value={q}
-            onChangeText={setQ}
-            placeholder="Search restaurants, cuisines, or dishes..."
-            placeholderTextColor={CaseUi.muted}
-            style={styles.searchInput}
-            returnKeyType="search"
-          />
-          {q.length > 0 ? (
-            <PressableScale onPress={() => setQ('')} style={styles.iconPadding} hitSlop={6}>
-              <Ionicons name="close-circle" size={18} color={CaseUi.muted} />
-            </PressableScale>
-          ) : (
-            <PressableScale onPress={() => toast.info('Listening feature coming soon!', 'Voice search')} style={styles.iconPadding} hitSlop={6}>
-              <Ionicons name="mic-outline" size={18} color={CaseUi.orange} />
-            </PressableScale>
-          )}
-        </View>
+        {/* Category quick filters - only show when not searching */}
+        {debounced.trim().length === 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryFilterRow}
+          >
+            {CASE_SHOP_CATEGORIES.map((catId) => {
+              const meta = CASE_CATEGORY_META[catId];
+              return (
+                <PressableScale
+                  key={catId}
+                  onPress={() =>
+                    router.push({ pathname: '/category/[businessType]', params: { businessType: catId } })
+                  }
+                  style={[
+                    styles.categoryFilterChip,
+                    {
+                      backgroundColor: isDark ? '#1C1C22' : meta.bg,
+                      borderColor: isDark ? '#2A2A32' : 'rgba(0,0,0,0.04)',
+                    },
+                  ]}
+                >
+                  <View style={[
+                    styles.categoryIconWrap,
+                    { backgroundColor: isDark ? '#2A2A32' : meta.color }
+                  ]}>
+                    <Ionicons name={meta.icon} size={15} color={isDark ? '#FFFFFF' : '#FFFFFF'} />
+                  </View>
+                  <Text style={[styles.categoryFilterText, { color: isDark ? '#E5E5EA' : CaseUi.ink }]}>{meta.short}</Text>
+                </PressableScale>
+              );
+            })}
+          </ScrollView>
+        )}
 
         {/* Filter chips bar (Shown only when results are present) */}
         {debounced.trim().length > 0 && (
@@ -469,17 +483,21 @@ export default function SearchScreen() {
                 </View>
                 <View style={styles.recentList}>
                   {recentSearches.map((term, i) => (
-                    <PressableScale
-                      key={`recent-${i}`}
-                      onPress={() => {
-                        setQ(term);
-                        setDebounced(term);
-                      }}
-                      style={styles.recentItemRow}
-                    >
-                      <Ionicons name="time-outline" size={16} color={CaseUi.muted} style={{ marginRight: 10 }} />
-                      <Text style={styles.recentItemText}>{term}</Text>
-                    </PressableScale>
+                    <View key={`recent-${i}`} style={styles.recentItemRow}>
+                      <PressableScale
+                        onPress={() => {
+                          setQ(term);
+                          setDebounced(term);
+                        }}
+                        style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+                      >
+                        <Ionicons name="time-outline" size={16} color={CaseUi.muted} style={{ marginRight: 10 }} />
+                        <Text style={styles.recentItemText}>{term}</Text>
+                      </PressableScale>
+                      <PressableScale onPress={() => deleteRecentSearch(i)} hitSlop={8}>
+                        <Ionicons name="close-circle" size={18} color={CaseUi.muted} />
+                      </PressableScale>
+                    </View>
                   ))}
                 </View>
               </Animated.View>
@@ -653,12 +671,12 @@ export default function SearchScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: CaseUi.white },
-  safeArea: { flex: 1, paddingHorizontal: 16, paddingTop: 12 },
+  safeArea: { flex: 1, paddingHorizontal: 16, paddingTop: 2 },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   headerBackBtn: {
     width: 36,
@@ -668,71 +686,45 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: CaseUi.field,
   },
-  cravingTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 19,
-    color: CaseUi.ink,
-  },
-  headerSub: {
-    fontSize: 11,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    color: CaseUi.muted,
-    marginTop: 1,
-  },
-  walletPill: {
+  searchBarCompact: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: CaseUi.orangeSoft,
-  },
-  walletPillText: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 12,
-    color: CaseUi.orange,
-  },
-  headerIconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: CaseUi.line,
     backgroundColor: CaseUi.field,
-  },
-  avatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    overflow: 'hidden',
-    alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: CaseUi.orangeSoft,
-  },
-  avatarLetter: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 14,
-    color: CaseUi.orange,
   },
   categoryFilterRow: {
-    gap: 8,
-    paddingBottom: 12,
+    gap: 6,
+    paddingBottom: 8,
   },
   categoryFilterChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    height: 34,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: CaseUi.line,
     backgroundColor: CaseUi.white,
   },
+  categoryIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   categoryFilterText: {
     fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 12,
+    fontSize: 11,
     color: CaseUi.ink,
   },
   searchBar: {
@@ -752,13 +744,13 @@ const styles = StyleSheet.create({
     fontFamily: 'PlusJakartaSans_600SemiBold',
     fontSize: 14,
     color: CaseUi.ink,
-    height: '100%',
+    paddingVertical: 0,
   },
   iconPadding: { padding: 4 },
 
   // Filters
   filterContainer: {
-    marginBottom: 8,
+    marginBottom: 0,
     maxHeight: 40,
     flexGrow: 0,
   },
@@ -782,18 +774,18 @@ const styles = StyleSheet.create({
   filterTextActive: { color: CaseUi.orange },
 
   // Sections
-  sectionContainer: { marginTop: 8, marginBottom: 16 },
+  sectionContainer: { marginTop: 4, marginBottom: 12 },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   sectionTitle: {
     fontSize: 15,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     color: CaseUi.ink,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   clearBtnText: { fontSize: 12, color: CaseUi.orange, fontFamily: 'PlusJakartaSans_700Bold' },
 
@@ -879,12 +871,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: CaseUi.line,
-    marginBottom: 12,
+    marginBottom: 4,
   },
   tabButton: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 8,
     borderBottomWidth: 2.5,
     borderBottomColor: 'transparent',
   },
