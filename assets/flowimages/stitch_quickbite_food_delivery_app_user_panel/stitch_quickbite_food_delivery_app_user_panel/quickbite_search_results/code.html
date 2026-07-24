@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>QuickBite Search Results</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-surface": "#1a1c1c",
+                    "primary-fixed-dim": "#ffb59a",
+                    "primary-container": "#ff5a00",
+                    "tertiary-container": "#00a584",
+                    "surface-bright": "#f9f9f9",
+                    "on-primary-fixed-variant": "#802900",
+                    "secondary-container": "#dae1e3",
+                    "secondary": "#586062",
+                    "on-secondary-fixed": "#161d1f",
+                    "on-error-container": "#93000a",
+                    "outline-variant": "#e4beb1",
+                    "tertiary-fixed-dim": "#4bddb7",
+                    "on-tertiary": "#ffffff",
+                    "on-background": "#1a1c1c",
+                    "on-error": "#ffffff",
+                    "surface-variant": "#e2e2e2",
+                    "inverse-surface": "#2f3131",
+                    "surface-container": "#eeeeee",
+                    "outline": "#907065",
+                    "tertiary-fixed": "#6dfad2",
+                    "error": "#ba1a1a",
+                    "primary": "#a83900",
+                    "error-container": "#ffdad6",
+                    "surface-tint": "#a83900",
+                    "inverse-primary": "#ffb59a",
+                    "surface-dim": "#dadada",
+                    "secondary-fixed-dim": "#c1c8ca",
+                    "surface-container-lowest": "#ffffff",
+                    "on-tertiary-fixed": "#002018",
+                    "surface-container-low": "#f3f3f3",
+                    "on-secondary-fixed-variant": "#41484a",
+                    "tertiary": "#006b55",
+                    "on-surface-variant": "#5b4137",
+                    "on-primary-container": "#511700",
+                    "on-secondary-container": "#5d6466",
+                    "inverse-on-surface": "#f1f1f1",
+                    "primary-fixed": "#ffdbcf",
+                    "surface-container-highest": "#e2e2e2",
+                    "secondary-fixed": "#dde4e6",
+                    "on-tertiary-fixed-variant": "#005140",
+                    "on-primary": "#ffffff",
+                    "background": "#f9f9f9",
+                    "surface-container-high": "#e8e8e8",
+                    "surface": "#f9f9f9",
+                    "on-tertiary-container": "#003126",
+                    "on-secondary": "#ffffff",
+                    "on-primary-fixed": "#380d00"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "lg": "24px",
+                    "gutter": "16px",
+                    "xs": "4px",
+                    "xl": "32px",
+                    "md": "16px",
+                    "base": "4px",
+                    "sm": "8px",
+                    "container-margin-mobile": "16px",
+                    "container-margin-desktop": "80px"
+            },
+            "fontFamily": {
+                    "headline-lg": ["Plus Jakarta Sans"],
+                    "label-md": ["Plus Jakarta Sans"],
+                    "display-lg": ["Plus Jakarta Sans"],
+                    "body-lg": ["Plus Jakarta Sans"],
+                    "headline-lg-mobile": ["Plus Jakarta Sans"],
+                    "title-lg": ["Plus Jakarta Sans"],
+                    "body-md": ["Plus Jakarta Sans"],
+                    "label-sm": ["Plus Jakarta Sans"],
+                    "headline-md": ["Plus Jakarta Sans"]
+            },
+            "fontSize": {
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                    "display-lg": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                    "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "700"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface">
+<!-- Top Navigation Shell -->
+<header class="sticky top-0 z-50 bg-surface flex flex-col pt-4 pb-2 px-container-margin-mobile shadow-sm border-b border-outline-variant">
+<div class="flex items-center gap-3 mb-4">
+<button aria-label="Back" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-on-surface">arrow_back</span>
+</button>
+<div class="flex-1 relative flex items-center">
+<span class="material-symbols-outlined absolute left-3 text-secondary text-[20px]">search</span>
+<input class="w-full bg-surface-container-low border-none rounded-xl py-2.5 pl-10 pr-4 font-body-md text-body-md focus:ring-2 focus:ring-primary-container focus:bg-white transition-all outline-none" readonly="" type="text" value="Biryani"/>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-xl border border-outline-variant hover:bg-surface-container active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-primary">tune</span>
+</button>
+</div>
+<!-- Filter Chips Horizontal Scroll -->
+<div class="flex gap-2 overflow-x-auto hide-scrollbar pb-2">
+<button class="flex items-center gap-1 px-4 py-2 bg-white border border-outline-variant rounded-full whitespace-nowrap active:scale-95 transition-all">
+<span class="font-label-md text-label-md text-secondary">Sort By</span>
+<span class="material-symbols-outlined text-[16px]">expand_more</span>
+</button>
+<!-- Active Chip -->
+<button class="px-4 py-2 bg-primary-container text-white rounded-full whitespace-nowrap active:scale-95 transition-all shadow-sm">
+<span class="font-label-md text-label-md">Rating 4.0+</span>
+</button>
+<button class="px-4 py-2 bg-white border border-outline-variant rounded-full whitespace-nowrap active:scale-95 transition-all">
+<span class="font-label-md text-label-md text-secondary">Veg Only</span>
+</button>
+<button class="px-4 py-2 bg-white border border-outline-variant rounded-full whitespace-nowrap active:scale-95 transition-all">
+<span class="font-label-md text-label-md text-secondary">Under ₹200</span>
+</button>
+<!-- Active Chip -->
+<button class="px-4 py-2 bg-primary-container text-white rounded-full whitespace-nowrap active:scale-95 transition-all shadow-sm">
+<span class="font-label-md text-label-md">Fast Delivery</span>
+</button>
+</div>
+</header>
+<main class="flex flex-col gap-lg px-container-margin-mobile pt-lg pb-xl">
+<!-- Results Count -->
+<div class="flex items-center justify-between">
+<h2 class="font-headline-md text-headline-md text-on-surface">124 results for Biryani</h2>
+</div>
+<!-- Section: Restaurants -->
+<section class="flex flex-col gap-md">
+<div class="flex items-center gap-2">
+<span class="w-1 h-6 bg-primary-container rounded-full"></span>
+<h3 class="font-title-lg text-title-lg">Restaurants</h3>
+</div>
+<!-- Restaurant Card 1 -->
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-all">
+<div class="relative h-48 w-full">
+<img alt="Biryani Restaurant" class="w-full h-full object-cover" data-alt="A mouth-watering high-angle shot of a premium Hyderabadi Biryani served in a traditional clay pot, surrounded by fresh garnishes like mint leaves and lemon wedges. The setting is a rustic yet modern high-end restaurant with warm ambient lighting. The visual style is appetising and corporate-modern, using rich orange and gold tones to evoke hunger. The lighting is soft and diffused, creating elegant shadows on the wooden tabletop." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBfMG1J1G1bdunQjwbJkW0OdjGh_Rp5CXbNo7zNLCrD-4PsFe1NHzT0xHpjuxhbozbZKVno5ClpXajkyvY6uxN_pRCdt3ZwEMDuFAjf5DTgdrTsD9t5z6B4x4hao9eGpM4kWdNx3srAtt9nTB5oiu6wvgrFAsxWjFJwwApkx4o42vCHawEdb_Bt3pOzmSaDldy1zvdHZ54WGG3dJd5jYHfT0PQSSIWvRkBDhEBuJaF3f6voyv5OZZgnuv2i_YmzIOEGxhGlv-tDQhw"/>
+<div class="absolute top-3 left-3 bg-tertiary-container/90 backdrop-blur-sm text-white px-3 py-1 rounded-lg">
+<span class="font-label-sm text-label-sm">50% OFF up to ₹100</span>
+</div>
+</div>
+<div class="p-md">
+<div class="flex justify-between items-start mb-1">
+<h4 class="font-title-lg text-title-lg text-on-surface">The Biryani Life</h4>
+<div class="flex items-center gap-1 bg-green-100 px-2 py-0.5 rounded-lg">
+<span class="material-symbols-outlined text-[16px] text-green-700" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="font-label-md text-label-md text-green-700">4.2</span>
+</div>
+</div>
+<div class="flex items-center gap-2 text-secondary font-label-md text-label-md">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">schedule</span>
+<span>25-30 mins</span>
+</div>
+<span class="w-1 h-1 bg-outline-variant rounded-full"></span>
+<span>₹250 for two</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Section: Dishes -->
+<section class="flex flex-col gap-md">
+<div class="flex items-center gap-2">
+<span class="w-1 h-6 bg-primary-container rounded-full"></span>
+<h3 class="font-title-lg text-title-lg">Dishes</h3>
+</div>
+<!-- Dish Card 1 -->
+<div class="bg-surface-container-lowest p-md rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] flex gap-4 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-all">
+<div class="w-24 h-24 rounded-lg overflow-hidden shrink-0">
+<img alt="Chicken Biryani" class="w-full h-full object-cover" data-alt="A close-up shot of a single portion of aromatic Chicken Biryani presented in a minimalist white ceramic bowl. The dish features long-grain basmati rice, tender pieces of chicken, and a sprinkle of fried onions on top. The background is a clean, minimalist off-white surface that highlights the vibrant orange and yellow colors of the spices. The lighting is high-key and modern, reflecting an urban professional aesthetic focused on quality." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAamlpNuxjaxcfVJiEyewcjbTCY-c5ZkHZj3ZxqAdOLHMCo2_V1CNTya8wbvz0h-iOiO6cYfI0H8G_vDoIINlm-8Xwo50X1_X1gd_MQsp_iXnnNselmxBFVvut1tpYo7bkpqAI7fy4nOUboVDeGyWqtbk6pcITBOGh050LWU_dYvbWegSVfUVmhg0BQ3JqY19gHio8L4LALvua6BMWjMNl3oy7kONnNs75Q0itZQ0V_GKizx0kXTG-7oBwZziyMfuvk3waIOEySNIM"/>
+</div>
+<div class="flex-1 flex flex-col justify-between">
+<div>
+<h4 class="font-label-md text-label-md text-on-surface text-[16px]">Lucknowi Dum Biryani</h4>
+<p class="font-body-md text-body-md text-secondary text-sm">Paradise Biryani</p>
+</div>
+<div class="flex justify-between items-end">
+<p class="font-title-lg text-title-lg text-primary">₹189</p>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg bg-primary-container text-white shadow-md active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-[20px]">add</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Restaurant Card 2 (Alternating Pattern) -->
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-all">
+<div class="relative h-48 w-full">
+<img alt="Biryani Blues" class="w-full h-full object-cover" data-alt="A sophisticated lifestyle image of a group of urban professionals enjoying various types of biryani in a contemporary, brightly lit dining area. The scene is full of energy and excitement, with focus on the beautifully plated food. The color palette features warm woods and corporate-friendly neutral surfaces, accented by vibrant pops of brand-appropriate orange. The overall mood is social, efficient, and celebratory of good food." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBv_CagkfEIIdgBZDGj9_ugGISokBRINv7gzBqYSw4hCO1lSPlu5mg6T7XfDO5quPKn2Wl7ilcPBa3KOUVOVqOyP8IFxhmEZfcHoy-3lPMnQ2M8trJqVbIBGJQqnBB7YVLA5ahn1AoamqeSYtzNNC2pydeeUDllnC3ccvBxZuR3sRd3FPHv-r7R6qT9NYckssbo1tc-NZ0Tx1PQ43TCzi3KlynYyKrFSdcUeiNtBP-dbgaWU4PRG_lLCc6XmcxpJ5nHk6os87X_1gA"/>
+<div class="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm">
+<span class="material-symbols-outlined text-[16px] text-primary" style="font-variation-settings: 'FILL' 1;">timer</span>
+<span class="font-label-sm text-label-sm text-on-surface">20 min</span>
+</div>
+</div>
+<div class="p-md">
+<div class="flex justify-between items-start mb-1">
+<h4 class="font-title-lg text-title-lg text-on-surface">Biryani Blues</h4>
+<div class="flex items-center gap-1 bg-green-100 px-2 py-0.5 rounded-lg">
+<span class="material-symbols-outlined text-[16px] text-green-700" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="font-label-md text-label-md text-green-700">4.5</span>
+</div>
+</div>
+<div class="flex items-center gap-2 text-secondary font-label-md text-label-md">
+<span>Free Delivery</span>
+<span class="w-1 h-1 bg-outline-variant rounded-full"></span>
+<span>₹300 for two</span>
+</div>
+</div>
+</div>
+<!-- Dish Card 2 -->
+<div class="bg-surface-container-lowest p-md rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] flex gap-4 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)] transition-all">
+<div class="w-24 h-24 rounded-lg overflow-hidden shrink-0">
+<img alt="Egg Biryani" class="w-full h-full object-cover" data-alt="An artistic top-down view of a steaming plate of Egg Biryani, featuring perfectly halved boiled eggs on a bed of golden-yellow basmati rice. The dish is presented on a minimalist black stone plate, creating a dramatic contrast that feels modern and high-end. The lighting is focused and cinematic, emphasizing the textures of the grains and the freshness of the garnish. The aesthetic is clean and professional, aimed at busy urbanites seeking quality." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAct6BViX4kS4ee_D45IqivlYwA1vIdJhrBoO9xIjEi1f6mIfn5c8EW3TUOZHkVUbm7UypHtLuCprCuZQmDWs38MIUgUAcaIqZb41heFSYs4_JrkCnp-vpFtBDmzooee_PN5L2KexKM06vxqYEqLQpREv9KL6MxuhOh0OQ2uM96pYwjHRSu7N1qFZGAtM6hCAjnaXYYVuVdG8SoDdYVXxzw0OaDdIwNvWWiCJ0j6PhhbBc7R1UmMJTCW5xK1Yupb9wCEOUGvYivp5o"/>
+</div>
+<div class="flex-1 flex flex-col justify-between">
+<div>
+<h4 class="font-label-md text-label-md text-on-surface text-[16px]">Classic Egg Biryani</h4>
+<p class="font-body-md text-body-md text-secondary text-sm">Behrouz Biryani</p>
+</div>
+<div class="flex justify-between items-end">
+<p class="font-title-lg text-title-lg text-primary">₹149</p>
+<button class="w-8 h-8 flex items-center justify-center rounded-lg bg-primary-container text-white shadow-md active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-[20px]">add</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Floating Action Button for Cart (Contextual) -->
+<div class="fixed bottom-6 right-6 z-40">
+<button class="flex items-center gap-3 px-5 py-3 bg-on-surface text-white rounded-full shadow-lg active:scale-95 transition-all">
+<div class="relative">
+<span class="material-symbols-outlined">shopping_bag</span>
+<span class="absolute -top-1 -right-1 w-4 h-4 bg-primary-container text-[10px] flex items-center justify-center rounded-full border border-on-surface">2</span>
+</div>
+<span class="font-label-md text-label-md">View Cart • ₹338</span>
+</button>
+</div>
+<script>
+        // Simple micro-interaction for chips
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', function() {
+                if(this.classList.contains('bg-white')) {
+                    this.classList.remove('bg-white', 'text-secondary');
+                    this.classList.add('bg-primary-container', 'text-white');
+                } else if(this.classList.contains('bg-primary-container') && !this.closest('div.fixed')) {
+                    this.classList.add('bg-white', 'text-secondary');
+                    this.classList.remove('bg-primary-container', 'text-white');
+                }
+            });
+        });
+    </script>
+</body></html>

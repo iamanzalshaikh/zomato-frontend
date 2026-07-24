@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>QuickBite | Your Cart</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-tertiary-fixed": "#002018",
+                    "inverse-surface": "#2f3131",
+                    "error-container": "#ffdad6",
+                    "inverse-on-surface": "#f1f1f1",
+                    "surface-container-lowest": "#ffffff",
+                    "background": "#f9f9f9",
+                    "on-tertiary": "#ffffff",
+                    "on-secondary-fixed-variant": "#41484a",
+                    "surface-container": "#eeeeee",
+                    "on-secondary-fixed": "#161d1f",
+                    "primary-container": "#ff5a00",
+                    "tertiary-fixed": "#6dfad2",
+                    "secondary-fixed": "#dde4e6",
+                    "outline": "#907065",
+                    "on-surface-variant": "#5b4137",
+                    "inverse-primary": "#ffb59a",
+                    "secondary-fixed-dim": "#c1c8ca",
+                    "on-primary-container": "#511700",
+                    "on-error": "#ffffff",
+                    "on-background": "#1a1c1c",
+                    "on-secondary-container": "#5d6466",
+                    "secondary": "#586062",
+                    "tertiary": "#006b55",
+                    "surface-dim": "#dadada",
+                    "error": "#ba1a1a",
+                    "outline-variant": "#e4beb1",
+                    "on-surface": "#1a1c1c",
+                    "surface-bright": "#f9f9f9",
+                    "primary-fixed-dim": "#ffb59a",
+                    "on-primary": "#ffffff",
+                    "surface-container-high": "#e8e8e8",
+                    "surface-tint": "#a83900",
+                    "secondary-container": "#dae1e3",
+                    "primary": "#a83900",
+                    "on-secondary": "#ffffff",
+                    "on-error-container": "#93000a",
+                    "surface-variant": "#e2e2e2",
+                    "surface-container-highest": "#e2e2e2",
+                    "tertiary-fixed-dim": "#4bddb7",
+                    "tertiary-container": "#00a584",
+                    "surface": "#f9f9f9",
+                    "on-tertiary-fixed-variant": "#005140",
+                    "on-tertiary-container": "#003126",
+                    "primary-fixed": "#ffdbcf",
+                    "on-primary-fixed": "#380d00",
+                    "on-primary-fixed-variant": "#802900",
+                    "surface-container-low": "#f3f3f3"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "md": "16px",
+                    "xs": "4px",
+                    "lg": "24px",
+                    "container-margin-mobile": "16px",
+                    "base": "4px",
+                    "gutter": "16px",
+                    "xl": "32px",
+                    "sm": "8px",
+                    "container-margin-desktop": "80px"
+            },
+            "fontFamily": {
+                    "label-md": ["Plus Jakarta Sans"],
+                    "headline-lg-mobile": ["Plus Jakarta Sans"],
+                    "display-lg": ["Plus Jakarta Sans"],
+                    "headline-lg": ["Plus Jakarta Sans"],
+                    "body-lg": ["Plus Jakarta Sans"],
+                    "title-lg": ["Plus Jakarta Sans"],
+                    "headline-md": ["Plus Jakarta Sans"],
+                    "label-sm": ["Plus Jakarta Sans"],
+                    "body-md": ["Plus Jakarta Sans"]
+            },
+            "fontSize": {
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                    "display-lg": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f9f9f9;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .veg-icon {
+            border: 1px solid #15803d;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            padding: 2px;
+        }
+        .veg-icon::after {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background-color: #15803d;
+            border-radius: 50%;
+        }
+        .glass-scrim {
+            backdrop-filter: blur(8px);
+            background: rgba(255, 255, 255, 0.8);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface min-h-screen pb-40">
+<!-- Header Section -->
+<header class="sticky top-0 z-50 bg-surface/80 backdrop-blur-md border-b border-outline-variant">
+<div class="flex items-center px-container-margin-mobile h-16 gap-4">
+<button class="active:scale-95 transition-transform p-2 -ml-2">
+<span class="material-symbols-outlined text-primary" data-icon="arrow_back">arrow_back</span>
+</button>
+<div class="flex flex-col">
+<h1 class="font-title-lg text-title-lg text-on-surface">Your Cart</h1>
+<p class="font-label-sm text-label-sm text-secondary">From Spice Garden</p>
+</div>
+</div>
+</header>
+<main class="max-w-md mx-auto">
+<!-- Cart Items List -->
+<section class="bg-white px-container-margin-mobile pt-md pb-md mt-sm shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
+<div class="space-y-lg">
+<!-- Item: Dal Makhani -->
+<div class="flex items-start justify-between">
+<div class="flex gap-3">
+<div class="mt-1.5"><div class="veg-icon"></div></div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface">Dal Makhani</span>
+<span class="font-label-sm text-label-sm text-secondary">₹280</span>
+</div>
+</div>
+<div class="flex items-center bg-primary-fixed text-on-primary-fixed-variant rounded-lg px-2 py-1 gap-4">
+<button class="material-symbols-outlined text-[18px]" data-icon="remove">remove</button>
+<span class="font-label-md text-label-md">1</span>
+<button class="material-symbols-outlined text-[18px]" data-icon="add">add</button>
+</div>
+</div>
+<!-- Item: Butter Naan -->
+<div class="flex items-start justify-between">
+<div class="flex gap-3">
+<div class="mt-1.5"><div class="veg-icon"></div></div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface">Butter Naan</span>
+<span class="font-label-sm text-label-sm text-secondary">2x ₹80</span>
+</div>
+</div>
+<div class="flex items-center bg-primary-fixed text-on-primary-fixed-variant rounded-lg px-2 py-1 gap-4">
+<button class="material-symbols-outlined text-[18px]" data-icon="remove">remove</button>
+<span class="font-label-md text-label-md">2</span>
+<button class="material-symbols-outlined text-[18px]" data-icon="add">add</button>
+</div>
+</div>
+<!-- Item: Gulab Jamun -->
+<div class="flex items-start justify-between">
+<div class="flex gap-3">
+<div class="mt-1.5"><div class="veg-icon"></div></div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md text-on-surface">Gulab Jamun</span>
+<span class="font-label-sm text-label-sm text-secondary">₹120</span>
+</div>
+</div>
+<div class="flex items-center bg-primary-fixed text-on-primary-fixed-variant rounded-lg px-2 py-1 gap-4">
+<button class="material-symbols-outlined text-[18px]" data-icon="remove">remove</button>
+<span class="font-label-md text-label-md">1</span>
+<button class="material-symbols-outlined text-[18px]" data-icon="add">add</button>
+</div>
+</div>
+</div>
+<div class="mt-lg border-t border-dashed border-outline-variant pt-md">
+<button class="flex items-center text-primary-container font-label-md text-label-md">
+<span class="material-symbols-outlined mr-2" data-icon="add_circle">add_circle</span>
+                    Add more items
+                </button>
+</div>
+</section>
+<!-- Coupon Section -->
+<section class="bg-white mt-sm px-container-margin-mobile py-md shadow-[0_4px_20px_rgba(0,0,0,0.05)]">
+<button class="flex items-center justify-between w-full group">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-secondary" data-icon="sell">sell</span>
+<span class="font-label-md text-label-md text-on-surface">Apply Coupon</span>
+</div>
+<span class="material-symbols-outlined text-secondary group-active:translate-x-1 transition-transform" data-icon="chevron_right">chevron_right</span>
+</button>
+</section>
+<!-- Bill Details Card -->
+<section class="mt-sm px-container-margin-mobile">
+<div class="bg-surface-container-low rounded-xl p-md">
+<h2 class="font-label-md text-label-md text-secondary mb-md">Bill Details</h2>
+<div class="space-y-sm">
+<div class="flex justify-between font-label-md text-label-md text-on-surface">
+<span>Item total</span>
+<span>₹560</span>
+</div>
+<div class="flex justify-between font-label-md text-label-md text-on-surface">
+<div class="flex items-center gap-2">
+<span>Delivery fee</span>
+<span class="text-tertiary-container material-symbols-outlined text-[16px]" data-icon="info">info</span>
+</div>
+<div class="flex gap-2">
+<span class="text-secondary line-through">₹80</span>
+<span class="text-tertiary">₹40</span>
+</div>
+</div>
+<div class="flex justify-between font-label-md text-label-md text-on-surface">
+<span>Platform fee</span>
+<span>₹5</span>
+</div>
+<div class="flex justify-between font-label-md text-label-md text-on-surface">
+<span>Taxes</span>
+<span>₹28</span>
+</div>
+</div>
+<div class="mt-md pt-md border-t border-outline-variant flex justify-between items-center">
+<span class="font-title-lg text-title-lg text-on-surface">Grand Total</span>
+<span class="font-title-lg text-title-lg text-on-surface">₹633</span>
+</div>
+</div>
+<!-- Savings Badge -->
+<div class="mt-md flex justify-center">
+<div class="bg-tertiary-container/10 border border-tertiary-container/20 rounded-full px-md py-xs flex items-center gap-2">
+<span class="text-[14px]">🎉</span>
+<span class="font-label-sm text-label-sm text-tertiary-container">You saved ₹40 on this order!</span>
+</div>
+</div>
+</section>
+<!-- Delivery Address -->
+<section class="mt-xl px-container-margin-mobile mb-10">
+<div class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary mt-0.5" data-icon="location_on" style="font-variation-settings: 'FILL' 1;">location_on</span>
+<div class="flex-1">
+<h3 class="font-label-md text-label-md text-on-surface">Delivery address</h3>
+<p class="font-body-md text-body-md text-secondary leading-tight mt-xs">102, Green Park, New Delhi</p>
+</div>
+<button class="font-label-md text-label-md text-primary-container active:scale-95 transition-transform">Change</button>
+</div>
+</section>
+</main>
+<!-- Bottom Sticky CTA -->
+<div class="fixed bottom-0 left-0 right-0 p-container-margin-mobile bg-white shadow-[0_-8px_30px_rgba(0,0,0,0.08)] z-50">
+<div class="max-w-md mx-auto">
+<button class="w-full bg-primary-container text-white py-4 rounded-xl font-headline-md text-headline-md shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-2">
+                Place Order · ₹633
+            </button>
+</div>
+</div>
+<!-- Micro-interaction script -->
+<script>
+        document.querySelectorAll('button').forEach(button => {
+            button.addEventListener('touchstart', function() {
+                this.classList.add('scale-95');
+            });
+            button.addEventListener('touchend', function() {
+                this.classList.remove('scale-95');
+            });
+        });
+
+        // Simple mock for quantity stepper
+        document.querySelectorAll('.flex.items-center.bg-primary-fixed').forEach(stepper => {
+            const btns = stepper.querySelectorAll('button');
+            const label = stepper.querySelector('span');
+            
+            btns[1].addEventListener('click', () => {
+                let val = parseInt(label.innerText);
+                label.innerText = val + 1;
+            });
+            
+            btns[0].addEventListener('click', () => {
+                let val = parseInt(label.innerText);
+                if(val > 0) label.innerText = val - 1;
+            });
+        });
+    </script>
+</body></html>

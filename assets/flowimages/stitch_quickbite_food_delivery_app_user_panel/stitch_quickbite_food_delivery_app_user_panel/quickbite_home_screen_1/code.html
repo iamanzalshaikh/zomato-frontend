@@ -1,0 +1,331 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>QuickBite | Instant Gratification</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .glass-badge {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(8px);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary-fixed": "#161d1f",
+                        "primary-fixed-dim": "#ffb59a",
+                        "on-tertiary-container": "#003126",
+                        "primary-fixed": "#ffdbcf",
+                        "on-surface-variant": "#5b4137",
+                        "secondary-fixed": "#dde4e6",
+                        "inverse-on-surface": "#f1f1f1",
+                        "inverse-surface": "#2f3131",
+                        "on-primary-container": "#511700",
+                        "surface-container-low": "#f3f3f3",
+                        "on-primary-fixed": "#380d00",
+                        "tertiary-fixed": "#6dfad2",
+                        "on-secondary": "#ffffff",
+                        "background": "#f9f9f9",
+                        "on-primary": "#ffffff",
+                        "secondary-container": "#dae1e3",
+                        "on-surface": "#1a1c1c",
+                        "inverse-primary": "#ffb59a",
+                        "on-primary-fixed-variant": "#802900",
+                        "on-secondary-fixed-variant": "#41484a",
+                        "on-tertiary": "#ffffff",
+                        "surface-tint": "#a83900",
+                        "surface": "#f9f9f9",
+                        "surface-container-highest": "#e2e2e2",
+                        "outline-variant": "#e4beb1",
+                        "on-secondary-container": "#5d6466",
+                        "error": "#ba1a1a",
+                        "on-tertiary-fixed": "#002018",
+                        "tertiary-container": "#00a584",
+                        "secondary": "#586062",
+                        "surface-container-high": "#e8e8e8",
+                        "on-error-container": "#93000a",
+                        "surface-dim": "#dadada",
+                        "error-container": "#ffdad6",
+                        "on-error": "#ffffff",
+                        "on-tertiary-fixed-variant": "#005140",
+                        "surface-container": "#eeeeee",
+                        "on-background": "#1a1c1c",
+                        "surface-variant": "#e2e2e2",
+                        "tertiary-fixed-dim": "#4bddb7",
+                        "secondary-fixed-dim": "#c1c8ca",
+                        "surface-bright": "#f9f9f9",
+                        "tertiary": "#006b55",
+                        "primary": "#a83900",
+                        "outline": "#907065",
+                        "surface-container-lowest": "#ffffff",
+                        "primary-container": "#ff5a00"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "container-margin-desktop": "80px",
+                        "lg": "24px",
+                        "xs": "4px",
+                        "container-margin-mobile": "16px",
+                        "md": "16px",
+                        "xl": "32px",
+                        "sm": "8px",
+                        "base": "4px",
+                        "gutter": "16px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Plus Jakarta Sans"],
+                        "body-md": ["Plus Jakarta Sans"],
+                        "display-lg": ["Plus Jakarta Sans"],
+                        "label-sm": ["Plus Jakarta Sans"],
+                        "title-lg": ["Plus Jakarta Sans"],
+                        "headline-lg-mobile": ["Plus Jakarta Sans"],
+                        "headline-lg": ["Plus Jakarta Sans"],
+                        "label-md": ["Plus Jakarta Sans"],
+                        "body-lg": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "display-lg": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                        "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                        "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background font-body-md selection:bg-primary-fixed">
+<!-- Top AppBar (JSON Derived) -->
+<header class="fixed top-0 left-0 right-0 z-50 bg-surface shadow-sm border-b border-outline-variant flex justify-between items-center w-full px-container-margin-mobile h-16">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" data-icon="location_on">location_on</span>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-secondary">Delivering to</span>
+<div class="flex items-center gap-1">
+<span class="font-label-md text-label-md text-on-surface">Connaught Place, Delhi</span>
+<span class="material-symbols-outlined text-[16px]" data-icon="expand_more">expand_more</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-highest transition-colors active:scale-95">
+<span class="material-symbols-outlined text-on-surface" data-icon="notifications">notifications</span>
+</button>
+<div class="w-10 h-10 rounded-full border-2 border-primary-container overflow-hidden">
+<img alt="User" class="w-full h-full object-cover" data-alt="A professional close-up portrait of a young urban professional with a friendly smile, set against a blurred modern architectural background. The lighting is bright and natural, reflecting a clean, corporate modern aesthetic with warm skin tones. The image style is high-definition photography with a shallow depth of field, maintaining a sophisticated and approachable mood." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC5RhCYxNETawMqpJfenpdAxamVYtTXa29KWdeuIHK43fIsta_TjcElCMwwII3A02XqT4f9y3Y0lyhT8KlaODrPxqYFUfUo6Vga1SwuuaKiCyRX6RW_52ii8JvlsIKDe-RxazNJK_SyvV7dC1MMVBIseHapPPDHNfsi7HOMVDqzEd7y5UGkgu4leNWcTaSVx-l8AWiD2jf8HXDGCbwDdBw92n6eHie_PbSrD67qamZuDOvs0pphIuF1ItDWoSBaNBIjSW9d-FwQa3Q">
+</div>
+</div>
+</header>
+<main class="pt-16 pb-24">
+<!-- Search Section -->
+<section class="px-container-margin-mobile mt-lg">
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-4 text-secondary" data-icon="search">search</span>
+<input class="w-full pl-12 pr-4 py-4 bg-surface-container-lowest border border-outline-variant rounded-xl font-body-md focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all shadow-sm" placeholder="Search for restaurants or dishes" type="text">
+</div>
+</section>
+<!-- Categories Horizontal Scroll -->
+<section class="mt-lg">
+<div class="flex overflow-x-auto no-scrollbar gap-sm px-container-margin-mobile">
+<button class="flex-none bg-primary-container text-on-primary font-label-md text-label-md px-6 py-2.5 rounded-full shadow-md active:scale-95 transition-transform">
+                    All
+                </button>
+<button class="flex-none bg-surface-container-lowest border border-outline-variant text-secondary font-label-md text-label-md px-6 py-2.5 rounded-full hover:bg-surface-container-highest transition-colors">
+                    Biryani
+                </button>
+<button class="flex-none bg-surface-container-lowest border border-outline-variant text-secondary font-label-md text-label-md px-6 py-2.5 rounded-full hover:bg-surface-container-highest transition-colors">
+                    Pizza
+                </button>
+<button class="flex-none bg-surface-container-lowest border border-outline-variant text-secondary font-label-md text-label-md px-6 py-2.5 rounded-full hover:bg-surface-container-highest transition-colors">
+                    Burgers
+                </button>
+<button class="flex-none bg-surface-container-lowest border border-outline-variant text-secondary font-label-md text-label-md px-6 py-2.5 rounded-full hover:bg-surface-container-highest transition-colors">
+                    Chinese
+                </button>
+<button class="flex-none bg-surface-container-lowest border border-outline-variant text-secondary font-label-md text-label-md px-6 py-2.5 rounded-full hover:bg-surface-container-highest transition-colors">
+                    Desserts
+                </button>
+<button class="flex-none bg-surface-container-lowest border border-outline-variant text-secondary font-label-md text-label-md px-6 py-2.5 rounded-full hover:bg-surface-container-highest transition-colors">
+                    Healthy
+                </button>
+</div>
+</section>
+<!-- Promo Banner (Asymmetric layout touch) -->
+<section class="px-container-margin-mobile mt-lg">
+<div class="relative h-40 w-full rounded-2xl overflow-hidden bg-primary shadow-lg flex items-center">
+<div class="absolute inset-0 bg-gradient-to-r from-primary via-primary/80 to-transparent z-10"></div>
+<div class="relative z-20 pl-6 w-3/5">
+<span class="text-white/80 font-label-sm text-label-sm uppercase tracking-widest">Limited Offer</span>
+<h2 class="text-white font-headline-md text-headline-md mt-1 leading-tight">50% OFF on your first order</h2>
+<button class="mt-3 bg-white text-primary font-label-md text-label-md px-4 py-2 rounded-lg active:scale-95 transition-transform">Order Now</button>
+</div>
+<img alt="Promo Food" class="absolute right-0 top-0 h-full w-2/3 object-cover" data-alt="A gourmet flat-lay spread of vibrant, delicious international cuisine featuring artisan pizza, fresh salads, and succulent grilled meats. The food is styled with professional precision, using high-key lighting to emphasize freshness and textures. The overall aesthetic is appetizing and high-energy, with warm orange and earthy tones that align with the brand's instant gratification identity." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB6_KFMoPjIAJFc1Ft-h2IWiMymri1_86teh-pb45LbrcZcoH1Wnk9u9i8MBE50vNPzvvhtEdYs1LGqvio9hwg9PzhvpWqlD6utT7sfG7jrwQ9U9O9w3jdLAeN49NIRz07_ZMh-KQhRx3ao_BjYQlvUcwiQEQHzwHLmxRUDqSVEyznGNUXuhE7vQ1qNnjHBPex2otzuG8i__jGu-Cl9yQdcosvwEevTndKRgwFsJhULCZ8Ckt2doTfei9Gnx3Zs777Hx8stqUyuMts">
+</div>
+</section>
+<!-- Top Restaurants Section -->
+<section class="mt-xl">
+<div class="flex justify-between items-end px-container-margin-mobile mb-md">
+<h3 class="font-headline-md text-headline-md text-on-surface">Top Restaurants Near You</h3>
+<a class="text-primary font-label-md text-label-md flex items-center gap-1" href="#">View all <span class="material-symbols-outlined text-[18px]" data-icon="chevron_right">chevron_right</span></a>
+</div>
+<!-- Restaurant List -->
+<div class="px-container-margin-mobile space-y-lg">
+<!-- Restaurant Card 1 -->
+<div class="group bg-surface-container-lowest rounded-2xl overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.05)] active:scale-[0.98] transition-all duration-200">
+<div class="relative aspect-[16/9]">
+<img alt="The Pizza Project" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="A close-up shot of a steaming hot wood-fired pizza with bubbling mozzarella cheese and fresh basil leaves, resting on a rustic stone oven surface. The lighting is warm and dramatic, highlighting the crispy texture of the crust and the vibrant red of the tomato sauce. The composition is clean and modern, focusing on the quality and authenticity of the ingredients." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBSKgs3OQ8SzuEXXGB0RzUUWf7dx57ALD3cXLNsJHGYdxsrVFyKmeYBIdpKsyP2tS9sobM3CDR5XxCLYKhB2gI2TTf2sOi5VxNMgEzS11IW-nTuB1QHoZ-HjTAmb5QFAM_7--ki3FQSTH7lHO0Fj0Wi8pxv_wIhTYcUHpAAWZmSOpBM6Vqf57iMntZBleqnje6E7zbvceTV9VwIGkV9LXA67-Rnp3KLYcb-y7ewWMNkAiE53J8kUKUufgvqovMkNWooCeig-Jy67Cs">
+<div class="absolute top-3 left-3 flex gap-2">
+<span class="glass-badge px-3 py-1 rounded-full font-label-sm text-label-sm text-tertiary flex items-center gap-1 shadow-sm">
+<span class="material-symbols-outlined text-[14px]" data-icon="verified" style="font-variation-settings: 'FILL' 1;">verified</span> Free Delivery
+                            </span>
+</div>
+<div class="absolute bottom-3 right-3 glass-badge px-3 py-1 rounded-lg font-label-md text-label-md text-on-surface shadow-md">
+                            2.4 km
+                        </div>
+</div>
+<div class="p-md">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-title-lg text-title-lg text-on-surface">The Pizza Project</h4>
+<p class="text-secondary font-label-md text-label-md mt-0.5">Italian • Gourmet • Pizza</p>
+</div>
+<div class="bg-primary-fixed text-on-primary-fixed-variant px-2 py-1 rounded flex items-center gap-1">
+<span class="font-label-md text-label-md">4.2</span>
+<span class="material-symbols-outlined text-[14px]" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+</div>
+</div>
+<div class="flex items-center gap-4 mt-3 pt-3 border-t border-outline-variant/30">
+<div class="flex items-center gap-1 text-secondary">
+<span class="material-symbols-outlined text-[18px]" data-icon="schedule">schedule</span>
+<span class="font-label-md text-label-md">30 min</span>
+</div>
+<div class="flex items-center gap-1 text-secondary">
+<span class="material-symbols-outlined text-[18px]" data-icon="payments">payments</span>
+<span class="font-label-md text-label-md">₹200 for two</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Restaurant Card 2 -->
+<div class="group bg-surface-container-lowest rounded-2xl overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.05)] active:scale-[0.98] transition-all duration-200">
+<div class="relative aspect-[16/9]">
+<img alt="Biryani Blues" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="An exquisite copper bowl filled with aromatic Hyderabadi chicken biryani, garnished with fried onions, fresh coriander, and boiled egg. The scene is lit with warm, golden studio lighting that accentuates the vibrant saffron colors and steam rising from the dish. The background is a dark, minimalist slate, making the food the undeniable hero of the frame." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD9MT5XSLHyigl90SC6G_IYSHBKsUnckJ-ZrXBxcjT7joRMLCzYoK29ll1Sn-lu-LYVg9GVNFBY-8yPOgY_0sWSapK6-Q2uFvi7ocZL5BEbUhssYKl5D7ARkcpK9_J3LraIazinx74vk8r3rfYdBInb4B7ONiUTsLag758DZrA2sJLr1Yt4ZilzmdO6l-JycJktxAnDk-3ctDpPobAuHlxoCxJiYRPuAsE-x0_HhBG-hK5g4YBUFoBvuh7HJSsK_bjg1_k5eGBm4P8">
+<div class="absolute top-3 left-3 flex gap-2">
+<span class="glass-badge px-3 py-1 rounded-full font-label-sm text-label-sm text-on-primary-container flex items-center gap-1 shadow-sm">
+<span class="material-symbols-outlined text-[14px]" data-icon="local_fire_department" style="font-variation-settings: 'FILL' 1;">local_fire_department</span> Trending
+                            </span>
+</div>
+<div class="absolute bottom-3 right-3 glass-badge px-3 py-1 rounded-lg font-label-md text-label-md text-on-surface shadow-md">
+                            1.8 km
+                        </div>
+</div>
+<div class="p-md">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-title-lg text-title-lg text-on-surface">Biryani Blues</h4>
+<p class="text-secondary font-label-md text-label-md mt-0.5">North Indian • Biryani • Mughlai</p>
+</div>
+<div class="bg-primary-fixed text-on-primary-fixed-variant px-2 py-1 rounded flex items-center gap-1">
+<span class="font-label-md text-label-md">4.5</span>
+<span class="material-symbols-outlined text-[14px]" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+</div>
+</div>
+<div class="flex items-center gap-4 mt-3 pt-3 border-t border-outline-variant/30">
+<div class="flex items-center gap-1 text-secondary">
+<span class="material-symbols-outlined text-[18px]" data-icon="schedule">schedule</span>
+<span class="font-label-md text-label-md">25 min</span>
+</div>
+<div class="flex items-center gap-1 text-secondary">
+<span class="material-symbols-outlined text-[18px]" data-icon="payments">payments</span>
+<span class="font-label-md text-label-md">₹450 for two</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Floating Action Button (Cart Preview) -->
+<button class="fixed bottom-24 right-6 bg-on-background text-white rounded-full py-3 px-5 shadow-2xl flex items-center gap-3 active:scale-95 transition-transform z-40">
+<div class="flex flex-col items-start leading-tight">
+<span class="text-[10px] uppercase tracking-wider text-white/60">2 Items</span>
+<span class="font-label-md text-label-md">₹540</span>
+</div>
+<div class="h-8 w-[1px] bg-white/20"></div>
+<span class="font-label-md text-label-md">View Cart</span>
+<span class="material-symbols-outlined text-[20px]" data-icon="shopping_basket">shopping_basket</span>
+</button>
+<!-- Bottom Navigation (JSON Derived) -->
+<nav class="fixed bottom-0 w-full z-50 flex justify-around items-center bg-surface py-2 px-2 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] rounded-t-xl">
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1 active:scale-90 duration-150 transition-transform" href="#">
+<span class="material-symbols-outlined" data-icon="home" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-label-md text-label-md">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary px-4 py-1 hover:bg-surface-container active:scale-90 duration-150 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="search">search</span>
+<span class="font-label-md text-label-md">Browse</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary px-4 py-1 hover:bg-surface-container active:scale-90 duration-150 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
+<span class="font-label-md text-label-md">Orders</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary px-4 py-1 hover:bg-surface-container active:scale-90 duration-150 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-label-md text-label-md">Profile</span>
+</a>
+</nav>
+<script>
+        // Simple scroll behavior for header elevation
+        window.addEventListener('scroll', () => {
+            const header = document.querySelector('header');
+            if (window.scrollY > 10) {
+                header.classList.add('shadow-md');
+            } else {
+                header.classList.remove('shadow-md');
+            }
+        });
+
+        // Category chip interaction
+        const chips = document.querySelectorAll('.flex-none');
+        chips.forEach(chip => {
+            chip.addEventListener('click', () => {
+                chips.forEach(c => {
+                    c.classList.remove('bg-primary-container', 'text-on-primary');
+                    c.classList.add('bg-surface-container-lowest', 'text-secondary');
+                });
+                chip.classList.remove('bg-surface-container-lowest', 'text-secondary');
+                chip.classList.add('bg-primary-container', 'text-on-primary');
+            });
+        });
+    </script>
+</body></html>

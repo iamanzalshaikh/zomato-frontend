@@ -1,0 +1,216 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>QuickBite - Login</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-low": "#f3f3f3",
+                        "on-background": "#1a1c1c",
+                        "on-primary-container": "#511700",
+                        "secondary": "#586062",
+                        "error": "#ba1a1a",
+                        "background": "#f9f9f9",
+                        "surface-variant": "#e2e2e2",
+                        "surface-bright": "#f9f9f9",
+                        "primary-fixed-dim": "#ffb59a",
+                        "on-error": "#ffffff",
+                        "surface-container-high": "#e8e8e8",
+                        "error-container": "#ffdad6",
+                        "tertiary-container": "#00a584",
+                        "surface-dim": "#dadada",
+                        "tertiary-fixed": "#6dfad2",
+                        "on-secondary-fixed-variant": "#41484a",
+                        "surface-container-highest": "#e2e2e2",
+                        "on-primary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-container": "#5d6466",
+                        "primary": "#a83900",
+                        "surface-container": "#eeeeee",
+                        "secondary-fixed-dim": "#c1c8ca",
+                        "on-secondary-fixed": "#161d1f",
+                        "tertiary": "#006b55",
+                        "inverse-on-surface": "#f1f1f1",
+                        "inverse-surface": "#2f3131",
+                        "surface-tint": "#a83900",
+                        "primary-container": "#ff5a00",
+                        "on-tertiary": "#ffffff",
+                        "on-surface": "#1a1c1c",
+                        "outline": "#907065",
+                        "on-primary-fixed": "#380d00",
+                        "on-surface-variant": "#5b4137",
+                        "on-tertiary-container": "#003126",
+                        "on-secondary": "#ffffff",
+                        "secondary-fixed": "#dde4e6",
+                        "on-tertiary-fixed": "#002018",
+                        "secondary-container": "#dae1e3",
+                        "surface": "#f9f9f9",
+                        "on-primary-fixed-variant": "#802900",
+                        "primary-fixed": "#ffdbcf",
+                        "tertiary-fixed-dim": "#4bddb7",
+                        "outline-variant": "#e4beb1",
+                        "on-tertiary-fixed-variant": "#005140",
+                        "inverse-primary": "#ffb59a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xl": "32px",
+                        "xs": "4px",
+                        "lg": "24px",
+                        "container-margin-mobile": "16px",
+                        "base": "4px",
+                        "gutter": "16px",
+                        "sm": "8px",
+                        "md": "16px",
+                        "container-margin-desktop": "80px"
+                    },
+                    "fontFamily": {
+                        "title-lg": ["Plus Jakarta Sans"],
+                        "display-lg": ["Plus Jakarta Sans"],
+                        "headline-lg": ["Plus Jakarta Sans"],
+                        "label-md": ["Plus Jakarta Sans"],
+                        "label-sm": ["Plus Jakarta Sans"],
+                        "body-md": ["Plus Jakarta Sans"],
+                        "headline-lg-mobile": ["Plus Jakarta Sans"],
+                        "headline-md": ["Plus Jakarta Sans"],
+                        "body-lg": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "display-lg": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                        "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                        "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .hero-gradient {
+            background: linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.8) 100%);
+        }
+        .bottom-sheet {
+            box-shadow: 0px -10px 40px rgba(0, 0, 0, 0.1);
+        }
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="bg-background min-h-screen flex flex-col items-center justify-start overflow-x-hidden">
+<!-- Background Hero Section -->
+<div class="relative w-full h-[45vh] bg-cover bg-center overflow-hidden" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAz6sc70CgvHU9vhbKkZozwrmrwLxTcZMJFmwlP2QibhOqnFLXyneU0vrkM81_PF2TSRYUcqKcXbSZ-fK0KpifjFcfOlytk1q2QyMgCsdVau9m8sSWhpgHm3G3-RHNhSbJJDOYhvU_f0myTkCzWhL4_NcG9OJTIerPOjd8yMSdKmhyYCongZifGtlkxTflzxOcjGZEbS1H9aJafp3FI_-DS7GFkMCCdE9KgI8lJXgTMc1PYt2FOpLvUhF6s0nvECPSYH5VeHQ_gneE');">
+<div class="absolute inset-0 hero-gradient"></div>
+<!-- Brand Identity Over Hero -->
+<div class="absolute inset-0 flex flex-col items-center justify-center pt-8">
+<h1 class="font-display-lg text-display-lg text-white tracking-tighter">QuickBite</h1>
+<p class="font-body-md text-white/80 opacity-90">Instant flavors, delivered.</p>
+</div>
+</div>
+<!-- Login Bottom Sheet -->
+<div class="relative flex-1 w-full bg-surface-container-lowest -mt-10 rounded-t-[40px] bottom-sheet z-10 px-container-margin-mobile pt-md pb-xl">
+<!-- Handle for visual indicator -->
+<div class="w-12 h-1.5 bg-surface-variant rounded-full mx-auto mb-6"></div>
+<!-- App Logo & Welcome -->
+<div class="flex flex-col items-center mb-8">
+<div class="w-16 h-16 mb-4 rounded-xl overflow-hidden shadow-lg border border-outline-variant/30">
+<img alt="QuickBite Logo" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida/ADBb0uiPKkaJp5gCydWyktctVWRL4aELMOfTC0LC1EsG__08dmaG-63fwbB0itLm38pegk1gxXmmKVZwtmOoKR07Ct7x8YwVsAP6yEXyWKf8-dGH1AL2Sk5GswX_r9bvzP0MR8lCSt7zdlW8sDDb5eqAm6aJi44X_cUc835m3fDzz0-YLSFsiPbo6hbhn8H-TJe2gTQKKJqSgpqXfHAG6i2iX5hQV-bjVvCiytJ1ATaLeR6Y7i28F8S0_iQ9TN0">
+</div>
+<h2 class="font-headline-lg-mobile text-headline-lg-mobile text-on-surface mb-1">Welcome Back 👋</h2>
+<p class="font-body-md text-secondary">Sign in to continue ordering</p>
+</div>
+<!-- Form Section -->
+<div class="space-y-md max-w-md mx-auto">
+<!-- Phone Number Input -->
+<div class="space-y-xs">
+<label class="font-label-md text-label-md text-on-surface-variant ml-1">Phone Number</label>
+<div class="relative flex items-center group">
+<div class="absolute left-4 flex items-center gap-2 border-r border-outline-variant pr-3 py-1">
+<img alt="India Flag" class="w-5 h-auto rounded-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCsF4RaUs6qNxo3Y7bhiyB1qX8Sy5uj1BzqsTPU7GfVWGLpIv4lo-UHuhTduxjOcQJTByVNB7_MD0qtELu6d-yu69EqPjKWc6_blUdqBUG9OXM5BzMmqTF3O5nLOIhNyYz5nME5c1DBkrfwq1WqHkewO5-o5OCkC8dWi037ZIoYAWzaJGdDnGJtSpOJFfv4bEeXoDsglUNtynr3-o5rlIZRCfBJNirdp2nGu5vmX_ybQiAWpZhrLUF4k_yIblHGRBhm8UvnS6ROaSo">
+<span class="font-body-md text-on-surface">+91</span>
+</div>
+<input class="w-full pl-24 pr-4 py-4 bg-surface border-outline-variant focus:border-primary-container focus:ring-1 focus:ring-primary-container rounded-xl font-body-md text-on-surface transition-all" placeholder="Enter mobile number" type="tel">
+</div>
+</div>
+<!-- Password Input -->
+<div class="space-y-xs">
+<label class="font-label-md text-label-md text-on-surface-variant ml-1">Password</label>
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-4 text-secondary">lock</span>
+<input class="w-full pl-12 pr-12 py-4 bg-surface border-outline-variant focus:border-primary-container focus:ring-1 focus:ring-primary-container rounded-xl font-body-md text-on-surface transition-all" placeholder="Enter password" type="password">
+<button class="material-symbols-outlined absolute right-4 text-secondary hover:text-primary transition-colors">visibility</button>
+</div>
+<div class="flex justify-end">
+<a class="font-label-md text-label-md text-primary-container hover:underline mt-1" href="#">Forgot Password?</a>
+</div>
+</div>
+<!-- Action Button -->
+<button class="w-full bg-primary-container hover:bg-on-primary-fixed-variant text-white font-headline-md text-headline-md py-4 rounded-xl shadow-lg active:scale-95 transition-all duration-150 mt-4">
+                Log In
+            </button>
+<!-- Divider -->
+<div class="flex items-center gap-4 py-4">
+<div class="flex-1 h-[1px] bg-outline-variant"></div>
+<span class="font-label-sm text-label-sm text-secondary">or continue with</span>
+<div class="flex-1 h-[1px] bg-outline-variant"></div>
+</div>
+<!-- Social Logins -->
+<div class="grid grid-cols-2 gap-md">
+<button class="flex items-center justify-center gap-2 py-3.5 border border-outline-variant rounded-xl hover:bg-surface-container transition-colors active:scale-[0.98]">
+<img alt="Google" class="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAfYROanQM2g9wAj5awsWrfLMKrdn0LBP1eKx6jbKCwEQDDy-6253Wnm2OukA1l8kn1m5mboQzk8dYSQBG81ER6OU3VCyU4gT4O8s6dJhdTiQNyfosowoYj7-vXG1AJyo7p152f2h52E9rmcIFKy_0qzV2YT-ps_dnLb6Q_ZpOr2Bub2I7Gy9FTaV4tge_HpTdt_T7r3nF0Jj_WIx2wnHUvr2Ca_IFZDtAnHeZsr8UmnzVU1abXLnIbcWNwl6-8lU5IDl4jrDOxLBE">
+<span class="font-label-md text-label-md text-on-surface">Google</span>
+</button>
+<button class="flex items-center justify-center gap-2 py-3.5 border border-outline-variant rounded-xl hover:bg-surface-container transition-colors active:scale-[0.98]">
+<span class="material-symbols-outlined text-[20px] text-on-surface" style="font-variation-settings: 'FILL' 1;">ios</span>
+<span class="font-label-md text-label-md text-on-surface">Apple</span>
+</button>
+</div>
+<!-- Footer Link -->
+<div class="text-center pt-6">
+<p class="font-body-md text-secondary">
+                    Don't have an account? 
+                    <a class="text-primary-container font-label-md hover:underline" href="#">Sign Up</a>
+</p>
+</div>
+</div>
+</div>
+<!-- Micro-interaction Scripts -->
+<script>
+        // Password visibility toggle
+        const toggleBtn = document.querySelector('button.material-symbols-outlined.right-4');
+        const passInput = document.querySelector('input[type="password"]');
+        
+        toggleBtn?.addEventListener('click', () => {
+            const isPass = passInput.type === 'password';
+            passInput.type = isPass ? 'text' : 'password';
+            toggleBtn.textContent = isPass ? 'visibility_off' : 'visibility';
+        });
+
+        // Simple button active state effect
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('touchstart', () => btn.classList.add('scale-95'));
+            btn.addEventListener('touchend', () => btn.classList.remove('scale-95'));
+        });
+    </script>
+</body></html>

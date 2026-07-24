@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>QuickBite - Spice Garden</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-high": "#e8e8e8",
+                        "error-container": "#ffdad6",
+                        "on-secondary-fixed-variant": "#41484a",
+                        "surface-container-highest": "#e2e2e2",
+                        "on-primary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "tertiary-container": "#00a584",
+                        "surface-dim": "#dadada",
+                        "tertiary-fixed": "#6dfad2",
+                        "surface-container": "#eeeeee",
+                        "secondary-fixed-dim": "#c1c8ca",
+                        "on-secondary-fixed": "#161d1f",
+                        "tertiary": "#006b55",
+                        "inverse-on-surface": "#f1f1f1",
+                        "surface-container-lowest": "#ffffff",
+                        "on-secondary-container": "#5d6466",
+                        "primary": "#a83900",
+                        "surface-container-low": "#f3f3f3",
+                        "on-background": "#1a1c1c",
+                        "error": "#ba1a1a",
+                        "background": "#f9f9f9",
+                        "on-primary-container": "#511700",
+                        "secondary": "#586062",
+                        "surface-variant": "#e2e2e2",
+                        "on-error": "#ffffff",
+                        "surface-bright": "#f9f9f9",
+                        "primary-fixed-dim": "#ffb59a",
+                        "secondary-fixed": "#dde4e6",
+                        "on-tertiary-fixed": "#002018",
+                        "surface": "#f9f9f9",
+                        "on-primary-fixed-variant": "#802900",
+                        "secondary-container": "#dae1e3",
+                        "tertiary-fixed-dim": "#4bddb7",
+                        "outline-variant": "#e4beb1",
+                        "primary-fixed": "#ffdbcf",
+                        "on-tertiary-fixed-variant": "#005140",
+                        "inverse-primary": "#ffb59a",
+                        "inverse-surface": "#2f3131",
+                        "on-surface": "#1a1c1c",
+                        "surface-tint": "#a83900",
+                        "primary-container": "#ff5a00",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-fixed": "#380d00",
+                        "outline": "#907065",
+                        "on-tertiary-container": "#003126",
+                        "on-secondary": "#ffffff",
+                        "on-surface-variant": "#5b4137"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "xl": "32px",
+                        "gutter": "16px",
+                        "base": "4px",
+                        "xs": "4px",
+                        "lg": "24px",
+                        "container-margin-mobile": "16px",
+                        "sm": "8px",
+                        "md": "16px",
+                        "container-margin-desktop": "80px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Plus Jakarta Sans"],
+                        "label-sm": ["Plus Jakarta Sans"],
+                        "body-md": ["Plus Jakarta Sans"],
+                        "title-lg": ["Plus Jakarta Sans"],
+                        "display-lg": ["Plus Jakarta Sans"],
+                        "headline-lg": ["Plus Jakarta Sans"],
+                        "headline-md": ["Plus Jakarta Sans"],
+                        "body-lg": ["Plus Jakarta Sans"],
+                        "headline-lg-mobile": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                        "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "title-lg": ["22px", {"lineHeight": "28px", "fontWeight": "700"}],
+                        "display-lg": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .glass-pill {
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(8px);
+        }
+        .menu-category-active::after {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 24px;
+            background-color: #ff5a00;
+            border-radius: 4px 0 0 4px;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body-md selection:bg-primary-fixed selection:text-on-primary-fixed">
+<main class="relative min-h-screen pb-32">
+<!-- Hero Section -->
+<section class="relative h-[280px] w-full overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A lush and vibrant North Indian food feast featuring copper bowls of butter chicken, aromatic saffron biryani, and handmade naan bread. The setting is an upscale urban restaurant with warm golden lighting that highlights the rich textures of the spices. The scene is shot from a high angle, emphasizing the abundance and high-quality culinary presentation typical of modern corporate dining aesthetics. The overall mood is appetizing, warm, and premium." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCum9-r5H-vlbh6_P76b1gVUMViCjjm53TKGcUKnWqM4SO9WStzMxO8rMnOcjOp908Dze_6IqNyqhZ-ub_z5jzi1Cw0U5BWy2wwaQto3-Pec7HFWNexehGIYMTNXhITY0IKDMat78APY-frxzzTMzCokfx1to3xUXFzf-jqDNhEHWMtilFish7dwlc9s9L7TWS4HYLFlicL-OhsMHVJg_nH75Sq5z5fWghREJg_GBs34b-_4KYVateWslX7fCUEUiWYHtbzm74LlcY"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+<!-- Floating Navigation Controls -->
+<div class="absolute top-4 left-0 right-0 px-container-margin-mobile flex justify-between items-center z-10">
+<button class="w-10 h-10 rounded-full glass-pill flex items-center justify-center text-white active:scale-90 transition-transform">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<div class="flex gap-2">
+<button class="w-10 h-10 rounded-full glass-pill flex items-center justify-center text-white active:scale-90 transition-transform">
+<span class="material-symbols-outlined">share</span>
+</button>
+<button class="w-10 h-10 rounded-full glass-pill flex items-center justify-center text-white active:scale-90 transition-transform">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">favorite</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Restaurant Info Content Section -->
+<section class="relative -mt-6 bg-background rounded-t-xl px-container-margin-mobile pt-6 pb-4">
+<div class="flex flex-col gap-1">
+<h1 class="font-title-lg text-title-lg text-on-surface">Spice Garden</h1>
+<p class="text-secondary font-label-md text-label-md">North Indian · Mughlai</p>
+<div class="flex items-center gap-4 mt-2">
+<div class="flex items-center gap-1 bg-surface-container-low px-2 py-1 rounded-lg">
+<span class="material-symbols-outlined text-primary-container text-lg" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="font-label-md text-label-md">4.3 (312 ratings)</span>
+</div>
+<div class="flex items-center gap-1 text-secondary font-label-md text-label-md">
+<span class="material-symbols-outlined text-lg">payments</span>
+<span>₹500 for two</span>
+</div>
+</div>
+<div class="flex items-center gap-4 mt-3">
+<div class="flex items-center gap-1.5 text-on-surface-variant font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[18px]">schedule</span>
+<span>35 min</span>
+</div>
+<div class="flex items-center gap-1.5 text-on-surface-variant font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[18px]">distance</span>
+<span>3.2 km</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Offers Strip -->
+<section class="mt-2 overflow-x-auto hide-scrollbar flex gap-3 px-container-margin-mobile">
+<div class="flex-shrink-0 w-64 p-4 rounded-xl border border-primary-container/20 bg-primary-fixed/30 flex items-start gap-3">
+<span class="material-symbols-outlined text-primary-container">percent</span>
+<div>
+<p class="font-label-md text-label-md text-on-primary-fixed-variant">Flat ₹100 OFF above ₹499</p>
+<p class="font-label-sm text-label-sm text-secondary">USE WELCOME100</p>
+</div>
+</div>
+<div class="flex-shrink-0 w-64 p-4 rounded-xl border border-primary-container/20 bg-primary-fixed/30 flex items-start gap-3">
+<span class="material-symbols-outlined text-primary-container">delivery_dining</span>
+<div>
+<p class="font-label-md text-label-md text-on-primary-fixed-variant">Free delivery on first order</p>
+<p class="font-label-sm text-label-sm text-secondary">No code required</p>
+</div>
+</div>
+</section>
+<!-- Sticky Tabs -->
+<nav class="sticky top-0 bg-background z-30 mt-6 border-b border-outline-variant flex justify-around">
+<button class="py-3 px-6 text-primary-container border-b-2 border-primary-container font-label-md text-label-md">Menu</button>
+<button class="py-3 px-6 text-secondary font-label-md text-label-md">Reviews</button>
+<button class="py-3 px-6 text-secondary font-label-md text-label-md">Info</button>
+</nav>
+<!-- Menu Layout (Vertical Category + Items) -->
+<section class="flex min-h-[600px]">
+<!-- Left Side Category List -->
+<aside class="w-24 bg-surface-container-low flex flex-col pt-4">
+<div class="menu-category-active relative py-4 px-2 flex flex-col items-center text-center gap-1 bg-background">
+<span class="material-symbols-outlined text-primary-container">star_rate</span>
+<span class="text-[10px] font-bold text-primary-container leading-tight uppercase">Bestsellers</span>
+</div>
+<div class="py-4 px-2 flex flex-col items-center text-center gap-1 text-secondary opacity-70">
+<span class="material-symbols-outlined">tapas</span>
+<span class="text-[10px] font-bold leading-tight uppercase">Starters</span>
+</div>
+<div class="py-4 px-2 flex flex-col items-center text-center gap-1 text-secondary opacity-70">
+<span class="material-symbols-outlined">restaurant</span>
+<span class="text-[10px] font-bold leading-tight uppercase">Main Course</span>
+</div>
+<div class="py-4 px-2 flex flex-col items-center text-center gap-1 text-secondary opacity-70">
+<span class="material-symbols-outlined">bakery_dining</span>
+<span class="text-[10px] font-bold leading-tight uppercase">Breads</span>
+</div>
+<div class="py-4 px-2 flex flex-col items-center text-center gap-1 text-secondary opacity-70">
+<span class="material-symbols-outlined">icecream</span>
+<span class="text-[10px] font-bold leading-tight uppercase">Desserts</span>
+</div>
+</aside>
+<!-- Right Side Menu Items -->
+<div class="flex-1 bg-background px-4 pt-4">
+<h3 class="font-headline-md text-headline-md mb-4 flex items-center gap-2">
+                    Bestsellers
+                    <span class="font-label-sm text-label-sm text-secondary bg-surface-container-high px-2 py-0.5 rounded-full">12 items</span>
+</h3>
+<!-- Menu Item 1 -->
+<div class="py-6 border-b border-outline-variant flex gap-4">
+<div class="flex-1">
+<div class="flex items-center gap-1 mb-1">
+<span class="w-3 h-3 border border-green-600 p-[1px] flex items-center justify-center">
+<span class="w-1.5 h-1.5 bg-green-600 rounded-full"></span>
+</span>
+</div>
+<h4 class="font-bold text-on-surface text-body-lg">Paneer Butter Masala</h4>
+<p class="text-secondary font-label-sm text-label-sm mt-1 line-clamp-2">Soft paneer cubes simmered in a rich, creamy tomato-based gravy with butter and herbs.</p>
+<p class="font-bold text-on-surface mt-2">₹320</p>
+</div>
+<div class="relative w-28 h-28 flex-shrink-0">
+<img class="w-full h-full object-cover rounded-xl shadow-sm" data-alt="A close-up shot of a steaming bowl of Paneer Butter Masala, showcasing vibrant orange gravy and fresh cream swirls. The setting is minimalist and bright, focusing on the texture of the dish. The lighting is soft and natural, emphasizing the professional culinary quality. This high-end food photograph captures the appetizing nature of the dish within a clean, modern framework." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0YL5LzS2Bpgf1EOn4QTbyXITL9CoPKl3C_u3y_vrnn7vCgfXQllEjLyIRjdGuCfoxOoCzLSZlhvhPtueKR5lok38EY85aBvfok9lI5t8oHHEW29F-4G4gfq-xp5PZx4041GNJKQaVP7jAPKcfMAtlQJCqTYeCCuJImFdIqSrjiVI6OvWqnqRp_D6K_HOrogrmG2MAy9VXe0Ls8-DZNmQJPMIQ2pC8GEBouFyQJ91uOBw3p0o6Ob5zvfz1CH9cRxSQbpC9jByEifU"/>
+<div class="absolute -bottom-3 left-1/2 -translate-x-1/2">
+<button class="bg-white border border-primary-container text-primary-container font-bold px-6 py-1.5 rounded-lg shadow-lg active:scale-95 transition-all text-label-md">ADD</button>
+<p class="text-[9px] text-center text-primary-container mt-1 font-bold uppercase tracking-wider">Customizable</p>
+</div>
+</div>
+</div>
+<!-- Menu Item 2 -->
+<div class="py-6 border-b border-outline-variant flex gap-4 mt-2">
+<div class="flex-1">
+<div class="flex items-center gap-1 mb-1">
+<span class="w-3 h-3 border border-red-600 p-[1px] flex items-center justify-center">
+<span class="w-1.5 h-1.5 bg-red-600 rounded-full"></span>
+</span>
+</div>
+<h4 class="font-bold text-on-surface text-body-lg">Chicken Tikka Platter</h4>
+<p class="text-secondary font-label-sm text-label-sm mt-1 line-clamp-2">Succulent boneless chicken pieces marinated in yogurt and spices, grilled to perfection in a tandoor.</p>
+<p class="font-bold text-on-surface mt-2">₹450</p>
+</div>
+<div class="relative w-28 h-28 flex-shrink-0">
+<img class="w-full h-full object-cover rounded-xl shadow-sm" data-alt="A platter of charred Chicken Tikka served with mint chutney and lemon wedges on a dark slate plate. The photography style is high-contrast and moody, highlighting the grilled textures and vibrant spices. The scene is clean and professional, aligned with a premium urban restaurant aesthetic. The lighting is focused, casting soft shadows that give the dish a lifted, premium depth." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDOo9kGo-lfKxsqWR6xuZPEJIl4pWuqx6tjHKsfb10VvzysMkD9YdRP01vzaJcpipVIrxfPQ3OXOxz4d5XbqiPjrFeGcJr02WIxlYD649Hp-e47nrxB5NL4J_jzDkXeN2KL0ViDSQV76_y1LgSE7ti90zlSz9fGTvN5MubO6AgeA4QzUtbPLy-jH4gjrhsHgrWpmScE4lO2-kBQcCPOQG8CWlaFmM8Ib-pcIA-Xw4eMEzlk0_87U6n8cNEP4Nt3bZjFquI4E2GN9YQ"/>
+<div class="absolute -bottom-3 left-1/2 -translate-x-1/2">
+<button class="bg-white border border-primary-container text-primary-container font-bold px-6 py-1.5 rounded-lg shadow-lg active:scale-95 transition-all text-label-md">ADD</button>
+</div>
+</div>
+</div>
+<!-- Menu Item 3 -->
+<div class="py-6 border-b border-outline-variant flex gap-4 mt-2">
+<div class="flex-1">
+<div class="flex items-center gap-1 mb-1">
+<span class="w-3 h-3 border border-green-600 p-[1px] flex items-center justify-center">
+<span class="w-1.5 h-1.5 bg-green-600 rounded-full"></span>
+</span>
+</div>
+<h4 class="font-bold text-on-surface text-body-lg">Dal Makhani Bowl</h4>
+<p class="text-secondary font-label-sm text-label-sm mt-1 line-clamp-2">Slow-cooked black lentils in a rich, buttery, and creamy gravy. Served in a traditional bowl.</p>
+<p class="font-bold text-on-surface mt-2">₹280</p>
+</div>
+<div class="relative w-28 h-28 flex-shrink-0">
+<img class="w-full h-full object-cover rounded-xl shadow-sm" data-alt="A gourmet bowl of creamy Dal Makhani topped with fresh cream and ginger juliennes. The image features high-quality food photography with soft, ambient lighting. The setting is an elegant, minimalist restaurant tabletop. The colors are warm and inviting, emphasizing the buttery richness of the lentils. This professional visual is designed to induce hunger and represent premium quality." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCn0OG_ZY3ay01f4PPPs63PiS2iUAHyYNewIGvx4MoSleqVkd31qkrtrDS4iK2ZfomdsfYla0pJ-ejUfo5Cb1gF1pkuvXkYIiF3YcW0E87rO1oigqxkDVOhA1AVmJ4YN-oXbRRq2u71NdtoA0SErz9nqxkGoU1GLxe-nV4MNKLSDcA6agYuiS66d3wfjCRPOGJj4Jg0A9zzToCVkyYfLVz7XRyWz-HLG8eefxE4fKz6N5-YMxKm7RaOmPTHTYkzovTTNm728OfORqc"/>
+<div class="absolute -bottom-3 left-1/2 -translate-x-1/2">
+<button class="bg-white border border-primary-container text-primary-container font-bold px-6 py-1.5 rounded-lg shadow-lg active:scale-95 transition-all text-label-md">ADD</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Floating Full-width Cart Bar -->
+<footer class="fixed bottom-0 left-0 right-0 p-4 bg-transparent z-50">
+<div class="max-w-md mx-auto">
+<button class="w-full bg-primary-container text-on-primary flex items-center justify-between px-6 py-4 rounded-xl shadow-[0_8px_30px_rgba(255,90,0,0.4)] active:scale-[0.98] transition-transform">
+<div class="flex flex-col items-start">
+<span class="font-bold text-label-md uppercase tracking-widest opacity-80">2 Items | ₹640</span>
+<span class="font-bold text-body-lg">View Cart</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined">shopping_basket</span>
+<span class="material-symbols-outlined">chevron_right</span>
+</div>
+</button>
+</div>
+</footer>
+<!-- Bottom Navigation Bar (Contextually Hidden on sub-pages as per rules, but included for structure if required by some Shell logic) -->
+<!-- Suppressed for transactional/detail focused journey -->
+<script>
+        // Micro-interaction for heart icon
+        document.querySelector('.glass-pill .material-symbols-outlined:last-child')?.parentElement?.addEventListener('click', function() {
+            const icon = this.querySelector('.material-symbols-outlined');
+            const isFilled = icon.style.fontVariationSettings.includes("'FILL' 1");
+            icon.style.fontVariationSettings = isFilled ? "'FILL' 0" : "'FILL' 1";
+            icon.style.color = isFilled ? "white" : "#ff5a00";
+            
+            // Subtle pop animation
+            this.style.transform = 'scale(1.2)';
+            setTimeout(() => {
+                this.style.transform = 'scale(1)';
+            }, 150);
+        });
+
+        // Add to Cart Interaction
+        document.querySelectorAll('button').forEach(btn => {
+            if(btn.innerText === "ADD") {
+                btn.addEventListener('click', function() {
+                    const originalText = this.innerText;
+                    this.innerText = 'ADDED';
+                    this.classList.remove('bg-white', 'text-primary-container');
+                    this.classList.add('bg-primary-container', 'text-white');
+                    
+                    setTimeout(() => {
+                        this.innerText = originalText;
+                        this.classList.add('bg-white', 'text-primary-container');
+                        this.classList.remove('bg-primary-container', 'text-white');
+                    }, 2000);
+                });
+            }
+        });
+    </script>
+</body></html>

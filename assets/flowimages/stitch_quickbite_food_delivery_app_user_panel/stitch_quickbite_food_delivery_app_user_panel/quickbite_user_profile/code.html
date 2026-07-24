@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-primary": "#ffffff",
+                    "surface-container": "#eeeeee",
+                    "inverse-primary": "#ffb59a",
+                    "secondary": "#586062",
+                    "on-primary-fixed-variant": "#802900",
+                    "secondary-fixed": "#dde4e6",
+                    "tertiary-fixed-dim": "#4bddb7",
+                    "primary-container": "#ff5a00",
+                    "surface-variant": "#e2e2e2",
+                    "on-background": "#1a1c1c",
+                    "surface-container-highest": "#e2e2e2",
+                    "error": "#ba1a1a",
+                    "on-surface": "#1a1c1c",
+                    "background": "#f9f9f9",
+                    "tertiary-container": "#00a584",
+                    "tertiary": "#006b55",
+                    "surface-dim": "#dadada",
+                    "surface-tint": "#a83900",
+                    "surface-container-low": "#f3f3f3",
+                    "on-error": "#ffffff",
+                    "inverse-on-surface": "#f1f1f1",
+                    "surface-bright": "#f9f9f9",
+                    "surface": "#f9f9f9",
+                    "on-tertiary-fixed-variant": "#005140",
+                    "outline": "#907065",
+                    "on-surface-variant": "#5b4137",
+                    "on-tertiary-container": "#003126",
+                    "secondary-container": "#dae1e3",
+                    "outline-variant": "#e4beb1",
+                    "primary-fixed-dim": "#ffb59a",
+                    "error-container": "#ffdad6",
+                    "tertiary-fixed": "#6dfad2",
+                    "on-primary-container": "#511700",
+                    "secondary-fixed-dim": "#c1c8ca",
+                    "on-tertiary-fixed": "#002018",
+                    "on-secondary-fixed-variant": "#41484a",
+                    "on-secondary-fixed": "#161d1f",
+                    "primary": "#a83900",
+                    "primary-fixed": "#ffdbcf",
+                    "on-secondary": "#ffffff",
+                    "on-secondary-container": "#5d6466",
+                    "on-primary-fixed": "#380d00",
+                    "on-error-container": "#93000a",
+                    "inverse-surface": "#2f3131",
+                    "on-tertiary": "#ffffff",
+                    "surface-container-high": "#e8e8e8",
+                    "surface-container-lowest": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "container-margin-mobile": "16px",
+                    "lg": "24px",
+                    "sm": "8px",
+                    "container-margin-desktop": "80px",
+                    "base": "4px",
+                    "md": "16px",
+                    "gutter": "16px",
+                    "xs": "4px",
+                    "xl": "32px"
+            },
+            "fontFamily": {
+                    "label-sm": ["Plus Jakarta Sans"],
+                    "label-md": ["Plus Jakarta Sans"],
+                    "headline-md": ["Plus Jakarta Sans"],
+                    "headline-lg": ["Plus Jakarta Sans"],
+                    "display-lg": ["Plus Jakarta Sans"],
+                    "title-lg": ["Plus Jakarta Sans"],
+                    "body-lg": ["Plus Jakarta Sans"],
+                    "headline-lg-mobile": ["Plus Jakarta Sans"],
+                    "body-md": ["Plus Jakarta Sans"]
+            },
+            "fontSize": {
+                    "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                    "display-lg": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                    "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen flex flex-col items-center">
+<!-- Main Canvas (Mobile Focused 390px) -->
+<main class="w-full max-w-[390px] min-h-screen bg-surface-container-lowest relative pb-24 shadow-2xl">
+<!-- Header Section (TopAppBar & Profile) -->
+<header class="bg-gradient-to-br from-primary-container to-primary pt-12 pb-8 px-md rounded-b-[40px] shadow-lg">
+<!-- Top App Bar Content -->
+<div class="flex justify-between items-center mb-6">
+<button class="w-10 h-10 flex items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md active:scale-95 transition-transform">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<h1 class="font-title-lg text-title-lg text-white">Profile</h1>
+<button class="w-10 h-10 flex items-center justify-center rounded-full bg-white/20 text-white backdrop-blur-md active:scale-95 transition-transform">
+<span class="material-symbols-outlined">settings</span>
+</button>
+</div>
+<!-- Profile Info -->
+<div class="flex flex-col items-center text-center">
+<div class="relative mb-4 group">
+<div class="w-24 h-24 rounded-full border-4 border-white/30 overflow-hidden shadow-xl">
+<img alt="Priya Kapoor Profile" class="w-full h-full object-cover" data-alt="A professional studio portrait of a friendly South Asian woman named Priya Kapoor with a warm smile, set against a soft bokeh background. The lighting is soft and flattering, emphasizing a clean corporate modern aesthetic. She has dark hair and is wearing a stylish professional outfit. The overall mood is approachable, successful, and high-quality, matching a premium food delivery app user profile." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCFTLGdospqgMCMLo-bnjEBAjYoCO4d9h2fNxjO0yHEdw8RZ82tBO0lf_1AFlULKeCy6xv9vfE97D0ODZ7VKR7zedR9F01XcZneOkG47RcH5BQZzOHM7tZE-FEUU74gcVA03uk_hy_XAh_T9PC1gKTzwlYKrX7FyFZGW20tRoVjeW2_t0g8nV_Yy8_mjfx0chsJILHlSrU8779SWxRdxgA4fXWTFe91GcOXW3asEKSwXp8uptn2uMSmlSQmnZw5JYxGNrgM4fBwxKY"/>
+</div>
+<button class="absolute bottom-0 right-0 bg-white text-primary rounded-full p-1.5 shadow-md border border-outline-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-[18px]">edit</span>
+</button>
+</div>
+<h2 class="font-headline-lg-mobile text-headline-lg-mobile text-white mb-1">Priya Kapoor</h2>
+<p class="font-body-md text-body-md text-white/80 mb-6">priya.k@example.com</p>
+<button class="px-6 py-2 border-2 border-white/50 text-white rounded-full font-label-md text-label-md hover:bg-white/10 active:scale-95 transition-all">
+                    Edit Profile
+                </button>
+</div>
+</header>
+<!-- Settings List -->
+<div class="px-md -mt-4 space-y-6">
+<!-- My Account Section -->
+<section class="bg-surface-container-lowest rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] overflow-hidden">
+<div class="px-md py-4 border-b border-surface-variant">
+<h3 class="font-label-md text-label-md text-secondary uppercase tracking-wider">My Account</h3>
+</div>
+<div class="divide-y divide-surface-variant">
+<!-- My Orders -->
+<button class="w-full flex items-center justify-between px-md py-4 active:bg-surface-variant transition-colors group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">receipt_long</span>
+<span class="font-body-md text-body-md text-on-surface">My Orders</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="bg-primary-container text-on-primary-container text-[10px] font-bold px-1.5 py-0.5 rounded-full">5</span>
+<span class="material-symbols-outlined text-secondary opacity-50 group-hover:translate-x-1 transition-transform">chevron_right</span>
+</div>
+</button>
+<!-- Saved Addresses -->
+<button class="w-full flex items-center justify-between px-md py-4 active:bg-surface-variant transition-colors group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">location_on</span>
+<span class="font-body-md text-body-md text-on-surface">Saved Addresses</span>
+</div>
+<span class="material-symbols-outlined text-secondary opacity-50 group-hover:translate-x-1 transition-transform">chevron_right</span>
+</button>
+<!-- Payment Methods -->
+<button class="w-full flex items-center justify-between px-md py-4 active:bg-surface-variant transition-colors group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">payments</span>
+<span class="font-body-md text-body-md text-on-surface">Payment Methods</span>
+</div>
+<span class="material-symbols-outlined text-secondary opacity-50 group-hover:translate-x-1 transition-transform">chevron_right</span>
+</button>
+<!-- Refer a Friend -->
+<button class="w-full flex items-center justify-between px-md py-4 active:bg-surface-variant transition-colors group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">card_giftcard</span>
+<span class="font-body-md text-body-md text-on-surface">Refer a Friend</span>
+</div>
+<span class="material-symbols-outlined text-secondary opacity-50 group-hover:translate-x-1 transition-transform">chevron_right</span>
+</button>
+</div>
+</section>
+<!-- Help & Support Section -->
+<section class="bg-surface-container-lowest rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] overflow-hidden">
+<div class="px-md py-4 border-b border-surface-variant">
+<h3 class="font-label-md text-label-md text-secondary uppercase tracking-wider">Help &amp; Support</h3>
+</div>
+<div class="divide-y divide-surface-variant">
+<button class="w-full flex items-center justify-between px-md py-4 active:bg-surface-variant transition-colors group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">quiz</span>
+<span class="font-body-md text-body-md text-on-surface">FAQs</span>
+</div>
+<span class="material-symbols-outlined text-secondary opacity-50 group-hover:translate-x-1 transition-transform">chevron_right</span>
+</button>
+<button class="w-full flex items-center justify-between px-md py-4 active:bg-surface-variant transition-colors group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">support_agent</span>
+<span class="font-body-md text-body-md text-on-surface">Contact Us</span>
+</div>
+<span class="material-symbols-outlined text-secondary opacity-50 group-hover:translate-x-1 transition-transform">chevron_right</span>
+</button>
+<button class="w-full flex items-center justify-between px-md py-4 active:bg-surface-variant transition-colors group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">report</span>
+<span class="font-body-md text-body-md text-on-surface">Report an Issue</span>
+</div>
+<span class="material-symbols-outlined text-secondary opacity-50 group-hover:translate-x-1 transition-transform">chevron_right</span>
+</button>
+</div>
+</section>
+<!-- Preferences Section -->
+<section class="bg-surface-container-lowest rounded-xl shadow-[0_4px_20px_rgba(0,0,0,0.05)] overflow-hidden">
+<div class="px-md py-4 border-b border-surface-variant">
+<h3 class="font-label-md text-label-md text-secondary uppercase tracking-wider">Preferences</h3>
+</div>
+<div class="divide-y divide-surface-variant">
+<button class="w-full flex items-center justify-between px-md py-4 active:bg-surface-variant transition-colors group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">notifications</span>
+<span class="font-body-md text-body-md text-on-surface">Notifications</span>
+</div>
+<span class="material-symbols-outlined text-secondary opacity-50 group-hover:translate-x-1 transition-transform">chevron_right</span>
+</button>
+<button class="w-full flex items-center justify-between px-md py-4 active:bg-surface-variant transition-colors group">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">language</span>
+<span class="font-body-md text-body-md text-on-surface">Language</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-label-sm text-label-sm text-secondary">English</span>
+<span class="material-symbols-outlined text-secondary opacity-50 group-hover:translate-x-1 transition-transform">chevron_right</span>
+</div>
+</button>
+<div class="w-full flex items-center justify-between px-md py-4">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">dark_mode</span>
+<span class="font-body-md text-body-md text-on-surface">Dark Mode</span>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" type="checkbox" value=""/>
+<div class="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-container"></div>
+</label>
+</div>
+</div>
+</section>
+<!-- Log Out -->
+<button class="w-full py-6 flex items-center justify-center gap-2 text-error font-title-lg text-title-lg active:scale-95 transition-transform">
+<span class="material-symbols-outlined">logout</span>
+                Log Out
+            </button>
+</div>
+<!-- Shared Component: BottomNavBar -->
+<nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[390px] z-50 flex justify-around items-center px-4 pb-4 pt-2 bg-surface shadow-[0_-4px_20px_rgba(0,0,0,0.05)] rounded-t-xl">
+<!-- Home -->
+<button class="flex flex-col items-center justify-center text-secondary hover:text-primary transition-colors active:scale-90 transition-transform">
+<span class="material-symbols-outlined">home</span>
+<span class="font-label-sm text-label-sm">Home</span>
+</button>
+<!-- Browse -->
+<button class="flex flex-col items-center justify-center text-secondary hover:text-primary transition-colors active:scale-90 transition-transform">
+<span class="material-symbols-outlined">search</span>
+<span class="font-label-sm text-label-sm">Browse</span>
+</button>
+<!-- Orders -->
+<button class="flex flex-col items-center justify-center text-secondary hover:text-primary transition-colors active:scale-90 transition-transform">
+<span class="material-symbols-outlined">receipt_long</span>
+<span class="font-label-sm text-label-sm">Orders</span>
+</button>
+<!-- Profile (ACTIVE) -->
+<button class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1 active:scale-90 transition-transform shadow-md">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">person</span>
+<span class="font-label-sm text-label-sm font-bold">Profile</span>
+</button>
+</nav>
+</main>
+<script>
+        // Simple Interaction: Toggle Dark Mode (Visual Only)
+        const darkModeToggle = document.querySelector('input[type="checkbox"]');
+        darkModeToggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+
+        // Soft interaction for buttons
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('touchstart', () => btn.classList.add('opacity-80'));
+            btn.addEventListener('touchend', () => btn.classList.remove('opacity-80'));
+        });
+    </script>
+</body></html>

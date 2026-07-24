@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>QuickBite | Home</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-secondary": "#ffffff",
+                    "surface-container-low": "#f3f3f3",
+                    "tertiary-fixed": "#6dfad2",
+                    "surface": "#f9f9f9",
+                    "surface-container-highest": "#e2e2e2",
+                    "surface-bright": "#f9f9f9",
+                    "secondary-fixed": "#dde4e6",
+                    "background": "#f9f9f9",
+                    "secondary-container": "#dae1e3",
+                    "on-tertiary": "#ffffff",
+                    "error-container": "#ffdad6",
+                    "on-primary-fixed": "#380d00",
+                    "on-surface-variant": "#5b4137",
+                    "on-secondary-fixed-variant": "#41484a",
+                    "inverse-surface": "#2f3131",
+                    "surface-container-lowest": "#ffffff",
+                    "surface-container-high": "#e8e8e8",
+                    "outline-variant": "#e4beb1",
+                    "secondary-fixed-dim": "#c1c8ca",
+                    "primary": "#a83900",
+                    "on-primary": "#ffffff",
+                    "on-tertiary-container": "#003126",
+                    "on-error-container": "#93000a",
+                    "inverse-primary": "#ffb59a",
+                    "primary-fixed": "#ffdbcf",
+                    "on-secondary-fixed": "#161d1f",
+                    "inverse-on-surface": "#f1f1f1",
+                    "secondary": "#586062",
+                    "primary-fixed-dim": "#ffb59a",
+                    "tertiary-fixed-dim": "#4bddb7",
+                    "surface-container": "#eeeeee",
+                    "outline": "#907065",
+                    "on-tertiary-fixed-variant": "#005140",
+                    "on-background": "#1a1c1c",
+                    "primary-container": "#ff5a00",
+                    "tertiary-container": "#00a584",
+                    "on-secondary-container": "#5d6466",
+                    "on-primary-fixed-variant": "#802900",
+                    "surface-tint": "#a83900",
+                    "on-tertiary-fixed": "#002018",
+                    "on-surface": "#1a1c1c",
+                    "on-error": "#ffffff",
+                    "surface-variant": "#e2e2e2",
+                    "surface-dim": "#dadada",
+                    "error": "#ba1a1a",
+                    "tertiary": "#006b55",
+                    "on-primary-container": "#511700"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "container-margin-mobile": "16px",
+                    "lg": "24px",
+                    "sm": "8px",
+                    "md": "16px",
+                    "gutter": "16px",
+                    "base": "4px",
+                    "xs": "4px",
+                    "container-margin-desktop": "80px",
+                    "xl": "32px"
+            },
+            "fontFamily": {
+                    "headline-md": ["Plus Jakarta Sans"],
+                    "headline-lg": ["Plus Jakarta Sans"],
+                    "display-lg": ["Plus Jakarta Sans"],
+                    "body-md": ["Plus Jakarta Sans"],
+                    "headline-lg-mobile": ["Plus Jakarta Sans"],
+                    "label-sm": ["Plus Jakarta Sans"],
+                    "body-lg": ["Plus Jakarta Sans"],
+                    "title-lg": ["Plus Jakarta Sans"],
+                    "label-md": ["Plus Jakarta Sans"]
+            },
+            "fontSize": {
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                    "display-lg": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .promo-gradient { background: linear-gradient(135deg, #ff5a00 0%, #ff8c4b 100%); }
+        .glass-badge { background: rgba(255, 255, 255, 0.2); backdrop-filter: blur(8px); }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface mb-24">
+<!-- Status Bar (Simulated) -->
+<div class="flex justify-between items-center px-6 pt-3 pb-1 text-[12px] font-bold">
+<span>9:41</span>
+<div class="flex gap-1.5 items-center">
+<span class="material-symbols-outlined text-[14px]">signal_cellular_4_bar</span>
+<span class="material-symbols-outlined text-[14px]">wifi</span>
+<span class="material-symbols-outlined text-[14px]">battery_full</span>
+</div>
+</div>
+<!-- Top App Bar -->
+<header class="flex justify-between items-center w-full px-container-margin-mobile h-16 sticky top-0 bg-surface z-50">
+<div class="flex flex-col">
+<span class="text-secondary font-label-sm text-label-sm">Delivering to</span>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-primary-container text-[20px]" data-icon="location_on">location_on</span>
+<h1 class="font-bold text-on-surface text-[16px]">Connaught Place</h1>
+<span class="material-symbols-outlined text-secondary text-[18px]">keyboard_arrow_down</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<div class="relative w-10 h-10 flex items-center justify-center rounded-full bg-surface-container hover:bg-surface-container-highest transition-colors active:scale-95">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2.5 w-2 h-2 bg-error rounded-full border-2 border-surface"></span>
+</div>
+<div class="w-10 h-10 rounded-full overflow-hidden border-2 border-primary-fixed">
+<img alt="User" class="w-full h-full object-cover" data-alt="A professional high-resolution headshot of a stylish young urban professional smiling. The lighting is soft and natural, coming from the side to create gentle shadows. The background is a blurred modern office environment with warm tones, matching a clean and high-end app aesthetic. The person has a friendly and approachable expression." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCbvyUT6C7wM_zNDEPhtPDlD3LFzjgJ4DjqjwK2yoUG8Ldfj-Z-XsPjnRlVu0qbmOe1zHArZAR7p9bI4bWpcwbrbScoesOriHlmyvD54xuJ-gFyvISSdG4HGb42XiVNWQiaZVYtRVtuXM7abOfyo5NktONxqrk47HucaaP_99fj6qR2yXgxgiufYzIUUtFimxOEp7ASiM2FRqEc1Balg-ksleyuUqsGEGCfe1DWMdi-AxeazNPJGQkufmRWodEUlYwLufsQBID0FkA"/>
+</div>
+</div>
+</header>
+<!-- Search Bar -->
+<div class="px-container-margin-mobile mt-2">
+<div class="relative flex items-center bg-surface-container-low rounded-xl border border-outline-variant/30 px-4 py-3 shadow-sm transition-all focus-within:ring-2 focus-within:ring-primary-container/20">
+<span class="material-symbols-outlined text-secondary mr-3" data-icon="search">search</span>
+<input class="bg-transparent border-none p-0 focus:ring-0 text-body-md font-body-md w-full placeholder:text-secondary/60" placeholder="Search restaurants, dishes..." type="text"/>
+<span class="material-symbols-outlined text-primary-container ml-2" data-icon="tune">tune</span>
+</div>
+</div>
+<!-- Promo Banners -->
+<section class="mt-lg overflow-x-auto no-scrollbar flex gap-md px-container-margin-mobile">
+<div class="min-w-[300px] h-40 promo-gradient rounded-xl p-5 relative overflow-hidden flex flex-col justify-center text-white shadow-lg active:scale-[0.98] transition-transform">
+<div class="z-10">
+<span class="font-bold text-label-sm uppercase tracking-wider opacity-90">First Order Special</span>
+<h2 class="font-display-lg text-[28px] leading-tight mt-1">50% OFF</h2>
+<p class="font-body-md text-sm mt-1 opacity-90">Up to $15 on your first order</p>
+<button class="mt-3 bg-white text-primary-container font-bold px-4 py-1.5 rounded-lg text-sm shadow-md">Claim Now</button>
+</div>
+<div class="absolute -right-4 -bottom-4 w-32 h-32 opacity-20">
+<span class="material-symbols-outlined text-[120px]" style="font-variation-settings: 'FILL' 1;">restaurant</span>
+</div>
+</div>
+<div class="min-w-[300px] h-40 bg-on-secondary-fixed-variant rounded-xl p-5 relative overflow-hidden flex flex-col justify-center text-white shadow-lg active:scale-[0.98] transition-transform">
+<div class="z-10">
+<span class="font-bold text-label-sm uppercase tracking-wider opacity-90">QuickBite Pro</span>
+<h2 class="font-display-lg text-[24px] leading-tight mt-1">Free Delivery</h2>
+<p class="font-body-md text-sm mt-1 opacity-90">On all orders above $20</p>
+<button class="mt-3 bg-primary-container text-white font-bold px-4 py-1.5 rounded-lg text-sm shadow-md">Join Pro</button>
+</div>
+<div class="absolute -right-4 -bottom-4 w-32 h-32 opacity-20">
+<span class="material-symbols-outlined text-[120px]" style="font-variation-settings: 'FILL' 1;">delivery_dining</span>
+</div>
+</div>
+</section>
+<!-- Categories Section -->
+<section class="mt-lg">
+<div class="flex justify-between items-center px-container-margin-mobile mb-md">
+<h3 class="font-headline-md text-headline-md">What's on your mind?</h3>
+<a class="text-primary-container font-label-md text-label-md flex items-center gap-0.5" href="#">See all <span class="material-symbols-outlined text-sm">chevron_right</span></a>
+</div>
+<div class="overflow-x-auto no-scrollbar flex gap-6 px-container-margin-mobile">
+<div class="flex flex-col items-center gap-2 flex-shrink-0">
+<div class="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center shadow-sm active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-primary text-[32px]">ramen_dining</span>
+</div>
+<span class="font-label-md text-label-md">Biryani</span>
+</div>
+<div class="flex flex-col items-center gap-2 flex-shrink-0">
+<div class="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center shadow-sm active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-primary text-[32px]">local_pizza</span>
+</div>
+<span class="font-label-md text-label-md">Pizza</span>
+</div>
+<div class="flex flex-col items-center gap-2 flex-shrink-0">
+<div class="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center shadow-sm active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-primary text-[32px]">lunch_dining</span>
+</div>
+<span class="font-label-md text-label-md">Burgers</span>
+</div>
+<div class="flex flex-col items-center gap-2 flex-shrink-0">
+<div class="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center shadow-sm active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-primary text-[32px]">set_meal</span>
+</div>
+<span class="font-label-md text-label-md">Sushi</span>
+</div>
+<div class="flex flex-col items-center gap-2 flex-shrink-0">
+<div class="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center shadow-sm active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-primary text-[32px]">bakery_dining</span>
+</div>
+<span class="font-label-md text-label-md">Bakery</span>
+</div>
+<div class="flex flex-col items-center gap-2 flex-shrink-0">
+<div class="w-16 h-16 rounded-full bg-primary-fixed flex items-center justify-center shadow-sm active:scale-90 transition-transform">
+<span class="material-symbols-outlined text-primary text-[32px]">icecream</span>
+</div>
+<span class="font-label-md text-label-md">Dessert</span>
+</div>
+</div>
+</section>
+<!-- Restaurants List -->
+<section class="mt-xl px-container-margin-mobile space-y-lg">
+<h3 class="font-headline-md text-headline-md mb-2">Featured Restaurants</h3>
+<!-- Restaurant Card 1 -->
+<div class="group bg-surface-container-lowest rounded-xl overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.05)] active:scale-[0.99] transition-all border border-outline-variant/10">
+<div class="relative aspect-video">
+<img class="w-full h-full object-cover" data-alt="A top-down, gourmet photo of a rustic pepperoni pizza with perfectly charred crust, melting mozzarella cheese, and fresh basil leaves. The setting is a minimalist wooden table with warm, cinematic lighting that highlights the steam and texture of the crust. The color palette is rich and warm, focusing on deep reds and golden ambers, designed to evoke immediate hunger and a sense of premium quality." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBG-KstYgnqs8IuZq-vY2y3T2lgDGHgKv2c1gOCjxTctC9NaKReaZX9zSBXFfXH4n-MR0hnzmLXpTa3xHPQrBgJkrjxXF6qRqKIWn69V7oiPrXDX43ibcQnxuWbdBct1vclE94vg8PIPDO8xSuGsSDwYHhE0awbR-MAnAIc56aI0Hhov0uwcSyis4YxsFwZAgap-Oi_eI9Qd8pXIgL7RDGlRe0AbLjDk6M2ISIZIMUVFP86OIehOGNTs3BJIxab2pZqbMZ0SutvPDQ"/>
+<div class="absolute top-3 left-3 flex gap-2">
+<span class="promo-gradient text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-sm">20% OFF</span>
+<span class="glass-badge text-white text-[10px] font-bold px-2 py-1 rounded-md">Free Delivery</span>
+</div>
+<button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 flex items-center justify-center shadow-sm text-primary-container">
+<span class="material-symbols-outlined text-[20px]" data-icon="favorite">favorite</span>
+</button>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-title-lg text-title-lg text-on-surface">The Artisan Crust</h4>
+<p class="text-secondary text-sm mt-0.5">Italian • Gourmet Pizza • Pasta</p>
+</div>
+<div class="flex items-center gap-1 bg-tertiary-container/10 px-2 py-1 rounded-lg">
+<span class="material-symbols-outlined text-tertiary text-sm" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="font-bold text-tertiary text-sm">4.8</span>
+</div>
+</div>
+<div class="flex items-center gap-4 mt-3 text-secondary text-sm font-medium">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">schedule</span>
+<span>25 min</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">distance</span>
+<span>1.4 km</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">payments</span>
+<span>$15 for two</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Restaurant Card 2 -->
+<div class="group bg-surface-container-lowest rounded-xl overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.05)] active:scale-[0.99] transition-all border border-outline-variant/10">
+<div class="relative aspect-video">
+<img class="w-full h-full object-cover" data-alt="A beautifully plated assortment of vibrant sushi and sashimi served on a dark slate board. The scene features minimalist Japanese aesthetics with a single sprig of cherry blossom in the background. Lighting is soft-focused and high-key, emphasizing the freshness of the fish and the delicate textures. The color palette is dominated by clean whites, soft pinks, and deep greens, conveying a high-end, sophisticated dining experience." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA3Zxl3pZgcaeGwPEXOXS2tjgj0zWT8pZZEPfJt-sG835ZWIw6nVF1Tt_HpY3CM578thKpwXdE5FV5Faah08QyTA9cXq6h9kfkiCdTFeiBtNtHL5gR1xC91yfTOc6YkMNieVxq6bYTG2d6bJON5ockRZD1rFecHFTThY-sG_AA01YSVHo6eQe_nW1gIbITJYxl8UMMV-9wLT8_Gp0-vtXNvNeopHbQc3LyxmxbAUEjlpghsPR1MHODEDSEB8X5zDmnAUbEiM4gy4Zc"/>
+<div class="absolute top-3 left-3">
+<span class="promo-gradient text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-sm">BUY 1 GET 1</span>
+</div>
+<button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 flex items-center justify-center shadow-sm text-secondary">
+<span class="material-symbols-outlined text-[20px]" data-icon="favorite">favorite</span>
+</button>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-title-lg text-title-lg text-on-surface">Sakura Sushi House</h4>
+<p class="text-secondary text-sm mt-0.5">Japanese • Sushi • Ramen</p>
+</div>
+<div class="flex items-center gap-1 bg-tertiary-container/10 px-2 py-1 rounded-lg">
+<span class="material-symbols-outlined text-tertiary text-sm" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="font-bold text-tertiary text-sm">4.6</span>
+</div>
+</div>
+<div class="flex items-center gap-4 mt-3 text-secondary text-sm font-medium">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">schedule</span>
+<span>40 min</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">distance</span>
+<span>3.2 km</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">payments</span>
+<span>$25 for two</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Restaurant Card 3 -->
+<div class="group bg-surface-container-lowest rounded-xl overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.05)] active:scale-[0.99] transition-all border border-outline-variant/10">
+<div class="relative aspect-video">
+<img class="w-full h-full object-cover" data-alt="A close-up shot of a towering, multi-layered gourmet cheeseburger with dripping sauce, crisp lettuce, and melted golden cheddar. The image is captured in a high-energy, commercial food photography style with warm, vibrant lighting. The background is a clean, modern kitchen setting with soft bokeh effects. Intense oranges and deep browns define the palette, making the food look irresistibly fresh and savory." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCH4_8F1n4WJ04Uvf68AYBYf2JAPPyZ7X3SLGLqdeobHudXMZuEBxyVJg3zyCAeDNqHDMnv9x_Yjg6tum5M33DBjazn-KWeyVhqlN5yU9QYW7PkiFXbxPC3dNaQnohB3lUi87pOBxa34jYIJNsxFNXeMVrgD9u2tJKlYqmct4Rbr9M3rzlRx6_gmWVisqh9c84KfV5LGaPpdIGhp5iDmzQsFfFxrvO3iVQBwdT-H_oWNXz9kd1WLTMcQPZn8MyBJJXyr4HhJDowosg"/>
+<div class="absolute top-3 left-3">
+<span class="promo-gradient text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-sm">15% OFF</span>
+</div>
+<button class="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 flex items-center justify-center shadow-sm text-secondary">
+<span class="material-symbols-outlined text-[20px]" data-icon="favorite">favorite</span>
+</button>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-title-lg text-title-lg text-on-surface">Burger Central</h4>
+<p class="text-secondary text-sm mt-0.5">American • Fast Food • Shakes</p>
+</div>
+<div class="flex items-center gap-1 bg-tertiary-container/10 px-2 py-1 rounded-lg">
+<span class="material-symbols-outlined text-tertiary text-sm" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="font-bold text-tertiary text-sm">4.3</span>
+</div>
+</div>
+<div class="flex items-center gap-4 mt-3 text-secondary text-sm font-medium">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">schedule</span>
+<span>20 min</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">distance</span>
+<span>0.8 km</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">payments</span>
+<span>$12 for two</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Floating Action Button (Cart) -->
+<div class="fixed bottom-20 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-md z-40">
+<button class="w-full h-14 bg-on-background text-white rounded-xl shadow-xl flex items-center justify-between px-6 active:scale-95 transition-transform">
+<div class="flex items-center gap-3">
+<div class="w-7 h-7 bg-primary-container text-white rounded-full flex items-center justify-center text-xs font-extrabold">2</div>
+<span class="font-bold">View Cart</span>
+</div>
+<span class="font-bold text-lg">$28.50</span>
+</button>
+</div>
+<!-- Bottom Nav Bar -->
+<nav class="fixed bottom-0 w-full z-50 flex justify-around items-center bg-surface dark:bg-surface-dim py-2 px-2 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] rounded-t-xl">
+<a class="flex flex-col items-center justify-center bg-primary-container dark:bg-on-primary-fixed-variant text-on-primary-container dark:text-primary-fixed rounded-full px-4 py-1 active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined text-[24px]" data-icon="home" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-label-md text-label-md">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed-dim px-4 py-1 hover:bg-surface-container active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined text-[24px]" data-icon="search">search</span>
+<span class="font-label-md text-label-md">Browse</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed-dim px-4 py-1 hover:bg-surface-container active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined text-[24px]" data-icon="receipt_long">receipt_long</span>
+<span class="font-label-md text-label-md">Orders</span>
+</a>
+<a class="flex flex-col items-center justify-center text-secondary dark:text-secondary-fixed-dim px-4 py-1 hover:bg-surface-container active:scale-90 duration-150" href="#">
+<span class="material-symbols-outlined text-[24px]" data-icon="person">person</span>
+<span class="font-label-md text-label-md">Profile</span>
+</a>
+</nav>
+<script>
+        // Simple micro-interaction for categories
+        document.querySelectorAll('div.rounded-full.bg-primary-fixed').forEach(item => {
+            item.addEventListener('click', function() {
+                this.classList.toggle('ring-2');
+                this.classList.toggle('ring-primary-container');
+            });
+        });
+    </script>
+</body></html>

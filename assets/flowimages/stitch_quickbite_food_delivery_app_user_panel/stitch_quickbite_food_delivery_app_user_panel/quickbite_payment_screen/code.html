@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>QuickBite | Payment</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary": "#586062",
+                        "primary-fixed-dim": "#ffb59a",
+                        "primary-fixed": "#ffdbcf",
+                        "on-secondary-fixed": "#161d1f",
+                        "inverse-on-surface": "#f1f1f1",
+                        "on-tertiary-fixed-variant": "#005140",
+                        "on-background": "#1a1c1c",
+                        "primary-container": "#ff5a00",
+                        "tertiary-fixed-dim": "#4bddb7",
+                        "surface-container": "#eeeeee",
+                        "outline": "#907065",
+                        "on-surface": "#1a1c1c",
+                        "on-error": "#ffffff",
+                        "surface-variant": "#e2e2e2",
+                        "surface-dim": "#dadada",
+                        "tertiary-container": "#00a584",
+                        "on-secondary-container": "#5d6466",
+                        "on-primary-fixed-variant": "#802900",
+                        "surface-tint": "#a83900",
+                        "on-tertiary-fixed": "#002018",
+                        "on-primary-container": "#511700",
+                        "error": "#ba1a1a",
+                        "tertiary": "#006b55",
+                        "tertiary-fixed": "#6dfad2",
+                        "surface": "#f9f9f9",
+                        "surface-container-highest": "#e2e2e2",
+                        "surface-bright": "#f9f9f9",
+                        "on-secondary": "#ffffff",
+                        "surface-container-low": "#f3f3f3",
+                        "error-container": "#ffdad6",
+                        "on-primary-fixed": "#380d00",
+                        "secondary-fixed": "#dde4e6",
+                        "background": "#f9f9f9",
+                        "secondary-container": "#dae1e3",
+                        "on-tertiary": "#ffffff",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-container-high": "#e8e8e8",
+                        "outline-variant": "#e4beb1",
+                        "secondary-fixed-dim": "#c1c8ca",
+                        "on-surface-variant": "#5b4137",
+                        "on-secondary-fixed-variant": "#41484a",
+                        "inverse-surface": "#2f3131",
+                        "on-tertiary-container": "#003126",
+                        "on-error-container": "#93000a",
+                        "inverse-primary": "#ffb59a",
+                        "primary": "#a83900",
+                        "on-primary": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sm": "8px",
+                        "lg": "24px",
+                        "container-margin-mobile": "16px",
+                        "xs": "4px",
+                        "container-margin-desktop": "80px",
+                        "xl": "32px",
+                        "md": "16px",
+                        "gutter": "16px",
+                        "base": "4px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Plus Jakarta Sans"],
+                        "display-lg": ["Plus Jakarta Sans"],
+                        "headline-lg": ["Plus Jakarta Sans"],
+                        "headline-lg-mobile": ["Plus Jakarta Sans"],
+                        "body-md": ["Plus Jakarta Sans"],
+                        "label-sm": ["Plus Jakarta Sans"],
+                        "body-lg": ["Plus Jakarta Sans"],
+                        "title-lg": ["Plus Jakarta Sans"],
+                        "label-md": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                        "display-lg": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "800"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "title-lg": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .payment-card-active {
+            border-left: 4px solid #FF5A00;
+            background-color: #FFF7F2;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface min-h-screen">
+<!-- Top App Bar -->
+<header class="fixed top-0 w-full z-50 bg-surface border-b border-surface-variant shadow-sm">
+<div class="flex justify-between items-center px-container-margin-mobile py-sm w-full max-w-7xl mx-auto">
+<div class="flex items-center gap-md">
+<button class="active:scale-95 duration-100 p-2 hover:bg-surface-container-high rounded-full">
+<span class="material-symbols-outlined text-primary">arrow_back</span>
+</button>
+<h1 class="font-headline-lg-mobile text-headline-lg-mobile font-black tracking-tight text-on-surface">Payment</h1>
+</div>
+<div class="w-10 h-10 rounded-full overflow-hidden border border-outline-variant">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="A professional headshot of a young urban professional with a friendly smile, set against a soft-focus minimalist architectural background. The lighting is warm and natural, reflecting a clean and modern aesthetic that aligns with a high-end corporate food delivery application profile." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDRPjdibtuqtAjTV0WOviWRpO8tQxJDSjHlNyJuByOiZFUhUdwK4Y2pyJ-9rDVnvajaE9GkmCSOHxDx7wbUw8uZ3aW9cmjIBD14PhSUWbTyQLZsnJMoh-jQI5AbqDfM2SLvVTZ9d8nMPJcIqw3fgK_e2utk9FmTQqM9W_WUOEBBquAnoe_98a9-mPc58cfuhOhPJHJE9gsF62HNi90V9zHQHb4lRCp7_fb5chjFkGRMo9gg9sT4xeXy7fhCjS_zIrqUqsLe0aYRi2M"/>
+</div>
+</div>
+</header>
+<main class="pt-[72px] pb-[100px] px-container-margin-mobile max-w-lg mx-auto">
+<!-- Collapsed Order Summary Strip -->
+<section class="mt-lg">
+<div class="bg-white rounded-xl shadow-sm p-md flex justify-between items-center cursor-pointer hover:bg-surface-container-low transition-all border border-surface-variant active:scale-[0.98]" id="orderSummary">
+<div class="flex items-center gap-md">
+<div class="bg-primary-fixed w-10 h-10 rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-primary">restaurant</span>
+</div>
+<div>
+<p class="font-title-lg text-title-lg text-on-surface">Spice Garden</p>
+<p class="font-label-md text-label-md text-secondary">3 items</p>
+</div>
+</div>
+<div class="flex items-center gap-xs">
+<span class="font-headline-md text-headline-md text-on-surface">₹633</span>
+<span class="material-symbols-outlined text-secondary">expand_more</span>
+</div>
+</div>
+</section>
+<!-- Payment Method Selection -->
+<section class="mt-xl">
+<h2 class="font-headline-md text-headline-md mb-md text-on-surface">Choose Payment Method</h2>
+<div class="space-y-md">
+<!-- UPI Option (Active State) -->
+<div class="payment-card-active rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] p-md transition-all border border-surface-variant">
+<label class="flex items-start gap-md cursor-pointer">
+<input checked="" class="mt-1 w-5 h-5 text-primary-container border-outline focus:ring-primary" name="payment_method" type="radio"/>
+<div class="flex-1">
+<div class="flex justify-between items-center w-full">
+<span class="font-title-lg text-title-lg">UPI</span>
+<div class="flex gap-xs items-center opacity-70">
+<span class="material-symbols-outlined text-[20px]">account_balance_wallet</span>
+<span class="material-symbols-outlined text-[20px]">payments</span>
+</div>
+</div>
+<div class="flex gap-sm mt-sm">
+<div class="bg-white p-1 rounded-md border border-surface-variant">
+<img alt="GPay" class="h-4 w-auto" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDRo8ROxVKULRkcR4ThhLJRcDG5dbOwPjaBB8Lhvi9sKpb8TMM5IPpQGn4j1d3wNS9mBUO5kRi6ycLu1buIxcz2npWwYjWdbQ0OngAIOvuv457ZyCr4KEY0dCKUXXW87tWr01it818dPrsxvB0ogURitDWyMhHPV2qmA2WpFefo1DM_DvLF8Nte-qp3O3EYPlZUYI38ZJrqL3HHPnGtETSy3XTqKr4ywF4hYwVSnKFurCz41j_0bUn7qENMK839-5IFdtGoasF2huk"/>
+</div>
+<div class="bg-white p-1 rounded-md border border-surface-variant">
+<img alt="PhonePe" class="h-4 w-auto" src="https://lh3.googleusercontent.com/aida-public/AB6AXuASuqWAAY9niSABKS3arcdvLdzYkoJiY1OgnkpO4A7wFqlgApLlMSr0GTbKIiTlUr60KLDJxV9rgFKqkSb-ERw7EpCED1hpUgIGsqdThyBt2iDXJ7xpWDf9sePb2a3U3INLvWZVypTfeArZaXPz00wWIUhZBtjvXAu-w7tWF31Wfr4nEc832UUtPDEa_7JUsSVVlPPf_QOHbD9zuFH5B5Oui1Axcg0BBPP6zSxtn3FdV8MTCXBANOn1MzeBlagfKv29oGgh6aO5PRQ"/>
+</div>
+<div class="bg-white p-1 rounded-md border border-surface-variant">
+<img alt="Paytm" class="h-4 w-auto" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDMHd7ABXADteyk6TMbGPqlsAb-onO0R-iGnPBqq08H3tKeVoxSY8CobYoJLytGU2G85U7QlXbcQirBaE2BoLOAZd1678hPcp9hirY9sEh3sn62Fn_0dG2R45XKO2GoV1bAX4Ik0T1FK14HdPNodjjYTCIyzQ5kzeWVSw8qCNdhEapAp49J2aXV31E0MM8qLhEV7PhNAGd-J3M31NKPLVMqByjMJNLwvuocMSRabmx9o1klf6WC0TDS3KyfqfQO3F1GI_KwURg9yEc"/>
+</div>
+</div>
+<!-- UPI ID Input (Visible when active) -->
+<div class="mt-lg">
+<div class="relative">
+<input class="w-full bg-white border border-outline-variant rounded-lg px-md py-sm font-body-md text-body-md focus:border-primary-container focus:ring-1 focus:ring-primary-container outline-none transition-all" placeholder="Enter UPI ID (e.g. name@bank)" type="text"/>
+<button class="absolute right-2 top-1/2 -translate-y-1/2 text-primary font-label-md px-sm py-1 hover:bg-primary-fixed rounded-md transition-colors">VERIFY</button>
+</div>
+<p class="text-[11px] text-secondary mt-xs px-1">Your UPI ID is usually mobile-number@upi or name@bank</p>
+</div>
+</div>
+</label>
+</div>
+<!-- Credit/Debit Card -->
+<div class="bg-white rounded-xl shadow-sm p-md transition-all border border-surface-variant hover:border-outline-variant">
+<label class="flex items-center gap-md cursor-pointer">
+<input class="w-5 h-5 text-primary-container border-outline focus:ring-primary" name="payment_method" type="radio"/>
+<div class="flex-1 flex justify-between items-center">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-secondary">credit_card</span>
+<span class="font-title-lg text-title-lg">Credit/Debit Card</span>
+</div>
+<span class="material-symbols-outlined text-secondary">chevron_right</span>
+</div>
+</label>
+</div>
+<!-- Net Banking -->
+<div class="bg-white rounded-xl shadow-sm p-md transition-all border border-surface-variant hover:border-outline-variant">
+<label class="flex items-center gap-md cursor-pointer">
+<input class="w-5 h-5 text-primary-container border-outline focus:ring-primary" name="payment_method" type="radio"/>
+<div class="flex-1 flex justify-between items-center">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-secondary">account_balance</span>
+<span class="font-title-lg text-title-lg">Net Banking</span>
+</div>
+<span class="material-symbols-outlined text-secondary">chevron_right</span>
+</div>
+</label>
+</div>
+<!-- Cash on Delivery -->
+<div class="bg-white rounded-xl shadow-sm p-md transition-all border border-surface-variant hover:border-outline-variant">
+<label class="flex items-center gap-md cursor-pointer">
+<input class="w-5 h-5 text-primary-container border-outline focus:ring-primary" name="payment_method" type="radio"/>
+<div class="flex-1 flex justify-between items-center">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-secondary">payments</span>
+<span class="font-title-lg text-title-lg">Cash on Delivery (COD)</span>
+</div>
+<span class="material-symbols-outlined text-secondary">chevron_right</span>
+</div>
+</label>
+</div>
+</div>
+</section>
+<!-- Security Badge -->
+<section class="mt-xl flex flex-col items-center">
+<div class="flex items-center gap-xs text-secondary font-label-md py-sm px-md bg-surface-container-low rounded-full">
+<span class="material-symbols-outlined text-[18px]">lock</span>
+<span>100% Safe &amp; Secure Payments</span>
+</div>
+<div class="flex gap-md mt-md grayscale opacity-50 contrast-125">
+<span class="font-bold text-xs tracking-tighter">VISA</span>
+<span class="font-bold text-xs tracking-tighter">mastercard.</span>
+<span class="font-bold text-xs tracking-tighter">PCI DSS</span>
+</div>
+</section>
+</main>
+<!-- Sticky Bottom Button -->
+<div class="fixed bottom-0 w-full bg-white border-t border-surface-variant p-md shadow-[0px_-4px_20px_rgba(0,0,0,0.05)] z-50">
+<div class="max-w-lg mx-auto">
+<button class="w-full bg-primary-container text-white font-headline-md py-md rounded-xl flex items-center justify-center gap-sm active:scale-95 transition-transform duration-150 shadow-lg">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">lock</span>
+                Pay ₹633
+            </button>
+<div class="h-safe"></div>
+</div>
+</div>
+<!-- Micro-interaction script -->
+<script>
+        document.querySelectorAll('input[name="payment_method"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                // Remove active classes from all cards
+                document.querySelectorAll('.payment-card-active').forEach(card => {
+                    card.classList.remove('payment-card-active');
+                    card.classList.add('bg-white');
+                    const upiInput = card.querySelector('.mt-lg');
+                    if (upiInput) upiInput.classList.add('hidden');
+                });
+                
+                // Add active classes to selected card
+                const card = e.target.closest('div');
+                card.classList.add('payment-card-active');
+                card.classList.remove('bg-white');
+                
+                // Show UPI input if UPI is selected
+                const upiInput = card.querySelector('.mt-lg');
+                if (upiInput && e.target.closest('label').textContent.includes('UPI')) {
+                    upiInput.classList.remove('hidden');
+                }
+            });
+        });
+
+        // Toggle order summary visibility animation
+        const orderSummary = document.getElementById('orderSummary');
+        orderSummary.addEventListener('click', () => {
+            orderSummary.classList.toggle('ring-2');
+            orderSummary.classList.toggle('ring-primary/20');
+        });
+    </script>
+</body></html>

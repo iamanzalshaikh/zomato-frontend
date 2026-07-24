@@ -1,0 +1,111 @@
+{
+  "expo": {
+    "name": "MyApp",
+    "slug": "MyApp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "myapp",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.herridez.MyApp",
+      "config": {
+        "googleMapsApiKey": "AIzaSyB9sygTijkwxyA0y4prphn4Po2YHipyMk0"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.herridez.MyApp",
+      "googleServicesFile": "./google-services.json",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAp9uH5jjHOB4jJonsmLP43dImnug2WJ9E"
+        }
+      },
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-dev-client",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "newArchEnabled": false,
+            "usesCleartextTraffic": true
+          },
+          "ios": {
+            "newArchEnabled": false,
+            "forceStaticLinking": [
+              "Razorpay"
+            ]
+          }
+        }
+      ],
+      "expo-router",
+      [
+        "react-native-maps",
+        {
+          "androidGoogleMapsApiKey": "AIzaSyAp9uH5jjHOB4jJonsmLP43dImnug2WJ9E",
+          "iosGoogleMapsApiKey": "AIzaSyB9sygTijkwxyA0y4prphn4Po2YHipyMk0"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "QuickBite uses your location for delivery tracking and address setup."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#ff5a00"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#208AEF",
+          "android": {
+            "image": "./assets/images/splash-icon.png",
+            "imageWidth": 76
+          }
+        }
+      ],
+      "expo-sharing"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "owner": "herridez",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "86d8c1d2-6905-4ebb-bb96-55f2078d77dd"
+      },
+      "googleMaps": {
+        "android": "AIzaSyAp9uH5jjHOB4jJonsmLP43dImnug2WJ9E",
+        "ios": "AIzaSyB9sygTijkwxyA0y4prphn4Po2YHipyMk0",
+        "geocoding": "AIzaSyCxoK3LptaTG8r4VJBPf9LH_bdCBbTenJI",
+        "places": "AIzaSyA8dfXiI-1J9373yl18v8NXTj8UNhTZUlg",
+        "routes": "AIzaSyBJDtg3umA1eVaG2BxfAgykE7_4taJN5Vc"
+      }
+    }
+  }
+}
