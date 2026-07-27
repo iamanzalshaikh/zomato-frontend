@@ -6,22 +6,54 @@ type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 type ApiError = Error & { status?: number; data?: unknown };
 
 let refreshPromise: Promise<string | null> | null = null;
+let activeApiUrl: string | null = null;
 
 async function doFetch(url: string, init?: RequestInit): Promise<Response> {
+  const isDevLAN = __DEV__ && !url.includes('localhost') && !url.includes('127.0.0.1');
+
   try {
-    return await fetch(url, init);
+    if (isDevLAN) {
+      // Dev LAN host can hang if firewall blocks port. Add a timeout of 1500ms
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      try {
+        const response = await fetch(url, { ...init, signal: controller.signal });
+        clearTimeout(timeoutId);
+        // It worked! Record active API URL
+        const apiUrl = getApiUrl();
+        if (url.startsWith(apiUrl)) {
+          activeApiUrl = apiUrl;
+        }
+        return response;
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        throw err;
+      }
+    } else {
+      const response = await fetch(url, init);
+      // It worked! Cache active API URL if it matches localhost fallback
+      if (__DEV__ && url.includes('localhost:5000/api/v1')) {
+        activeApiUrl = getApiUrl().replace(/http:\/\/[^/]+:5000\/api\/v1/, 'http://localhost:5000/api/v1');
+      }
+      return response;
+    }
   } catch (err: any) {
     const errMsg = String(err?.message ?? err);
-    const isNetworkErr =
+    const isTimeoutOrNetwork =
+      err.name === 'AbortError' ||
       errMsg.includes('NoRouteToHostException') ||
       errMsg.includes('Host unreachable') ||
       errMsg.includes('Network request failed') ||
       errMsg.includes('Failed to connect');
 
-    if (isNetworkErr && __DEV__ && !url.includes('localhost') && !url.includes('127.0.0.1')) {
+    if (isTimeoutOrNetwork && __DEV__ && !url.includes('localhost') && !url.includes('127.0.0.1')) {
       const fallbackUrl = url.replace(/http:\/\/[^/]+:5000/, 'http://localhost:5000');
-      console.warn(`[apiFetch] Primary host unreachable (${url}). Retrying over USB ADB reverse (${fallbackUrl})...`);
-      return await fetch(fallbackUrl, init);
+      console.warn(`[apiFetch] Primary host unreachable or timed out (${url}). Retrying over USB ADB reverse (${fallbackUrl})...`);
+      
+      const response = await fetch(fallbackUrl, init);
+      // Fallback worked! Save it as the active API URL
+      activeApiUrl = getApiUrl().replace(/http:\/\/[^/]+:5000\/api\/v1/, 'http://localhost:5000/api/v1');
+      return response;
     }
     throw err;
   }
@@ -32,7 +64,8 @@ async function refreshTokens(): Promise<string | null> {
   if (!refreshToken) return null;
 
   try {
-    const res = await doFetch(`${getApiUrl()}/auth/refresh-token`, {
+    const baseApiUrl = (__DEV__ && activeApiUrl) ? activeApiUrl : getApiUrl();
+    const res = await doFetch(`${baseApiUrl}/auth/refresh-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
@@ -53,7 +86,8 @@ function isAuthPath(path: string) {
 }
 
 export async function apiFetch<T = any>(path: string, init?: RequestInit & { _retry?: boolean }): Promise<T> {
-  const url = path.startsWith('http') ? path : `${getApiUrl()}${path}`;
+  const baseApiUrl = (__DEV__ && activeApiUrl) ? activeApiUrl : getApiUrl();
+  const url = path.startsWith('http') ? path : `${baseApiUrl}${path}`;
   const headers = new Headers(init?.headers ?? {});
   if (!headers.has('Content-Type') && init?.body) headers.set('Content-Type', 'application/json');
 

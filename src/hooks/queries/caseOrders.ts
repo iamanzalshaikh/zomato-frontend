@@ -29,7 +29,8 @@ export function useCaseOrdersQuery() {
   const q = useQuery({
     queryKey: caseOrderKeys.list(),
     queryFn: fetchCaseOrders,
-    staleTime: 60_000,
+    staleTime: 2 * 60 * 1000, // 2 minutes - orders change frequently
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
   usePerfQuery('CaseOrders', q.isFetching, q.dataUpdatedAt);
   return q;
@@ -40,8 +41,8 @@ export function useCaseOrderQuery(orderId: string) {
     queryKey: caseOrderKeys.detail(orderId),
     queryFn: () => fetchCaseOrderById(orderId),
     enabled: Boolean(orderId),
-    staleTime: 30_000,
-    refetchInterval: 15_000,
+    staleTime: 30_000, // 30 seconds - active order needs fresh data
+    refetchInterval: 15_000, // Poll every 15 seconds for active orders
   });
   usePerfQuery(`CaseOrder(${orderId})`, q.isFetching, q.dataUpdatedAt);
   return q;

@@ -31,8 +31,8 @@ export function useCaseBootstrapQuery() {
   const q = useQuery({
     queryKey: caseKeys.bootstrap(),
     queryFn: fetchCaseBootstrap,
-    staleTime: 3 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
+    staleTime: 30 * 60 * 1000, // 30 minutes - static data
+    gcTime: 60 * 60 * 1000, // 1 hour
   });
   usePerfQuery('CaseBootstrap', q.isFetching, q.dataUpdatedAt);
   return q;
@@ -58,8 +58,8 @@ export function useCaseMerchantsQuery(
         limit,
       }),
     enabled: options?.enabled !== false,
-    staleTime: 2 * 60 * 1000,
-    gcTime: 8 * 60 * 1000,
+    staleTime: 15 * 60 * 1000, // 15 minutes - dynamic but stable
+    gcTime: 30 * 60 * 1000, // 30 minutes
     placeholderData: (prev) => prev,
   });
   usePerfQuery(`CaseMerchants(${businessType ?? 'ALL'})`, q.isFetching, q.dataUpdatedAt);
@@ -70,7 +70,8 @@ export function useCaseDeliveryPointsQuery() {
   return useQuery({
     queryKey: caseKeys.deliveryPoints(),
     queryFn: fetchCaseDeliveryPoints,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60 * 60 * 1000, // 1 hour - static data
+    gcTime: 2 * 60 * 60 * 1000, // 2 hours
   });
 }
 
@@ -79,8 +80,8 @@ export function useCaseMerchantMenuQuery(merchantId: string) {
     queryKey: caseKeys.menu(merchantId),
     queryFn: () => fetchCaseMerchantMenu(merchantId),
     enabled: Boolean(merchantId),
-    staleTime: 3 * 60 * 1000,
-    gcTime: 12 * 60 * 1000,
+    staleTime: 10 * 60 * 1000, // 10 minutes - menu data changes less frequently
+    gcTime: 30 * 60 * 1000, // 30 minutes
     placeholderData: (prev) => prev,
   });
   usePerfQuery(`CaseMenu(${merchantId})`, q.isFetching, q.dataUpdatedAt);
@@ -91,7 +92,8 @@ export function useCaseFaqQuery() {
   return useQuery({
     queryKey: caseKeys.faq(),
     queryFn: fetchCaseFaq,
-    staleTime: 10 * 60 * 1000,
+    staleTime: 60 * 60 * 1000, // 1 hour - static content
+    gcTime: 2 * 60 * 60 * 1000, // 2 hours
   });
 }
 
@@ -99,6 +101,7 @@ export function useCaseSupportQuery() {
   return useQuery({
     queryKey: caseKeys.support(),
     queryFn: fetchCaseSupport,
-    staleTime: 10 * 60 * 1000,
+    staleTime: 60 * 60 * 1000, // 1 hour - static contact info
+    gcTime: 2 * 60 * 60 * 1000, // 2 hours
   });
 }

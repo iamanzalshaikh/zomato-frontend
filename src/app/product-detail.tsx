@@ -4,12 +4,12 @@ import {
   Dimensions,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -17,15 +17,64 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { ThemedView } from '@/components/themed-view';
 import { CaseUi } from '@/constants/caseUi';
-import { formatProductMeta, type MenuItemAttributes } from '@/constants/categoryFields';
+import { ProductCustomizer } from '@/components/product-customizer';
+import { formatProductMeta, getCategoryFields, type MenuItemAttributes } from '@/constants/categoryFields';
 import { useCaseMerchantMenuQuery } from '@/hooks/queries/case';
-import { useMenuItemQuery } from '@/hooks/queries/menu';
+import { useMenuItemQuery, useMenuByRestaurantQuery } from '@/hooks/queries/menu';
+import { useRestaurantByIdQuery } from '@/hooks/queries/restaurants';
 import { useAddToCartMutation } from '@/hooks/queries/cart';
+import { useCart } from '@/hooks/use-cart';
+import { getCartItemCount } from '@/lib/cartDisplay';
 import { toast } from '@/lib/toast';
 import { SkeletonBlock } from '@/components/skeleton';
 import { useThemeContext } from '@/context/ThemeContext';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+
+// Helper: Horizontal Products Carousel (Clean Minimal Style)
+function HorizontalProducts({
+  title,
+  items,
+  restaurantId,
+  isDark,
+  colors,
+}: {
+  title: string;
+  items: any[];
+  restaurantId: string;
+  isDark: boolean;
+  colors: any;
+}) {
+  const router = useRouter();
+  if (!items || items.length === 0) return null;
+  return (
+    <View style={styles.sectionContainer}>
+      <Text style={[styles.sectionTitle, { color: colors.text, paddingHorizontal: 16 }]}>{title}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingHorizontal: 16, paddingTop: 12 }}>
+        {items.map((it, idx) => (
+          <Pressable
+            key={`${it._id}-${idx}`}
+            style={[styles.similarCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}
+            onPress={() => router.push({ pathname: '/product-detail', params: { restaurantId, itemId: it._id } })}
+          >
+            <View style={styles.similarCardImgWrap}>
+              <Image source={{ uri: it.images?.[0] || 'https://via.placeholder.com/120' }} style={styles.similarCardImg} contentFit="contain" />
+              <Pressable style={styles.similarAddBtn} onPress={(e) => { e.stopPropagation(); }}>
+                <Text style={styles.similarAddBtnText}>ADD</Text>
+              </Pressable>
+            </View>
+            <View style={styles.similarCardBody}>
+              <Text style={[styles.similarCardName, { color: colors.text }]} numberOfLines={2}>{it.itemName}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                <Text style={[styles.similarCardPrice, { color: colors.text }]}>JMD {it.discountedPrice ?? it.price}</Text>
+              </View>
+            </View>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
 
 export default function ProductDetailScreen() {
   const router = useRouter();
@@ -34,95 +83,46 @@ export default function ProductDetailScreen() {
   const isDark = activeScheme === 'dark';
   const { restaurantId, itemId } = useLocalSearchParams<{ restaurantId: string; itemId: string }>();
   const rid = restaurantId ?? '';
+  
   const itemQ = useMenuItemQuery(itemId ?? '');
   const caseMenuQ = useCaseMerchantMenuQuery(rid);
+  const restaurantQ = useRestaurantByIdQuery(rid);
+  const menuQ = useMenuByRestaurantQuery(rid);
+  
   const item: any = itemQ.data ?? null;
+  const store = restaurantQ.data ?? null;
   const add = useAddToCartMutation();
   const businessType = caseMenuQ.data?.businessType;
+  
+  const { cart } = useCart();
+  const cartCount = getCartItemCount(cart);
+  
   const caseAttrs = useMemo(() => {
     const found = caseMenuQ.data?.items?.find((i) => i.id === itemId || i._id === itemId);
     return (found?.attributes ?? item?.attributes ?? null) as MenuItemAttributes | null;
   }, [caseMenuQ.data, itemId, item]);
-  const metaTags = useMemo(
-    () => formatProductMeta(businessType, caseAttrs, item?.foodType),
-    [businessType, caseAttrs, item?.foodType],
-  );
 
   const [activeImage, setActiveImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
-  const [selectedSize, setSelectedSize] = useState('');
-  const [selectedAddons, setSelectedAddons] = useState<Record<string, boolean>>({});
+  const [customPrice, setCustomPrice] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const [liked, setLiked] = useState(false);
-
-  const sizeAddons = useMemo(() => {
-    if (!item?.addons) return [];
-    return item.addons.filter(
-      (ad: any) => ad.name.startsWith('Portion:') || ad.name.startsWith('Size:'),
-    );
-  }, [item]);
-
-  const extraAddons = useMemo(() => {
-    if (!item?.addons) return [];
-    return item.addons.filter(
-      (ad: any) => !ad.name.startsWith('Portion:') && !ad.name.startsWith('Size:'),
-    );
-  }, [item]);
 
   const basePrice = item?.discountedPrice ?? item?.price ?? 0;
   const hasDiscount = Boolean(item?.discountedPrice) && item.discountedPrice !== item.price;
-
-  const aboutBullets = useMemo(() => {
-    if (item?.description) {
-      const parts = String(item.description)
-        .split(/[.\n•]+/)
-        .map((s: string) => s.trim())
-        .filter((s: string) => s.length > 3);
-      if (parts.length > 0) return parts.slice(0, 6);
-    }
-    return metaTags;
-  }, [item, metaTags]);
-
-  const unitLine =
-    caseAttrs?.packSize ||
-    caseAttrs?.unit ||
-    caseAttrs?.weight ||
-    item?.shortDescription ||
-    null;
-
-  const totalPrice = useMemo(() => {
-    if (!item) return 0;
-    let addonsPrice = 0;
-    (item.addons ?? []).forEach((ad: any) => {
-      if (ad.name === selectedSize) addonsPrice += ad.price;
-      else if (selectedAddons[ad.name]) addonsPrice += ad.price;
-    });
-    return (basePrice + addonsPrice) * quantity;
-  }, [item, basePrice, selectedSize, selectedAddons, quantity]);
+  const discountPercent = hasDiscount ? Math.round(((item.price - item.discountedPrice) / item.price) * 100) : 0;
+  
+  const totalPrice = (basePrice + customPrice) * quantity;
 
   const handleAddToCart = async () => {
     if (!item || !rid) return;
     setSubmitting(true);
     try {
-      const addonsPayload: { name: string; price: number }[] = [];
-      if (selectedSize) {
-        const matched = item.addons?.find((ad: any) => ad.name === selectedSize);
-        if (matched) addonsPayload.push({ name: selectedSize, price: matched.price });
-      }
-      Object.keys(selectedAddons)
-        .filter((name) => selectedAddons[name])
-        .forEach((name) => {
-          const matched = item.addons?.find((ad: any) => ad.name === name);
-          if (matched) addonsPayload.push({ name, price: matched.price });
-        });
-
       await add.mutateAsync({
         restaurantId: rid,
         menuItemId: String(item._id),
         quantity,
-        addons: addonsPayload,
       });
-      toast.success(`${item.itemName} added to cart`, 'Added');
+      toast.success(`${item.itemName} added to cart`);
     } catch (e: any) {
       toast.error(String(e?.message ?? 'Failed to add item'));
     } finally {
@@ -130,20 +130,17 @@ export default function ProductDetailScreen() {
     }
   };
 
-  if (itemQ.isLoading) {
+  if (itemQ.isLoading || restaurantQ.isLoading) {
     return (
       <ThemedView style={styles.container}>
         <SafeAreaView style={styles.safeArea} edges={['top']}>
           <View style={styles.header}>
             <SkeletonBlock width={40} height={40} radius={20} />
-            <SkeletonBlock width={140} height={18} radius={6} />
-            <SkeletonBlock width={40} height={40} radius={20} />
           </View>
-          <SkeletonBlock width={SCREEN_WIDTH} height={280} radius={0} />
-          <View style={{ padding: 16, gap: 12 }}>
-            <SkeletonBlock width="70%" height={22} />
-            <SkeletonBlock width="40%" height={14} />
-            <SkeletonBlock width="30%" height={24} />
+          <SkeletonBlock width={SCREEN_WIDTH} height={300} radius={0} />
+          <View style={{ padding: 16, gap: 16 }}>
+            <SkeletonBlock width="70%" height={24} />
+            <SkeletonBlock width="30%" height={16} />
             <SkeletonBlock width="100%" height={80} radius={12} />
           </View>
         </SafeAreaView>
@@ -152,451 +149,466 @@ export default function ProductDetailScreen() {
   }
 
   const images: string[] = item?.images?.length ? item.images : [];
-  const hasRating = Number(item?.averageRating ?? 0) > 0;
-  const rating = Number(item?.averageRating ?? 0).toFixed(1);
-  const ratingCount = item?.totalRatings ? `${item.totalRatings}` : null;
+  const similarItems = (menuQ.data ?? []).filter((i: any) => i._id !== itemId).slice(0, 8);
+
+  const dividerStyle = { height: 8, backgroundColor: isDark ? '#000000' : '#F4F4F5' };
 
   return (
-    <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ThemedView style={[styles.container, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        
+        {/* Standardized Header */}
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.headerBtn} hitSlop={8}>
+          <Pressable onPress={() => router.back()} style={styles.iconBtn} hitSlop={8}>
             <Ionicons name="arrow-back" size={22} color={colors.text} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Product Details</Text>
-          <Pressable
-            style={styles.headerBtn}
-            onPress={async () => {
-              try {
-                await Share.share({
-                  message: `Check out ${item?.itemName ?? 'this product'} on Multivendor App!`,
-                });
-              } catch (e) {
-                console.log(e);
-              }
-            }}
-            hitSlop={8}
-          >
-            <Ionicons name="share-social-outline" size={22} color={colors.text} />
+          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+            {item?.itemName ?? 'Product Detail'}
+          </Text>
+          <Pressable style={styles.iconBtn} onPress={() => router.push('/search')}>
+            <Ionicons name="search-outline" size={20} color={colors.text} />
+          </Pressable>
+          <Pressable style={styles.iconBtn} onPress={() => router.push('/(tabs)/cart')}>
+            <Ionicons name="cart-outline" size={20} color={colors.text} />
+            {cartCount > 0 ? (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{cartCount}</Text>
+              </View>
+            ) : null}
           </Pressable>
         </View>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 120 }}
-        >
-          <Animated.View entering={FadeIn.duration(280)}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 140 }}>
+          
+          {/* 1. Hero Gallery */}
+          <Animated.View entering={FadeIn.duration(280)} style={styles.heroWrap}>
             {images.length > 0 ? (
               <>
                 <ScrollView
                   horizontal
                   pagingEnabled
                   showsHorizontalScrollIndicator={false}
-                  onMomentumScrollEnd={(e) =>
-                    setActiveImage(Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH))
-                  }
+                  onMomentumScrollEnd={(e) => setActiveImage(Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH))}
                 >
                   {images.map((uri, i) => (
                     <Image
                       key={`${uri}-${i}`}
                       source={{ uri }}
-                      style={[styles.heroImage, { backgroundColor: isDark ? '#141417' : CaseUi.white }]}
+                      style={styles.heroImage}
                       contentFit="contain"
                       transition={200}
                     />
                   ))}
                 </ScrollView>
-                {images.length > 1 ? (
+                {images.length > 1 && (
                   <View style={styles.dotsRow}>
-                    {images.map((_, i) => {
-                      const isActive = i === activeImage;
-                      return (
-                        <View
-                          key={i}
-                          style={[
-                            styles.dot,
-                            isActive
-                              ? { backgroundColor: CaseUi.orange, width: 14 }
-                              : { backgroundColor: isDark ? '#3A3A3C' : '#E5E5EA' }
-                          ]}
-                        />
-                      );
-                    })}
+                    {images.map((_, i) => (
+                      <View key={i} style={[styles.dot, i === activeImage ? { backgroundColor: CaseUi.ink, width: 6 } : { backgroundColor: 'rgba(0,0,0,0.2)' }]} />
+                    ))}
                   </View>
-                ) : null}
+                )}
               </>
             ) : (
-              <View style={[styles.heroImage, styles.heroImagePlaceholder, { backgroundColor: isDark ? '#141417' : CaseUi.field }]}>
-                <Ionicons name="cube-outline" size={56} color={CaseUi.muted} />
+              <View style={[styles.heroImage, styles.heroImagePlaceholder]}>
+                <Ionicons name="cube-outline" size={64} color={CaseUi.muted} />
               </View>
             )}
           </Animated.View>
 
-          <Animated.View entering={FadeInDown.delay(80).duration(320)} style={styles.body}>
-            <Text style={[styles.name, { color: colors.text }]} numberOfLines={2}>
-              {item?.itemName}
-            </Text>
-
-            <View style={styles.priceRatingRow}>
-              <View style={styles.priceRowCompact}>
-                <Text style={[styles.price, { color: colors.text }]}>JMD {Math.round(basePrice)}</Text>
-                {hasDiscount ? (
-                  <Text style={styles.was}>JMD {Math.round(item.price)}</Text>
-                ) : null}
+          {/* 2. Core Product Info */}
+          <Animated.View entering={FadeInDown.delay(40).duration(320)} style={styles.infoBlock}>
+            {/* Badges Row */}
+            {((getCategoryFields(businessType).productLabels.showFoodType && item?.foodType) || item?.isRecommended) ? (
+              <View style={styles.foodTypeRow}>
+                {getCategoryFields(businessType).productLabels.showFoodType && item?.foodType && (
+                  <>
+                    <View style={[styles.foodTypeDot, { backgroundColor: item.foodType.toLowerCase().includes('veg') && !item.foodType.toLowerCase().includes('non') ? '#16A34A' : '#DC2626' }]} />
+                    <Text style={[styles.foodTypeLabel, { color: item.foodType.toLowerCase().includes('veg') && !item.foodType.toLowerCase().includes('non') ? '#16A34A' : '#DC2626' }]}>
+                      {item.foodType}
+                    </Text>
+                  </>
+                )}
+                {item?.isRecommended && (
+                  <View style={styles.recoBadge}><Text style={styles.recoBadgeText}>★ Recommended</Text></View>
+                )}
               </View>
-              {hasRating ? (
-                <View style={styles.ratingRowCompact}>
-                  <Ionicons name="star" size={13} color="#00B365" style={{ marginRight: 3 }} />
-                  <Text style={[styles.ratingTextGreen, { color: colors.text }]}>
-                    <Text style={{ fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#00B365' }}>{rating}</Text>
-                    <Text style={{ fontFamily: 'PlusJakartaSans_500Medium', color: isDark ? '#A1A1AA' : '#7E8587' }}> ({ratingCount ?? '320+'})</Text>
-                  </Text>
+            ) : null}
+
+            <Text style={[styles.name, { color: colors.text }]} numberOfLines={3}>{item?.itemName}</Text>
+            
+            {/* Unit size */}
+            <Text style={styles.unitText}>{caseAttrs?.weight || caseAttrs?.packSize || '1 Unit'}</Text>
+
+            {/* Premium Price Card */}
+            <LinearGradient
+              colors={isDark ? ['#2A1A00', '#1C1C1E'] : ['#FFF6F0', '#FFFFFF']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.priceCard}
+            >
+              <View style={styles.priceRow}>
+                <View>
+                  <Text style={styles.priceLabel}>Price</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+                    <Text style={styles.price}>JMD <Text style={styles.priceAmount}>{Math.round(basePrice + customPrice)}</Text></Text>
+                    {hasDiscount && (
+                      <Text style={styles.wasPrice}>JMD {Math.round(item.price)}</Text>
+                    )}
+                  </View>
+                  {hasDiscount && (
+                    <View style={styles.discountBadge}>
+                      <Text style={styles.discountBadgeText}>{discountPercent}% OFF</Text>
+                    </View>
+                  )}
                 </View>
+
+                {/* ADD button / Quantity Selector */}
+                {item?.isAvailable === false ? (
+                  <Text style={styles.soldOutText}>Out of stock</Text>
+                ) : (
+                  <View style={styles.addControl}>
+                    {quantity > 1 ? (
+                      <View style={styles.qtyControlRow}>
+                        <Pressable style={styles.qtyBtn} onPress={() => setQuantity(q => q - 1)}>
+                          <Ionicons name="remove" size={18} color="#FFF" />
+                        </Pressable>
+                        <Text style={styles.qtyText}>{quantity}</Text>
+                        <Pressable style={styles.qtyBtn} onPress={() => setQuantity(q => q + 1)}>
+                          <Ionicons name="add" size={18} color="#FFF" />
+                        </Pressable>
+                      </View>
+                    ) : (
+                      <Pressable style={styles.addBtnSmall} onPress={() => setQuantity(2)}>
+                        <Text style={styles.addBtnSmallText}>+ ADD</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                )}
+              </View>
+            </LinearGradient>
+          </Animated.View>
+
+          <View style={dividerStyle} />
+
+          {/* 3. Trust Banner — orange tinted */}
+          <LinearGradient
+            colors={isDark ? ['#2A1A00', '#1C1000'] : ['#FFF6F0', '#FFF9F5']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.trustBanner}
+          >
+            <View style={styles.trustIconWrap}>
+              <Ionicons name="flash" size={18} color={CaseUi.orange} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.trustTitle, { color: colors.text }]}>
+                Delivery in {item?.preparationTimeMinutes ? item.preparationTimeMinutes + 15 : '20-30'} mins
+              </Text>
+              <Text style={styles.trustSub}>Fastest delivery in your area</Text>
+            </View>
+            <View style={styles.trustRightBadge}>
+              <Text style={styles.trustRightText}>Express</Text>
+            </View>
+          </LinearGradient>
+
+          <View style={dividerStyle} />
+
+          {/* 4. Why shop from us */}
+          <View style={styles.whyShopBlock}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Why shop from {store?.restaurantName || 'SD Services'}?</Text>
+            <View style={styles.whyShopGrid}>
+              {businessType?.toLowerCase().includes('restaurant') || businessType?.toLowerCase().includes('food') ? (
+                // Restaurant / Food
+                [
+                  { icon: 'restaurant', label: 'Freshly Prepared', color: '#EF4444', bg: '#FEF2F2' },
+                  { icon: 'shield-checkmark', label: 'Top Hygiene', color: '#10B981', bg: '#ECFDF5' },
+                  { icon: 'flash', label: 'Fast Delivery', color: '#F59E0B', bg: '#FFFBEB' },
+                  { icon: 'heart', label: 'Loved by Many', color: '#EC4899', bg: '#FDF2F8' },
+                ].map((item, i) => (
+                  <View key={i} style={[styles.whyShopCard, { backgroundColor: isDark ? '#2D2D34' : item.bg }]}>
+                    <View style={[styles.whyShopIconWrap, { backgroundColor: isDark ? '#3A3A42' : item.bg }]}>
+                      <Ionicons name={item.icon as any} size={16} color={item.color} />
+                    </View>
+                    <Text style={[styles.whyShopText, { color: colors.text }]}>{item.label}</Text>
+                  </View>
+                ))
+              ) : businessType?.toLowerCase().includes('pharmacy') ? (
+                // Pharmacy
+                [
+                  { icon: 'medkit', label: 'Genuine Medicines', color: '#3B82F6', bg: '#EFF6FF' },
+                  { icon: 'shield-checkmark', label: 'Safe Packaging', color: '#10B981', bg: '#ECFDF5' },
+                  { icon: 'flash', label: 'Fast Delivery', color: '#F59E0B', bg: '#FFFBEB' },
+                  { icon: 'document-text', label: 'Verified Sellers', color: '#8B5CF6', bg: '#F5F3FF' },
+                ].map((item, i) => (
+                  <View key={i} style={[styles.whyShopCard, { backgroundColor: isDark ? '#2D2D34' : item.bg }]}>
+                    <View style={[styles.whyShopIconWrap, { backgroundColor: isDark ? '#3A3A42' : item.bg }]}>
+                      <Ionicons name={item.icon as any} size={16} color={item.color} />
+                    </View>
+                    <Text style={[styles.whyShopText, { color: colors.text }]}>{item.label}</Text>
+                  </View>
+                ))
               ) : (
-                <View style={styles.ratingRowCompact}>
-                  <Ionicons name="star" size={13} color="#00B365" style={{ marginRight: 3 }} />
-                  <Text style={[styles.ratingTextGreen, { color: colors.text }]}>
-                    <Text style={{ fontFamily: 'PlusJakartaSans_800ExtraBold', color: '#00B365' }}>4.4</Text>
-                    <Text style={{ fontFamily: 'PlusJakartaSans_500Medium', color: isDark ? '#A1A1AA' : '#7E8587' }}> (320+)</Text>
-                  </Text>
-                </View>
+                // Grocery & Default
+                [
+                  { icon: 'flash', label: 'Superfast Delivery', color: '#F59E0B', bg: '#FFFBEB' },
+                  { icon: 'shield-checkmark', label: 'Best Quality', color: '#10B981', bg: '#ECFDF5' },
+                  { icon: 'refresh', label: 'Easy Returns', color: '#6366F1', bg: '#EEF2FF' },
+                  { icon: 'pricetag', label: 'Best Price', color: CaseUi.orange, bg: CaseUi.orangeSoft },
+                ].map((item, i) => (
+                  <View key={i} style={[styles.whyShopCard, { backgroundColor: isDark ? '#2D2D34' : item.bg }]}>
+                    <View style={[styles.whyShopIconWrap, { backgroundColor: isDark ? '#3A3A42' : item.bg }]}>
+                      <Ionicons name={item.icon as any} size={16} color={item.color} />
+                    </View>
+                    <Text style={[styles.whyShopText, { color: colors.text }]}>{item.label}</Text>
+                  </View>
+                ))
               )}
             </View>
-
-            {!!item?.description ? (
-              <Text style={[styles.descriptionText, { color: isDark ? '#A1A1AA' : '#5E6668' }]}>
-                {item.description}
-              </Text>
-            ) : !!item?.shortDescription ? (
-              <Text style={[styles.descriptionText, { color: isDark ? '#A1A1AA' : '#5E6668' }]}>
-                {item.shortDescription}
-              </Text>
-            ) : null}
-
-            <View style={[styles.sectionDivider, { backgroundColor: isDark ? '#2D2D34' : '#E9ECEF' }]} />
-
-            {sizeAddons.length > 0 || extraAddons.length > 0 ? (
-              <View style={styles.customizeContainer}>
-                <Text style={[styles.customizeTitle, { color: colors.text }]}>Customize</Text>
-
-                {sizeAddons.length > 0 ? (
-                  <View style={styles.customSection}>
-                    <Text style={styles.customSectionTitle}>Choose Size</Text>
-                    {sizeAddons.map((addon: any) => {
-                      const on = selectedSize === addon.name;
-                      return (
-                        <Pressable
-                          key={addon.name}
-                          onPress={() => setSelectedSize(addon.name)}
-                          style={styles.optionRow}
-                        >
-                          <View style={[styles.radioCircle, { borderColor: on ? CaseUi.orange : (isDark ? '#3A3A3C' : '#C7C7CC') }]}>
-                            {on && <View style={[styles.radioInnerDot, { backgroundColor: CaseUi.orange }]} />}
-                          </View>
-                          <Text style={[styles.optionName, { color: colors.text }]}>
-                            {addon.name.replace(/^(Portion|Size):\s*/i, '')}
-                          </Text>
-                          {addon.price ? (
-                            <Text style={[styles.optionPrice, { color: colors.text }]}>JMD {addon.price}</Text>
-                          ) : null}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                ) : null}
-
-                {extraAddons.length > 0 ? (
-                  <View style={styles.customSection}>
-                    <Text style={styles.customSectionTitle}>Add Extras</Text>
-                    {extraAddons.map((addon: any) => {
-                      const on = selectedAddons[addon.name] ?? false;
-                      return (
-                        <Pressable
-                          key={addon.name}
-                          onPress={() =>
-                            setSelectedAddons((prev) => ({ ...prev, [addon.name]: !prev[addon.name] }))
-                          }
-                          style={styles.optionRow}
-                        >
-                          <View
-                            style={[
-                              styles.checkboxSquare,
-                              {
-                                borderColor: on ? CaseUi.orange : (isDark ? '#3A3A3C' : '#C7C7CC'),
-                                backgroundColor: on ? CaseUi.orange : 'transparent',
-                              },
-                            ]}
-                          >
-                            {on && <Ionicons name="checkmark" size={12} color="#FFFFFF" />}
-                          </View>
-                          <Text style={[styles.optionName, { color: colors.text }]}>{addon.name}</Text>
-                          <Text style={[styles.optionPrice, { color: colors.text }]}>JMD {addon.price}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-          </Animated.View>
-        </ScrollView>
-
-        <View style={[styles.footer, { backgroundColor: isDark ? '#141417' : CaseUi.white, borderTopColor: isDark ? '#27272A' : CaseUi.line, paddingBottom: Math.max(insets.bottom, 14) }]}>
-          <View style={styles.footerQtyContainer}>
-            <Pressable
-              onPress={() => setQuantity((q) => Math.max(1, q - 1))}
-              style={styles.footerQtyBtn}
-              hitSlop={8}
-            >
-              <Ionicons name="remove" size={16} color={CaseUi.ink} />
-            </Pressable>
-            <Text style={styles.footerQtyText}>{quantity}</Text>
-            <Pressable
-              onPress={() => setQuantity((q) => q + 1)}
-              style={styles.footerQtyBtn}
-              hitSlop={8}
-            >
-              <Ionicons name="add" size={16} color={CaseUi.ink} />
-            </Pressable>
           </View>
 
+          <View style={dividerStyle} />
+
+          {/* 5. Dynamic Product Customization */}
+          <ProductCustomizer 
+            businessType={businessType || 'STORE'} 
+            basePrice={basePrice} 
+            onPriceChange={setCustomPrice} 
+          />
+          <View style={dividerStyle} />
+
+          {/* 6. Product Details Accordions */}
+          <View style={styles.detailsBlock}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Product Details</Text>
+            
+            <View style={[styles.detailsCard, { backgroundColor: isDark ? '#2D2D34' : '#F9F9FA', borderColor: isDark ? '#3A3A42' : '#F3F4F6' }]}>
+              {!!(item?.description || item?.shortDescription) && (
+                <View style={styles.detailDescRow}>
+                  <Text style={styles.detailLabel}>Description</Text>
+                  <Text style={[styles.detailValueDesc, { color: colors.textSecondary }]}>{item?.description || item?.shortDescription}</Text>
+                </View>
+              )}
+              
+              <View style={styles.detailGrid}>
+                {businessType?.toLowerCase().includes('restaurant') || businessType?.toLowerCase().includes('food') ? (
+                  <>
+                    <View style={styles.detailGridItem}>
+                      <Text style={styles.detailLabel}>Preparation</Text>
+                      <Text style={[styles.detailValue, { color: colors.text }]}>{item?.preparationTimeMinutes ? `${item.preparationTimeMinutes} mins` : '15-20 mins'}</Text>
+                    </View>
+                    <View style={styles.detailGridItem}>
+                      <Text style={styles.detailLabel}>Calories</Text>
+                      <Text style={[styles.detailValue, { color: colors.text }]}>{caseAttrs?.weight ? `${caseAttrs.weight} kcal` : 'View pack'}</Text>
+                    </View>
+                  </>
+                ) : businessType?.toLowerCase().includes('pharmacy') ? (
+                  <>
+                    <View style={styles.detailGridItem}>
+                      <Text style={styles.detailLabel}>Prescription</Text>
+                      <Text style={[styles.detailValue, { color: colors.text }]}>{caseAttrs?.requiresPrescription ? 'Yes' : 'No'}</Text>
+                    </View>
+                    <View style={styles.detailGridItem}>
+                      <Text style={styles.detailLabel}>Precautions</Text>
+                      <Text style={[styles.detailValue, { color: colors.text }]}>Consult physician</Text>
+                    </View>
+                    <View style={[styles.detailGridItem, { width: '100%' }]}>
+                      <Text style={styles.detailLabel}>Manufacturer</Text>
+                      <Text style={[styles.detailValue, { color: colors.text }]}>{caseAttrs?.brand || 'Standard Manufacturer'}</Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.detailGridItem}>
+                      <Text style={styles.detailLabel}>Unit / Weight</Text>
+                      <Text style={[styles.detailValue, { color: colors.text }]}>{caseAttrs?.weight || caseAttrs?.packSize || '1 Unit'}</Text>
+                    </View>
+                    <View style={styles.detailGridItem}>
+                      <Text style={styles.detailLabel}>Brand</Text>
+                      <Text style={[styles.detailValue, { color: colors.text }]}>{caseAttrs?.brand || 'Local'}</Text>
+                    </View>
+                    <View style={[styles.detailGridItem, { width: '100%' }]}>
+                      <Text style={styles.detailLabel}>Shelf Life</Text>
+                      <Text style={[styles.detailValue, { color: colors.text }]}>Refer to packaging</Text>
+                    </View>
+                  </>
+                )}
+              </View>
+            </View>
+          </View>
+
+          <View style={dividerStyle} />
+
+          {/* 7. Similar Products */}
+          {similarItems.length > 0 && (
+            <View style={[styles.sectionContainer, { backgroundColor: isDark ? '#1C1C1E' : '#FAFAFA', paddingTop: 20 }]}>
+              <HorizontalProducts title="Similar Products" items={similarItems} restaurantId={rid} isDark={isDark} colors={colors} />
+            </View>
+          )}
+          
+        </ScrollView>
+
+        {/* Sticky Bottom Action Bar - Shown when quantity > 1 or addons selected (for demonstration, we show it always for quick checkout) */}
+        <View style={[styles.bottomBar, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderTopColor: isDark ? '#2D2D34' : '#F3F4F6' }]}>
           <Pressable
             onPress={handleAddToCart}
-            disabled={submitting || item?.isAvailable === false || (sizeAddons.length > 0 && !selectedSize)}
-            style={[styles.addBtn, submitting && { opacity: 0.7 }]}
+            disabled={submitting || item?.isAvailable === false}
+            style={[styles.bottomAddBtn, submitting && { opacity: 0.7 }, (item?.isAvailable === false) && { backgroundColor: '#ECECEC' }]}
           >
             {submitting ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#FFF" />
             ) : (
-              <Text style={styles.addBtnText}>
-                {item?.isAvailable === false
-                  ? 'Sold Out'
-                  : `Add to Cart`}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingHorizontal: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.bottomAddBtnText, (item?.isAvailable === false) && { color: '#6F6F6F' }]}>
+                    {item?.isAvailable === false ? 'Out of Stock' : `${quantity} Item${quantity > 1 ? 's' : ''}`}
+                  </Text>
+                  {item?.isAvailable !== false && (
+                    <Text style={styles.bottomAddSubText}>| JMD {totalPrice}</Text>
+                  )}
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={[styles.bottomAddBtnText, (item?.isAvailable === false) && { color: '#6F6F6F' }]}>
+                    {item?.isAvailable === false ? '' : 'Add to Cart'}
+                  </Text>
+                  {item?.isAvailable !== false && <Ionicons name="chevron-forward" size={16} color="#FFF" />}
+                </View>
+              </View>
             )}
           </Pressable>
         </View>
+
       </SafeAreaView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CaseUi.white },
+  container: { flex: 1 },
   safeArea: { flex: 1 },
+  
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 4,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  headerBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 18,
-    color: CaseUi.ink,
-  },
-  heroImage: {
-    width: SCREEN_WIDTH,
-    height: 280,
-    backgroundColor: CaseUi.white,
-  },
-  heroImagePlaceholder: {
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: CaseUi.field,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dotsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 10,
-  },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  body: { paddingHorizontal: 18, paddingTop: 16 },
-  name: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 22,
-    color: CaseUi.ink,
-    letterSpacing: -0.3,
-  },
-  price: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 22,
-    color: CaseUi.ink,
-  },
-  was: {
-    fontFamily: 'PlusJakartaSans_500Medium',
-    fontSize: 14,
-    color: CaseUi.muted,
-    textDecorationLine: 'line-through',
-  },
-  aboutTitle: {
-    marginTop: 28,
-    marginBottom: 12,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 16,
-    color: CaseUi.ink,
-  },
-  bulletRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 10,
-  },
-  bulletText: {
-    flex: 1,
-    fontFamily: 'PlusJakartaSans_500Medium',
-    fontSize: 14,
-    color: CaseUi.muted,
-  },
-  optionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: CaseUi.line,
-  },
-  optionName: {
-    flex: 1,
-    fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 15,
-  },
-  optionPrice: {
+  title: {
     fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 14,
-  },
-  footer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    backgroundColor: CaseUi.white,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: CaseUi.line,
-  },
-  addBtn: {
+    fontSize: 16,
     flex: 1,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: CaseUi.orange,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addBtnText: {
-    color: CaseUi.white,
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 16,
-  },
-  priceRatingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 10,
-    marginBottom: 10,
-  },
-  priceRowCompact: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  ratingRowCompact: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  ratingTextGreen: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 13,
-  },
-  customizeContainer: {
-    marginTop: 12,
-  },
-  customizeTitle: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 18,
-    marginBottom: 14,
-  },
-  customSection: {
-    marginBottom: 20,
-  },
-  customSectionTitle: {
-    fontFamily: 'PlusJakartaSans_700Bold',
-    fontSize: 14,
-    color: '#7E8587',
-    marginBottom: 8,
-  },
-  footerQtyContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 16,
-  },
-  footerQtyBtn: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  footerQtyText: {
-    fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 16,
-    color: CaseUi.ink,
-    minWidth: 16,
     textAlign: 'center',
   },
-  radioCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: CaseUi.orange,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    borderWidth: 1.5,
+    borderColor: '#FFF',
   },
-  radioInnerDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  badgeText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
   },
-  checkboxSquare: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
+
+  heroWrap: {
+    width: SCREEN_WIDTH,
+    backgroundColor: '#F9F9FA',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
-  sectionDivider: {
-    height: 1,
-    width: '100%',
-    marginVertical: 16,
-  },
-  descriptionText: {
-    fontFamily: 'PlusJakartaSans_500Medium',
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 6,
-  },
+  heroImage: { width: SCREEN_WIDTH, height: 280 },
+  heroImagePlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3F4F6' },
+  dotsRow: { position: 'absolute', bottom: 12, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 4 },
+  dot: { width: 4, height: 4, borderRadius: 2 },
+
+  infoBlock: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 20 },
+
+  foodTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  foodTypeDot: { width: 8, height: 8, borderRadius: 4 },
+  foodTypeLabel: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 12 },
+  recoBadge: { backgroundColor: '#FFF9C4', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
+  recoBadgeText: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 10, color: '#B45309' },
+
+  name: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 18, lineHeight: 24, marginBottom: 4 },
+  unitText: { fontFamily: 'PlusJakartaSans_500Medium', fontSize: 13, color: '#7E8587', marginBottom: 16 },
+
+  priceCard: { borderRadius: 14, padding: 16, marginBottom: 4, borderWidth: 1, borderColor: 'rgba(255,90,0,0.12)' },
+  priceRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  priceLabel: { fontFamily: 'PlusJakartaSans_500Medium', fontSize: 11, color: '#7E8587', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
+  price: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, color: CaseUi.orange },
+  priceAmount: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 26, color: CaseUi.orange },
+  wasPrice: { fontFamily: 'PlusJakartaSans_500Medium', fontSize: 13, color: '#A0A0A0', textDecorationLine: 'line-through', marginBottom: 6 },
+  discountBadge: { alignSelf: 'flex-start', backgroundColor: '#10B981', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, marginTop: 6 },
+  discountBadgeText: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 10, color: '#FFF' },
+  soldOutText: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: '#EF4444' },
+
+  addControl: { alignItems: 'flex-end', justifyContent: 'center' },
+  addBtnSmall: { width: 80, height: 38, borderRadius: 10, borderWidth: 1.5, borderColor: CaseUi.orange, backgroundColor: CaseUi.orangeSoft, alignItems: 'center', justifyContent: 'center' },
+  addBtnSmallText: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: CaseUi.orange },
+  qtyControlRow: { flexDirection: 'row', alignItems: 'center', width: 90, height: 38, borderRadius: 10, backgroundColor: CaseUi.orange, justifyContent: 'space-between', paddingHorizontal: 8, ...CaseUi.liftShadow },
+  qtyBtn: { padding: 4 },
+  qtyText: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14, color: '#FFF' },
+
+  trustBanner: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+  trustIconWrap: { width: 36, height: 36, borderRadius: 8, backgroundColor: CaseUi.orangeSoft, alignItems: 'center', justifyContent: 'center' },
+  trustTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13, marginBottom: 2 },
+  trustSub: { fontFamily: 'PlusJakartaSans_500Medium', fontSize: 11, color: '#7E8587' },
+  trustRightBadge: { backgroundColor: CaseUi.orange, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  trustRightText: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 10, color: '#FFF' },
+
+  whyShopBlock: { paddingHorizontal: 16, paddingVertical: 20 },
+  sectionTitle: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 16, marginBottom: 16 },
+  whyShopGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  whyShopCard: { width: '47%', borderRadius: 12, padding: 14, gap: 8 },
+  whyShopIconWrap: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  whyShopText: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 12 },
+
+  variantsBlock: { paddingHorizontal: 16, paddingVertical: 20 },
+  customSection: { marginBottom: 16 },
+  customSectionTitle: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 12, color: '#7E8587', marginBottom: 8 },
+  optionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  optionName: { flex: 1, fontFamily: 'PlusJakartaSans_500Medium', fontSize: 14 },
+  optionPrice: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 13 },
+  radioCircle: { width: 18, height: 18, borderRadius: 9, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  radioInnerDot: { width: 8, height: 8, borderRadius: 4 },
+  checkboxSquare: { width: 18, height: 18, borderRadius: 4, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+
+  detailsBlock: { paddingHorizontal: 16, paddingVertical: 16 },
+  detailsCard: { borderRadius: 12, padding: 14, borderWidth: 1 },
+  detailDescRow: { marginBottom: 16 },
+  detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  detailGridItem: { width: '47%', marginBottom: 4 },
+  detailLabel: { fontFamily: 'PlusJakartaSans_500Medium', fontSize: 11, color: '#7E8587', marginBottom: 2 },
+  detailValue: { fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 12 },
+  detailValueDesc: { fontFamily: 'PlusJakartaSans_500Medium', fontSize: 12, lineHeight: 18 },
+
+  sectionContainer: { paddingVertical: 20 },
+  similarCard: { width: 130, marginRight: 4 },
+  similarCardImgWrap: { width: '100%', height: 100, backgroundColor: '#F9F9FA', borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#F3F4F6' },
+  similarCardImg: { width: '100%', height: '100%' },
+  similarAddBtn: { position: 'absolute', bottom: 6, right: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: '#FFF', borderWidth: 1, borderColor: CaseUi.orange },
+  similarAddBtnText: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 9, color: CaseUi.orange },
+  similarCardBody: { paddingTop: 8, paddingHorizontal: 4 },
+  similarCardName: { fontFamily: 'PlusJakartaSans_500Medium', fontSize: 12, lineHeight: 16, height: 32 },
+  similarCardPrice: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 13 },
+
+  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1 },
+  bottomAddBtn: { height: 52, borderRadius: 14, backgroundColor: CaseUi.orange, alignItems: 'center', justifyContent: 'center', ...CaseUi.liftShadow },
+  bottomAddBtnText: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 14, color: '#FFF' },
+  bottomAddSubText: { fontFamily: 'PlusJakartaSans_500Medium', fontSize: 11, color: '#FFF', opacity: 0.9 },
 });

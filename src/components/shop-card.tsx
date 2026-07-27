@@ -54,66 +54,103 @@ export const ShopCard = memo(function ShopCard({
           pressed && styles.pressed,
         ]}
       >
+        {/* Banner image wrapper */}
         <View style={styles.listImageWrap}>
-          <Image source={{ uri: cover }} style={styles.listImage} contentFit="cover" transition={200} />
+          <Image 
+            source={{ uri: cover }} 
+            style={styles.listImage} 
+            contentFit="cover" 
+            transition={200}
+            cachePolicy="memory-disk"
+            placeholder={isDark ? '#18181C' : CaseUi.field}
+          />
+          
+          {/* Overlay badge (Gold ticket/icon) on top-left of banner */}
+          {offerBadge && open ? (
+            <View style={styles.listTopLeftBadge}>
+              <Ionicons name="pricetags" size={10} color="#E05A10" style={{ marginRight: 4 }} />
+              <Text style={styles.listTopLeftBadgeText} numberOfLines={1}>{offerBadge}</Text>
+            </View>
+          ) : null}
+
+          {/* Overlay closed shade */}
           {!open ? (
             <View style={styles.listClosedShade}>
               <Text style={styles.listClosedText}>CLOSED</Text>
             </View>
           ) : null}
-          {offerBadge && open ? (
-            <View style={styles.ribbon}>
-              <Text style={styles.ribbonText} numberOfLines={1}>{offerBadge}</Text>
-            </View>
-          ) : null}
-        </View>
-        <View style={styles.listBody}>
-          <View style={styles.rowBetween}>
-            <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
-              {merchant.restaurantName}
-            </Text>
-            <FavoriteHeart restaurantId={merchant.id} size={17} variant="header" />
+
+          {/* Overlay heart on top-right */}
+          <View style={styles.listHeartWrap}>
+            <FavoriteHeart restaurantId={merchant.id} size={15} variant="overlay" />
           </View>
-          
-          <View style={styles.metaRow}>
-            {hasRating ? (
-              <View style={styles.ratingPill}>
-                <Ionicons name="star" size={10} color="#FFFFFF" />
-                <Text style={styles.ratingPillText}>{rating.toFixed(1)}</Text>
+        </View>
+
+        {/* Bottom details block */}
+        <View style={styles.listBodyRow}>
+          {/* Circular logo */}
+          <View style={[styles.listLogoCircle, { borderColor: isDark ? '#27272A' : '#E4E4E7' }]}>
+            <Image 
+              source={{ uri: logo }} 
+              style={styles.listLogoImg} 
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              placeholder={isDark ? '#18181C' : CaseUi.field}
+            />
+          </View>
+
+          {/* Main Info Columns */}
+          <View style={styles.listInfoCol}>
+            {/* Row 1: Name and Heart/Action */}
+            <View style={styles.listNameRow}>
+              <Text style={[styles.listNameText, { color: colors.text }]} numberOfLines={1}>
+                {merchant.restaurantName}
+              </Text>
+            </View>
+
+            {/* Row 2: Description */}
+            <Text style={[styles.listDescText, { color: colors.textSecondary }]} numberOfLines={1}>
+              {(merchant.cuisines && merchant.cuisines.length > 0 ? merchant.cuisines.join(', ') : null) || `Special selection of premium items from our ${catLabel ?? 'store'}`}
+            </Text>
+
+            {/* Row 3: Meta items & rating */}
+            <View style={styles.listMetaRow}>
+              {/* Delivery time with clock icon */}
+              <View style={styles.listMetaItem}>
+                <Ionicons name="time" size={11} color="#888888" style={{ marginRight: 3 }} />
+                <Text style={[styles.listMetaText, { color: colors.textSecondary }]}>{mins} min</Text>
               </View>
-            ) : (
-              <View style={styles.newPill}>
-                <Text style={styles.newPillText}>New</Text>
-              </View>
-            )}
-            
-            {catLabel ? (
-              <View style={[styles.catTagPill, { backgroundColor: isDark ? '#24242A' : '#F4F4F5' }]}>
-                <Text style={[styles.catTagText, { color: isDark ? '#A1A1AA' : CaseUi.muted }]}>
-                  {catLabel}
+
+              <Text style={[styles.listMetaDot, { color: colors.textSecondary }]}>•</Text>
+
+              {/* Delivery price / min order with bicycle icon */}
+              <View style={styles.listMetaItem}>
+                <Ionicons name="bicycle" size={11} color="#888888" style={{ marginRight: 3 }} />
+                <Text style={[styles.listMetaText, { color: colors.textSecondary }]}>
+                  {minOrderLabel ? minOrderLabel.replace('Min ', '') : 'J$120'}
                 </Text>
               </View>
-            ) : null}
-          </View>
 
-          <View style={[styles.metaRow, { marginTop: 4 }]}>
-            <View style={styles.metaDotGroup}>
-              <Ionicons name="time-outline" size={12} color={colors.textSecondary} />
-              <Text style={[styles.meta, { color: colors.textSecondary }]}>{mins} mins</Text>
+              <Text style={[styles.listMetaDot, { color: colors.textSecondary }]}>•</Text>
+
+              {/* Green rating badge */}
+              {hasRating ? (
+                <View style={styles.listGreenRatingPill}>
+                  <Ionicons name="star" size={9} color="#FFFFFF" style={{ marginRight: 2 }} />
+                  <Text style={styles.listGreenRatingText}>{rating.toFixed(1)}</Text>
+                </View>
+              ) : (
+                <View style={styles.listRatingNewPill}>
+                  <Text style={styles.listRatingNewText}>NEW</Text>
+                </View>
+              )}
+
+              {/* Ellipsis Vertical on far right */}
+              <View style={styles.listEllipsisWrap}>
+                <Ionicons name="ellipsis-vertical" size={13} color="#888888" />
+              </View>
             </View>
-            <Text style={[styles.metaDivider, { color: colors.textSecondary }]}>·</Text>
-            <Text style={[styles.meta, { color: colors.textSecondary }]}>
-              {minOrderLabel ?? 'No min'}
-            </Text>
-            <Text style={[styles.metaDivider, { color: colors.textSecondary }]}>·</Text>
-            <Text style={[styles.meta, { color: colors.textSecondary }]}>J$150 del.</Text>
           </View>
-
-          {open ? (
-            <Text style={styles.openLabel}>Open now</Text>
-          ) : (
-            <Text style={styles.closedLabel}>Currently closed</Text>
-          )}
         </View>
       </Pressable>
     );
@@ -125,7 +162,13 @@ export const ShopCard = memo(function ShopCard({
         onPress={() => onPress(merchant.id)}
         style={({ pressed }) => [styles.compactCard, pressed && styles.pressed]}
       >
-        <Image source={{ uri: logo }} style={styles.compactLogo} contentFit="cover" />
+        <Image 
+          source={{ uri: logo }} 
+          style={styles.compactLogo} 
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          placeholder={isDark ? '#18181C' : CaseUi.field}
+        />
         <View style={styles.listBody}>
           <Text style={styles.nameSm} numberOfLines={1}>{merchant.restaurantName}</Text>
           <View style={styles.metaRow}>
@@ -162,7 +205,14 @@ export const ShopCard = memo(function ShopCard({
       ]}
     >
       <View style={styles.coverWrap}>
-        <Image source={{ uri: cover }} style={styles.cover} contentFit="cover" transition={200} />
+        <Image 
+          source={{ uri: cover }} 
+          style={styles.cover} 
+          contentFit="cover" 
+          transition={200}
+          cachePolicy="memory-disk"
+          placeholder={isDark ? '#18181C' : CaseUi.field}
+        />
         <LinearGradient
           colors={['transparent', 'rgba(0,0,0,0.68)']}
           locations={[0.4, 1]}
@@ -328,31 +378,141 @@ const styles = StyleSheet.create({
   },
   closedText: { color: CaseUi.danger },
   listCard: {
-    flexDirection: 'row',
-    gap: 14,
-    padding: 12,
-    borderRadius: CaseUi.radius.lg,
+    flexDirection: 'column',
+    borderRadius: 20,
     backgroundColor: CaseUi.white,
     borderWidth: 1,
     borderColor: CaseUi.line,
-    marginBottom: 12,
+    marginBottom: 16,
+    overflow: 'hidden',
+    padding: 0,
     ...CaseUi.cardShadow,
   },
   listImageWrap: {
-    width: 88,
-    height: 88,
-    borderRadius: 16,
-    overflow: 'hidden',
+    width: '100%',
+    height: 160,
     backgroundColor: CaseUi.field,
+    position: 'relative',
   },
   listImage: { width: '100%', height: '100%' },
   listClosedShade: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  listClosedText: { color: '#FFFFFF', fontSize: 10, fontFamily: 'PlusJakartaSans_800ExtraBold', letterSpacing: 0.4 },
+  listClosedText: { color: '#FFFFFF', fontSize: 12, fontFamily: 'PlusJakartaSans_800ExtraBold', letterSpacing: 0.8 },
+  listTopLeftBadge: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+    zIndex: 10,
+  },
+  listTopLeftBadgeText: {
+    color: '#111111',
+    fontSize: 9.5,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+  },
+  listHeartWrap: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 10,
+  },
+  listBodyRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 12,
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  listLogoCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+  },
+  listLogoImg: {
+    width: '100%',
+    height: '100%',
+  },
+  listInfoCol: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  listNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  listNameText: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 15,
+  },
+  listDescText: {
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 12,
+  },
+  listMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  listMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  listMetaText: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 11.5,
+  },
+  listMetaDot: {
+    marginHorizontal: 6,
+    fontSize: 10,
+  },
+  listGreenRatingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#267E3E',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  listGreenRatingText: {
+    color: '#FFFFFF',
+    fontSize: 10.5,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+  },
+  listRatingNewPill: {
+    backgroundColor: '#FFECE2',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  listRatingNewText: {
+    color: CaseUi.orange,
+    fontSize: 9.5,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+  },
+  listEllipsisWrap: {
+    marginLeft: 'auto',
+    paddingLeft: 8,
+  },
   compactCard: {
     flexDirection: 'row',
     gap: 10,

@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { ThemedView } from '@/components/themed-view';
+import { SpellingLoader } from '@/components/spelling-loader';
 import { CaseUi } from '@/constants/caseUi';
 import { useCart } from '@/hooks/use-cart';
 import { toast } from '@/lib/toast';
@@ -223,12 +224,7 @@ export default function CartScreen() {
   };
 
   if (loading && !cart) {
-    return (
-      <ThemedView style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color={CaseUi.orange} />
-        <Text style={styles.loadingText}>Loading your cart...</Text>
-      </ThemedView>
-    );
+    return <SpellingLoader />;
   }
 
   if (!cart || cart.items.length === 0) {

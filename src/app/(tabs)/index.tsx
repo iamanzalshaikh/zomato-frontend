@@ -28,6 +28,7 @@ import { useThemeContext } from '@/context/ThemeContext';
 import { PressableScale } from '@/components/pressable-scale';
 import { FloatingCartBar } from '@/components/floating-cart-bar';
 import { ShopCard } from '@/components/shop-card';
+import { fetchCaseMerchants } from '@/services/case';
 import { ProductCard, type ProductCardItem } from '@/components/product-card';
 import { HomeSkeleton } from '@/components/skeleton';
 import {
@@ -225,7 +226,7 @@ const styles = StyleSheet.create({
     color: CaseUi.orange,
     fontSize: 14,
   },
-  greetBlock: { paddingHorizontal: PAD, marginTop: 20 },
+  greetBlock: { paddingHorizontal: PAD, marginTop: 12 },
   greetLine: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 28,
@@ -242,6 +243,7 @@ const styles = StyleSheet.create({
   search: {
     marginHorizontal: PAD,
     marginTop: 14,
+    marginBottom: 8,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
@@ -307,7 +309,7 @@ const styles = StyleSheet.create({
   },
   trackCtaText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 11 },
   catSectionContainer: {
-    marginTop: 26,
+    marginTop: 16,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -362,9 +364,9 @@ const styles = StyleSheet.create({
     color: CaseUi.ink,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
   },
-  promoBlock: { marginTop: 18, marginHorizontal: PAD },
+  promoBlock: { marginTop: 16, marginHorizontal: PAD },
   promo: {
-    height: 172,
+    height: 140,
     borderRadius: 24,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
@@ -451,7 +453,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   sectionHead: {
-    marginTop: 28,
+    marginTop: 16,
     marginHorizontal: PAD,
     marginBottom: 12,
     flexDirection: 'row',
@@ -483,7 +485,7 @@ const styles = StyleSheet.create({
   gridCell: { width: '50%', paddingHorizontal: 5 },
   empty: {
     marginHorizontal: PAD,
-    marginTop: 28,
+    marginTop: 16,
     alignItems: 'center',
     paddingVertical: 36,
     paddingHorizontal: 20,
@@ -526,7 +528,7 @@ const styles = StyleSheet.create({
   },
   getAnything: {
     marginHorizontal: PAD,
-    marginTop: 28,
+    marginTop: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -744,12 +746,22 @@ export default function HomeScreen() {
   const user = profileQ.data;
   const bootstrapQ = useCaseBootstrapQuery();
   const allMerchantsQ = useCaseMerchantsQuery(null, { limit: 30 });
+  
+  const [activeCat, setActiveCat] = useState<CaseCategoryId>('ALL');
+  
+  // Fetch category-specific merchants when category changes
+  const categoryMerchantsQ = useCaseMerchantsQuery(
+    activeCat === 'ALL' ? null : activeCat,
+    { limit: 40, enabled: activeCat !== 'ALL' }
+  );
+  
+  // Load all queries immediately for faster initial load
   const ordersQ = useCaseOrdersQuery();
   const unreadCount = useUnreadNotificationCount(true);
   const [refreshing, setRefreshing] = useState(false);
   const [pointName, setPointName] = useState<string | null>(null);
-  const [activeCat, setActiveCat] = useState<CaseCategoryId>('ALL');
   const [promoIndex, setPromoIndex] = useState(0);
+  const [loadMoreProducts, setLoadMoreProducts] = useState(false);
   const promoRef = useRef<ScrollView>(null);
   const promoTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -763,6 +775,13 @@ export default function HomeScreen() {
   useEffect(() => {
     void getSelectedDeliveryPointName().then(setPointName);
   }, [bootstrapQ.dataUpdatedAt]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setLoadMoreProducts(true);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     promoTimer.current = setInterval(() => {
@@ -781,11 +800,16 @@ export default function HomeScreen() {
     pointName ?? bootstrapQ.data?.deliveryPoints?.[0]?.name ?? 'Select delivery point';
   const walletBalance = Number(walletQ.data?.balance ?? walletQ.data?.walletBalance ?? 0);
   const deliveryMins = CASE_DEFAULT_DELIVERY_MINS;
-  const popularShops = useMemo(
-    () => allMerchantsQ.data?.items ?? [],
-    [allMerchantsQ.data?.items],
-  );
-  const loadingHome = allMerchantsQ.isLoading && popularShops.length === 0;
+  const popularShops = useMemo(() => {
+    if (activeCat === 'ALL') {
+      return allMerchantsQ.data?.items ?? [];
+    }
+    return categoryMerchantsQ.data?.items ?? [];
+  }, [activeCat, allMerchantsQ.data?.items, categoryMerchantsQ.data?.items]);
+  
+  const loadingHome = activeCat === 'ALL' 
+    ? (allMerchantsQ.isLoading && popularShops.length === 0)
+    : (categoryMerchantsQ.isLoading && popularShops.length === 0);
 
   const firstName = user?.fullName?.trim()?.split(/\s+/)[0] || 'there';
   const greet = greetingForHour(new Date().getHours());
@@ -818,11 +842,13 @@ export default function HomeScreen() {
   }, [popularShops, activeCat]);
 
   const productMenusQ = useQueries({
-    queries: shopsForProducts.map((m) => ({
+    queries: shopsForProducts.map((m, index) => ({
       queryKey: caseKeys.menu(m.id),
       queryFn: () => fetchCaseMerchantMenu(m.id),
-      enabled: shopsForProducts.length > 0,
-      staleTime: 3 * 60_000,
+      enabled: shopsForProducts.length > 0 && (index < 2 || loadMoreProducts),
+      staleTime: 10 * 60_000, // 10 minutes - menu data changes less frequently
+      gcTime: 30 * 60_000, // 30 minutes
+      placeholderData: (prev: any) => prev,
     })),
   });
 
@@ -875,12 +901,20 @@ export default function HomeScreen() {
   }, [bootstrapQ, allMerchantsQ, walletQ, ordersQ, queryClient]);
 
   const openMerchant = useCallback(
-    (id: string) => router.push(`/restaurant/${id}`),
-    [router],
+    (id: string) => {
+      // Prefetch merchant menu data before navigation
+      queryClient.prefetchQuery({
+        queryKey: caseKeys.menu(id),
+        queryFn: () => fetchCaseMerchantMenu(id),
+      });
+      router.push(`/restaurant/${id}`);
+    },
+    [router, queryClient],
   );
 
   const openCategory = (id: CaseCategoryId) => {
     setActiveCat(id);
+    // No need to prefetch - categoryMerchantsQ will automatically fetch when activeCat changes
   };
 
   const onAddProduct = async (item: ProductCardItem & { restaurantId: string }) => {
@@ -1025,12 +1059,8 @@ export default function HomeScreen() {
             </PressableScale>
           </Animated.View>
 
-          {loadingHome ? (
-            <HomeSkeleton />
-          ) : (
-            <>
-              {/* Categories: Fixed 'ALL' button + Scrollable rest */}
-              <Animated.View entering={FadeIn.delay(60).duration(350)} style={styles.catSectionContainer}>
+          {/* Categories: Fixed 'ALL' button + Scrollable rest */}
+          <Animated.View entering={FadeIn.delay(60).duration(350)} style={styles.catSectionContainer}>
                 <View style={styles.catFixedWrap}>
                   <CategoryTile
                     id="ALL"
@@ -1113,7 +1143,9 @@ export default function HomeScreen() {
                 </ScrollView>
               </Animated.View>
 
-              {popularShops.length === 0 ? (
+              {loadingHome ? (
+                <HomeSkeleton />
+              ) : popularShops.length === 0 ? (
                 <Animated.View
                   entering={FadeInUp.duration(400)}
                   style={[
@@ -1144,7 +1176,7 @@ export default function HomeScreen() {
                   </PressableScale>
                 </Animated.View>
               ) : (
-                <>
+                <View style={{ width: '100%' }}>
                   <SectionHeader
                     title={activeCat === 'ALL' ? 'Popular near you' : CASE_CATEGORY_META[activeCat]?.label || 'Popular near you'}
                     subtitle={activeCat === 'ALL' ? 'Trending across campus right now' : `Best ${CASE_CATEGORY_META[activeCat]?.label?.toLowerCase() || 'items'} near you`}
@@ -1181,7 +1213,7 @@ export default function HomeScreen() {
                   </ScrollView>
 
                   {productsWithRestaurant.length > 0 ? (
-                    <>
+                    <View style={{ width: '100%', marginTop: 24 }}>
                       <SectionHeader
                         title="Explore Products"
                         subtitle="Discover what's popular across campus"
@@ -1213,11 +1245,11 @@ export default function HomeScreen() {
                           </Animated.View>
                         ))}
                       </ScrollView>
-                    </>
+                    </View>
                   ) : null}
 
                   {(activeCat === 'ALL' || activeCat === 'RESTAURANT') && (shopsByType.RESTAURANT?.length ?? 0) > 0 ? (
-                    <>
+                    <View style={{ width: '100%', marginTop: 24 }}>
                       <SectionHeader
                         title="Top-rated restaurants"
                         subtitle="Highest rated by students like you"
@@ -1236,11 +1268,11 @@ export default function HomeScreen() {
                           />
                         ))}
                       </View>
-                    </>
+                    </View>
                   ) : null}
 
                   {(activeCat === 'ALL' || activeCat === 'GROCERY') && (shopsByType.GROCERY?.length ?? 0) > 0 ? (
-                    <>
+                    <View style={{ width: '100%', marginTop: 24 }}>
                       <SectionHeader
                         title="Groceries near you"
                         subtitle="Campus-essential staples"
@@ -1250,11 +1282,11 @@ export default function HomeScreen() {
                       <View style={styles.listPad}>
                         <ShopGrid shops={shopsByType.GROCERY!.slice(0, 6)} onPress={openMerchant} />
                       </View>
-                    </>
+                    </View>
                   ) : null}
 
                   {(activeCat === 'ALL' || activeCat === 'PHARMACY') && (shopsByType.PHARMACY?.length ?? 0) > 0 ? (
-                    <>
+                    <View style={{ width: '100%', marginTop: 24 }}>
                       <SectionHeader
                         title="Pharmacy essentials"
                         subtitle="Health & wellness, delivered"
@@ -1264,11 +1296,11 @@ export default function HomeScreen() {
                       <View style={styles.listPad}>
                         <ShopGrid shops={shopsByType.PHARMACY!.slice(0, 6)} onPress={openMerchant} />
                       </View>
-                    </>
+                    </View>
                   ) : null}
 
                   {(activeCat === 'ALL' || activeCat === 'STORE') && (shopsByType.STORE?.length ?? 0) > 0 ? (
-                    <>
+                    <View style={{ width: '100%', marginTop: 24 }}>
                       <SectionHeader
                         title="Campus stores"
                         subtitle="Stationery, tech & more"
@@ -1278,9 +1310,9 @@ export default function HomeScreen() {
                       <View style={styles.listPad}>
                         <ShopGrid shops={shopsByType.STORE!.slice(0, 6)} onPress={openMerchant} />
                       </View>
-                    </>
+                    </View>
                   ) : null}
-                </>
+                </View>
               )}
 
               <Animated.View entering={FadeInUp.delay(140).duration(400)}>
@@ -1306,8 +1338,6 @@ export default function HomeScreen() {
                   </View>
                 </PressableScale>
               </Animated.View>
-            </>
-          )}
         </ScrollView>
 
         <FloatingCartBar

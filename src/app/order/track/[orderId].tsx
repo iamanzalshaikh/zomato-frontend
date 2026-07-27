@@ -44,24 +44,24 @@ const STATUS_STEPS = [
 
 const STEP_LABELS: Record<string, string> = {
   PENDING: 'Order Placed',
-  CONFIRMED: 'Restaurant Accepted',
-  PREPARING: 'Food is being Prepared',
+  CONFIRMED: 'Shop Accepted',
+  PREPARING: 'Order is being Prepared',
   READY_FOR_PICKUP: 'Ready for Pickup',
-  RIDER_ASSIGNED: 'Delivery Partner Assigned',
+  RIDER_ASSIGNED: 'Campus Rider Assigned',
   PICKED_UP: 'Order Picked Up',
-  ON_THE_WAY: 'Out for Delivery',
+  ON_THE_WAY: 'Heading to Delivery Point',
   DELIVERED: 'Order Delivered',
 };
 
 const STEP_DESCRIPTIONS: Record<string, string> = {
-  PENDING: 'Waiting for the restaurant to accept your order',
-  CONFIRMED: 'Restaurant accepted — your food will be prepared soon',
-  PREPARING: 'Chef is cooking your delicious meal',
-  READY_FOR_PICKUP: 'Rider is about to pick up your food',
-  RIDER_ASSIGNED: 'Partner is arriving at the restaurant',
+  PENDING: 'Waiting for the shop to accept your order',
+  CONFIRMED: 'Shop accepted — your order will be prepared soon',
+  PREPARING: 'Your items are being prepared & packed',
+  READY_FOR_PICKUP: 'Rider is about to pick up your order',
+  RIDER_ASSIGNED: 'Partner is arriving at the shop',
   PICKED_UP: 'Partner is on the way to you',
-  ON_THE_WAY: 'Partner is nearby, keep your phone handy',
-  DELIVERED: 'Hope you enjoy your meal!',
+  ON_THE_WAY: 'Partner is heading to your Campus Delivery Point',
+  DELIVERED: 'Hope you enjoy your order!',
 };
 
 function LivePulse({ color }: { color: string }) {
@@ -116,7 +116,7 @@ export default function TrackOrderScreen() {
   const etaText = useMemo(() => {
     if (status === 'DELIVERED') return 'Delivered';
     if (status === 'CANCELLED') return 'Cancelled';
-    if (status === 'PENDING') return 'Awaiting restaurant';
+    if (status === 'PENDING') return 'Awaiting shop';
     const prepMins = tracking?.estimatedPreparationTime ?? order?.estimatedPreparationTime;
     if ((status === 'CONFIRMED' || status === 'PREPARING') && prepMins) {
       return `~${prepMins} min prep`;
@@ -260,7 +260,7 @@ export default function TrackOrderScreen() {
                 {(status === 'CONFIRMED' || status === 'PREPARING') &&
                 (tracking?.estimatedPreparationTime ?? order?.estimatedPreparationTime) ? (
                   <Text style={styles.waitTimeText}>
-                    Restaurant prep time: {tracking?.estimatedPreparationTime ?? order?.estimatedPreparationTime} minutes
+                    Shop prep time: {tracking?.estimatedPreparationTime ?? order?.estimatedPreparationTime} minutes
                   </Text>
                 ) : null}
 

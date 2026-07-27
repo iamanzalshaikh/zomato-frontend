@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Dimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -48,42 +49,97 @@ type ProductRow = {
   attributes?: MenuItemAttributes | null;
   deliveryMins?: number;
   discountPct?: number;
+  categoryName?: string;
 };
 
-const PROMO: Record<
+const SCREEN_W = Dimensions.get('window').width;
+
+const CAROUSEL_SLIDES: Record<
   string,
-  { title: string; sub: string; colors: [string, string]; image: string }
+  Array<{ title: string; sub: string; colors: [string, string]; image: string }>
 > = {
-  ALL: {
-    title: 'Campus favourites',
-    sub: 'Everything, one place, delivered fast',
-    colors: ['#E8F8EE', '#D4F0DE'],
-    image: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=400&auto=format&fit=crop&q=80',
-  },
-  RESTAURANT: {
-    title: 'Hungry?',
-    sub: 'Order from campus kitchens near you',
-    colors: ['#E8F8EE', '#C8EED6'],
-    image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&auto=format&fit=crop&q=80',
-  },
-  PHARMACY: {
-    title: 'Feeling under the weather?',
-    sub: 'Trusted campus pharmacies, delivered',
-    colors: ['#F0E8FF', '#E0D4FF'],
-    image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&auto=format&fit=crop&q=80',
-  },
-  GROCERY: {
-    title: 'Fresh groceries',
-    sub: 'Straight to your door',
-    colors: ['#E8F8EE', '#D4F0DE'],
-    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&auto=format&fit=crop&q=80',
-  },
-  STORE: {
-    title: 'Everything you need',
-    sub: 'Campus stores delivered',
-    colors: ['#E8F0FF', '#D4E0FF'],
-    image: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400&auto=format&fit=crop&q=80',
-  },
+  ALL: [
+    {
+      title: 'Campus Favourites',
+      sub: 'Everything, one place, delivered fast',
+      colors: ['#E8F8EE', '#D4F0DE'],
+      image: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=400&auto=format&fit=crop&q=80',
+    },
+    {
+      title: 'Quick Campus Delivery',
+      sub: 'Dorm-to-dorm drops in 20 minutes',
+      colors: ['#FFF1E8', '#FFE4D6'],
+      image: 'https://images.unsplash.com/photo-1580901369227-31df36d2994f?w=400',
+    },
+  ],
+  RESTAURANT: [
+    {
+      title: 'Hungry?',
+      sub: 'Order from campus kitchens near you',
+      colors: ['#E8F8EE', '#C8EED6'],
+      image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&auto=format&fit=crop&q=80',
+    },
+    {
+      title: 'Late Night Craving?',
+      sub: 'Get pizza & burgers delivered until 2 AM',
+      colors: ['#FFEBEB', '#FFD2D2'],
+      image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400',
+    },
+    {
+      title: 'Student Discounts',
+      sub: 'Enjoy up to 25% off selected partner menus',
+      colors: ['#EAE5FF', '#D8CFFF'],
+      image: 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=400',
+    },
+  ],
+  PHARMACY: [
+    {
+      title: 'Feeling under the weather?',
+      sub: 'Trusted campus pharmacies, delivered',
+      colors: ['#F0E8FF', '#E0D4FF'],
+      image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&auto=format&fit=crop&q=80',
+    },
+    {
+      title: 'Daily Wellness & Rx',
+      sub: 'Vitamins, supplements & first-aid essentials',
+      colors: ['#E8F8EE', '#D4F0DE'],
+      image: 'https://images.unsplash.com/photo-1587854692152-cf660f4c54a8?w=400',
+    },
+    {
+      title: 'First-Aid Needs',
+      sub: 'Bandages, antiseptics & pain relief delivered',
+      colors: ['#E3F2FD', '#BBDEFB'],
+      image: 'https://images.unsplash.com/photo-1603398938378-e54eab446dde?w=400',
+    },
+  ],
+  GROCERY: [
+    {
+      title: 'Fresh Groceries',
+      sub: 'Straight to your door',
+      colors: ['#E8F8EE', '#D4F0DE'],
+      image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&auto=format&fit=crop&q=80',
+    },
+    {
+      title: 'Snacks & Dorm Staples',
+      sub: 'Chilled drinks, chips & convenience items',
+      colors: ['#FFF8E1', '#FFECB3'],
+      image: 'https://images.unsplash.com/photo-1599490659213-e2b9527bd087?w=400',
+    },
+  ],
+  STORE: [
+    {
+      title: 'Everything You Need',
+      sub: 'Campus stores delivered',
+      colors: ['#E8F0FF', '#D4E0FF'],
+      image: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400&auto=format&fit=crop&q=80',
+    },
+    {
+      title: 'Academic & Tech Gear',
+      sub: 'Pens, notebooks, cables & chargers',
+      colors: ['#F3E5F5', '#E1BEE7'],
+      image: 'https://images.unsplash.com/photo-1452860606245-08befc0ff44b?w=400',
+    },
+  ],
 };
 
 const PHARMACY_SUBS = [
@@ -126,6 +182,72 @@ const PRODUCT_RIBBON: Partial<Record<CaseCategoryId, { name: string; image: stri
   STORE: STORE_SUBS,
 };
 
+function PromoCarousel({ category }: { category: CaseCategoryId }) {
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
+  const slides = useMemo(() => {
+    return CAROUSEL_SLIDES[category] ?? CAROUSEL_SLIDES.ALL;
+  }, [category]);
+
+  const [activeIndex, setActiveIndex] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (slides.length <= 1) return;
+    const interval = setInterval(() => {
+      setActiveIndex((prev) => {
+        const next = (prev + 1) % slides.length;
+        scrollRef.current?.scrollTo({ x: next * (SCREEN_W - 28), animated: true });
+        return next;
+      });
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [slides.length]);
+
+  return (
+    <View style={styles.carouselContainer}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={(e) => {
+          const index = Math.round(e.nativeEvent.contentOffset.x / (SCREEN_W - 28));
+          setActiveIndex(index);
+        }}
+        contentContainerStyle={{ gap: 0 }}
+      >
+        {slides.map((slide, idx) => (
+          <View key={idx} style={[styles.slideCard, { backgroundColor: isDark ? '#221F2A' : slide.colors[0], width: SCREEN_W - 28 }]}>
+            <LinearGradient colors={isDark ? ['#1B1B1F', '#24242A'] : slide.colors} style={styles.slideGradient}>
+              <View style={styles.slideTextCol}>
+                <Text style={[styles.slideTitle, { color: colors.text }]} numberOfLines={2}>{slide.title}</Text>
+                <Text style={[styles.slideSub, { color: colors.textSecondary }]} numberOfLines={2}>{slide.sub}</Text>
+              </View>
+              <Image source={{ uri: slide.image }} style={styles.slideImg} contentFit="cover" />
+            </LinearGradient>
+          </View>
+        ))}
+      </ScrollView>
+      {slides.length > 1 ? (
+        <View style={styles.carouselDots}>
+          {slides.map((_, idx) => (
+            <View
+              key={idx}
+              style={[
+                styles.carouselDot,
+                idx === activeIndex
+                  ? { backgroundColor: CaseUi.orange, width: 14 }
+                  : { backgroundColor: isDark ? '#3A3A3C' : '#E5E5EA', width: 6 }
+              ]}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 const LIST_FILTERS = ['Filter', 'Sort', 'Fastest', 'Offers'] as const;
 
 export default function CategoryListingScreen() {
@@ -141,6 +263,7 @@ export default function CategoryListingScreen() {
   const [viewAllShops, setViewAllShops] = useState(false);
   const [listFilter, setListFilter] = useState<(typeof LIST_FILTERS)[number]>('Filter');
   const [productChip, setProductChip] = useState<string | null>(null);
+  const [loadMoreProducts, setLoadMoreProducts] = useState(false);
 
   useEffect(() => {
     if (!raw) return;
@@ -154,8 +277,15 @@ export default function CategoryListingScreen() {
     setProductChip(null);
   }, [raw, router]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setLoadMoreProducts(true);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, []);
+
   const meta = CASE_CATEGORY_META[active] ?? CASE_CATEGORY_META.ALL;
-  const promo = PROMO[active] ?? PROMO.ALL;
+  const slides = CAROUSEL_SLIDES[active] ?? CAROUSEL_SLIDES.ALL;
   const queryType = active === 'ALL' ? null : active;
   const merchantsQ = useCaseMerchantsQuery(queryType, { limit: 80 });
   const shopsRaw = merchantsQ.data?.items ?? [];
@@ -187,10 +317,10 @@ export default function CategoryListingScreen() {
             : 'All Shops';
 
   const menusQ = useQueries({
-    queries: shops.slice(0, 8).map((m) => ({
+    queries: shops.slice(0, 8).map((m, index) => ({
       queryKey: caseKeys.menu(m.id),
       queryFn: () => fetchCaseMerchantMenu(m.id),
-      enabled: shops.length > 0 && !viewAllShops,
+      enabled: shops.length > 0 && !viewAllShops && (index < 3 || loadMoreProducts),
       staleTime: 3 * 60_000,
     })),
   });
@@ -206,6 +336,10 @@ export default function CategoryListingScreen() {
         const original = it.discountedPrice ? it.price : null;
         const pct =
           original && original > price ? Math.round(((original - price) / original) * 100) : undefined;
+        
+        const catObj = menu.categories?.find((c) => c.id === it.categoryId);
+        const categoryName = catObj?.name ?? '';
+
         out.push({
           id: it.id,
           restaurantId: merchant.id,
@@ -219,11 +353,31 @@ export default function CategoryListingScreen() {
           attributes: (it as { attributes?: MenuItemAttributes }).attributes ?? null,
           deliveryMins: merchant.averageDeliveryTime,
           discountPct: pct && pct > 0 ? pct : undefined,
+          categoryName,
         });
       });
     });
     return out;
   }, [menusQ, shops, active]);
+
+  const filteredProducts = useMemo(() => {
+    if (!productChip) return products;
+    const lowerChip = productChip.toLowerCase();
+    return products.filter((p) => {
+      const matchCat = p.categoryName?.toLowerCase().includes(lowerChip);
+      const matchName = p.name.toLowerCase().includes(lowerChip);
+      return matchCat || matchName;
+    });
+  }, [products, productChip]);
+
+  const filteredShops = useMemo(() => {
+    if (!productChip) return shops;
+    const lowerChip = productChip.toLowerCase();
+    const activeShopIds = new Set(
+      filteredProducts.map((p) => p.restaurantId)
+    );
+    return shops.filter((m) => activeShopIds.has(m.id));
+  }, [shops, filteredProducts]);
 
   const aisleTiles = useMemo(() => {
     const map = new Map<string, string | null>();
@@ -289,14 +443,18 @@ export default function CategoryListingScreen() {
   const freeDeliveryGap = Math.max(0, 500 - cartTotal);
 
   const openProductChip = (name: string) => {
-    setProductChip(name);
-    const shop = shops[0];
-    if (shop) {
-      router.push({
-        pathname: '/store-category',
-        params: { restaurantId: shop.id, category: name },
-      });
+    if (productChip === name) {
+      setProductChip(null);
+    } else {
+      setProductChip(name);
     }
+  };
+
+  const openProductDetail = (p: ProductRow) => {
+    router.push({
+      pathname: '/product-detail',
+      params: { restaurantId: p.restaurantId, itemId: p.id },
+    });
   };
 
   const onBack = () => {
@@ -306,6 +464,8 @@ export default function CategoryListingScreen() {
     }
     router.back();
   };
+
+  const isMenusLoading = menusQ.some((mq) => mq.isLoading && !mq.data);
 
   return (
     <ThemedView style={[styles.root, { backgroundColor: colors.background }]}>
@@ -353,6 +513,7 @@ export default function CategoryListingScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.ribbon}
+            style={{ flexGrow: 0, height: 104 }}
           >
             {CASE_HOME_CATEGORY_ROW.map((id) => {
               const m = CASE_CATEGORY_META[id];
@@ -378,6 +539,7 @@ export default function CategoryListingScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.ribbon}
+            style={{ flexGrow: 0, height: 104 }}
           >
             {productRibbon.map((chip) => {
               const on = productChip === chip.name;
@@ -387,10 +549,10 @@ export default function CategoryListingScreen() {
                   style={styles.ribItem}
                   onPress={() => openProductChip(chip.name)}
                 >
-                  <View style={[styles.ribTile, on && styles.ribTileOn]}>
+                  <View style={[styles.ribTile, on && styles.ribTileOn, { borderRadius: 12 }]}>
                     <Image source={{ uri: chip.image }} style={styles.ribImg} contentFit="cover" />
                   </View>
-                  <Text style={[styles.ribLabel, on && styles.ribLabelOn]} numberOfLines={1}>
+                  <Text style={[styles.ribLabel, on && styles.ribLabelOn]} numberOfLines={2}>
                     {chip.name}
                   </Text>
                 </Pressable>
@@ -443,9 +605,9 @@ export default function CategoryListingScreen() {
                 }}
               >
                 <Text style={styles.listCount}>
-                  {shops.length} {active === 'PHARMACY' ? 'pharmacies' : 'shops'} near you
+                  {filteredShops.length} {active === 'PHARMACY' ? 'pharmacies' : 'shops'} near you
                 </Text>
-                {shops.map((m, i) => (
+                {filteredShops.map((m, i) => (
                   <ShopCard
                     key={m.id}
                     merchant={m}
@@ -454,7 +616,7 @@ export default function CategoryListingScreen() {
                     onPress={(id) => router.push(`/restaurant/${id}`)}
                   />
                 ))}
-                {shops.length === 0 ? (
+                {filteredShops.length === 0 ? (
                   <View style={styles.emptyBox}>
                     <Ionicons name="storefront-outline" size={36} color={CaseUi.muted} />
                     <Text style={styles.emptyTitle}>No shops yet</Text>
@@ -470,16 +632,8 @@ export default function CategoryListingScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: scrollBottomPadding }}
           >
-            {/* Pastel promo */}
-            <Animated.View entering={FadeInDown.duration(320)} style={styles.promoWrap}>
-              <LinearGradient colors={promo.colors} style={styles.promo}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.promoTitle}>{promo.title}</Text>
-                  <Text style={styles.promoSub}>{promo.sub}</Text>
-                </View>
-                <Image source={{ uri: promo.image }} style={styles.promoImg} contentFit="cover" />
-              </LinearGradient>
-            </Animated.View>
+            {/* Working Promo Carousel */}
+            <PromoCarousel category={active} />
 
             {/* ——— ALL ——— */}
             {active === 'ALL' ? (
@@ -490,7 +644,7 @@ export default function CategoryListingScreen() {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.hPad}
                 >
-                  {shops.slice(0, 12).map((m, i) => (
+                  {filteredShops.slice(0, 12).map((m, i) => (
                     <ShopCard
                       key={m.id}
                       merchant={m}
@@ -502,29 +656,33 @@ export default function CategoryListingScreen() {
                 </ScrollView>
 
                 <Section title="Popular near you" onSeeAll={() => router.push('/search')} />
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.hPad}
-                >
-                  {products.slice(0, 12).map((p, i) => (
-                    <Animated.View
-                      key={`${p.restaurantId}-${p.id}`}
-                      entering={FadeInRight.delay(i * 25).duration(280)}
-                    >
-                      <ProductCard
-                        item={p}
-                        width={124}
-                        onPress={() => router.push(`/restaurant/${p.restaurantId}`)}
-                        onAdd={() => onAdd(p)}
-                      />
-                    </Animated.View>
-                  ))}
-                </ScrollView>
+                {isMenusLoading && filteredProducts.length === 0 ? (
+                  <ProductSkeletonRow />
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.hPad}
+                  >
+                    {filteredProducts.slice(0, 12).map((p, i) => (
+                      <Animated.View
+                        key={`${p.restaurantId}-${p.id}`}
+                        entering={FadeInRight.delay(i * 25).duration(280)}
+                      >
+                        <ProductCard
+                          item={p}
+                          width={124}
+                          onPress={() => openProductDetail(p)}
+                          onAdd={() => onAdd(p)}
+                        />
+                      </Animated.View>
+                    ))}
+                  </ScrollView>
+                )}
 
                 <Section title="More to explore" />
                 <View style={styles.listPad}>
-                  {shops.slice(0, 8).map((m, i) => (
+                  {filteredShops.slice(0, 8).map((m, i) => (
                     <ShopCard
                       key={`more-${m.id}`}
                       merchant={m}
@@ -545,7 +703,7 @@ export default function CategoryListingScreen() {
                   onSeeAll={() => setViewAllShops(true)}
                 />
                 <View style={styles.listPad}>
-                  {shops.slice(0, 5).map((m, i) => (
+                  {filteredShops.slice(0, 5).map((m, i) => (
                     <ShopCard
                       key={m.id}
                       merchant={m}
@@ -554,42 +712,46 @@ export default function CategoryListingScreen() {
                       onPress={(id) => router.push(`/restaurant/${id}`)}
                     />
                   ))}
-                  {shops.length > 5 ? (
+                  {filteredShops.length > 5 ? (
                     <Pressable style={styles.seeAllBtn} onPress={() => setViewAllShops(true)}>
                       <Text style={styles.seeAllBtnText}>
-                        View all {shops.length} restaurants
+                        View all {filteredShops.length} restaurants
                       </Text>
                       <Ionicons name="chevron-forward" size={16} color={CaseUi.orange} />
                     </Pressable>
                   ) : null}
                 </View>
                 <Section title="Popular Dishes" onSeeAll={() => router.push('/search')} />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hPad}>
-                  {products.slice(0, 12).map((p) => (
-                    <Pressable
-                      key={`${p.restaurantId}-${p.id}`}
-                      style={styles.dishCard}
-                      onPress={() => router.push(`/restaurant/${p.restaurantId}`)}
-                    >
-                      <Image
-                        source={{
-                          uri:
-                            p.image ||
-                            'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200',
-                        }}
-                        style={styles.dishImg}
-                        contentFit="cover"
-                      />
-                      <Text style={styles.dishName} numberOfLines={1}>
-                        {p.name}
-                      </Text>
-                      <Text style={styles.dishStore} numberOfLines={1}>
-                        {p.storeName}
-                      </Text>
-                      <Text style={styles.dishPrice}>J${Math.round(p.price)}</Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
+                {isMenusLoading && filteredProducts.length === 0 ? (
+                  <ProductSkeletonRow />
+                ) : (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hPad}>
+                    {filteredProducts.slice(0, 12).map((p) => (
+                      <Pressable
+                        key={`${p.restaurantId}-${p.id}`}
+                        style={styles.dishCard}
+                        onPress={() => openProductDetail(p)}
+                      >
+                        <Image
+                          source={{
+                            uri:
+                              p.image ||
+                              'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200',
+                          }}
+                          style={styles.dishImg}
+                          contentFit="cover"
+                        />
+                        <Text style={styles.dishName} numberOfLines={1}>
+                          {p.name}
+                        </Text>
+                        <Text style={styles.dishStore} numberOfLines={1}>
+                          {p.storeName}
+                        </Text>
+                        <Text style={styles.dishPrice}>J${Math.round(p.price)}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                )}
               </>
             ) : null}
 
@@ -597,21 +759,25 @@ export default function CategoryListingScreen() {
             {active === 'PHARMACY' ? (
               <>
                 <Section title="Popular products" onSeeAll={() => router.push('/search')} />
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.hPad}
-                >
-                  {products.slice(0, 10).map((p) => (
-                    <ProductCard
-                      key={`${p.restaurantId}-${p.id}`}
-                      item={p}
-                      width={124}
-                      onPress={() => router.push(`/restaurant/${p.restaurantId}`)}
-                      onAdd={() => onAdd(p)}
-                    />
-                  ))}
-                </ScrollView>
+                {isMenusLoading && filteredProducts.length === 0 ? (
+                  <ProductSkeletonRow />
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.hPad}
+                  >
+                    {filteredProducts.slice(0, 10).map((p) => (
+                      <ProductCard
+                        key={`${p.restaurantId}-${p.id}`}
+                        item={p}
+                        width={124}
+                        onPress={() => openProductDetail(p)}
+                        onAdd={() => onAdd(p)}
+                      />
+                    ))}
+                  </ScrollView>
+                )}
 
                 <Section
                   title="Shop by Pharmacy"
@@ -619,7 +785,7 @@ export default function CategoryListingScreen() {
                   seeAllLabel="See all"
                 />
                 <View style={styles.listPad}>
-                  {shops.slice(0, 5).map((m, i) => (
+                  {filteredShops.slice(0, 5).map((m, i) => (
                     <ShopCard
                       key={m.id}
                       merchant={m}
@@ -628,10 +794,10 @@ export default function CategoryListingScreen() {
                       onPress={(id) => router.push(`/restaurant/${id}`)}
                     />
                   ))}
-                  {shops.length > 5 ? (
+                  {filteredShops.length > 5 ? (
                     <Pressable style={styles.seeAllBtn} onPress={() => setViewAllShops(true)}>
                       <Text style={styles.seeAllBtnText}>
-                        View all {shops.length} pharmacies
+                        View all {filteredShops.length} pharmacies
                       </Text>
                       <Ionicons name="chevron-forward" size={16} color={CaseUi.orange} />
                     </Pressable>
@@ -644,25 +810,29 @@ export default function CategoryListingScreen() {
             {active === 'GROCERY' ? (
               <>
                 <Section title="Popular products" onSeeAll={() => router.push('/search')} />
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.hPad}
-                >
-                  {products.slice(0, 10).map((p) => (
-                    <ProductCard
-                      key={`${p.restaurantId}-${p.id}`}
-                      item={p}
-                      width={124}
-                      onPress={() => router.push(`/restaurant/${p.restaurantId}`)}
-                      onAdd={() => onAdd(p)}
-                    />
-                  ))}
-                </ScrollView>
+                {isMenusLoading && filteredProducts.length === 0 ? (
+                  <ProductSkeletonRow />
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.hPad}
+                  >
+                    {filteredProducts.slice(0, 10).map((p) => (
+                      <ProductCard
+                        key={`${p.restaurantId}-${p.id}`}
+                        item={p}
+                        width={124}
+                        onPress={() => openProductDetail(p)}
+                        onAdd={() => onAdd(p)}
+                      />
+                    ))}
+                  </ScrollView>
+                )}
 
                 <Section title="Shop by Grocery" onSeeAll={() => setViewAllShops(true)} />
                 <View style={styles.listPad}>
-                  {shops.slice(0, 5).map((m, i) => (
+                  {filteredShops.slice(0, 5).map((m, i) => (
                     <ShopCard
                       key={m.id}
                       merchant={m}
@@ -671,10 +841,10 @@ export default function CategoryListingScreen() {
                       onPress={(id) => router.push(`/restaurant/${id}`)}
                     />
                   ))}
-                  {shops.length > 5 ? (
+                  {filteredShops.length > 5 ? (
                     <Pressable style={styles.seeAllBtn} onPress={() => setViewAllShops(true)}>
                       <Text style={styles.seeAllBtnText}>
-                        View all {shops.length} grocery shops
+                        View all {filteredShops.length} grocery shops
                       </Text>
                       <Ionicons name="chevron-forward" size={16} color={CaseUi.orange} />
                     </Pressable>
@@ -688,7 +858,7 @@ export default function CategoryListingScreen() {
               <>
                 <Section title="Top Stores" onSeeAll={() => setViewAllShops(true)} />
                 <View style={styles.listPad}>
-                  {shops.slice(0, 5).map((m, i) => (
+                  {filteredShops.slice(0, 5).map((m, i) => (
                     <ShopCard
                       key={m.id}
                       merchant={m}
@@ -697,9 +867,9 @@ export default function CategoryListingScreen() {
                       onPress={(id) => router.push(`/restaurant/${id}`)}
                     />
                   ))}
-                  {shops.length > 5 ? (
+                  {filteredShops.length > 5 ? (
                     <Pressable style={styles.seeAllBtn} onPress={() => setViewAllShops(true)}>
-                      <Text style={styles.seeAllBtnText}>View all {shops.length} stores</Text>
+                      <Text style={styles.seeAllBtnText}>View all {filteredShops.length} stores</Text>
                       <Ionicons name="chevron-forward" size={16} color={CaseUi.orange} />
                     </Pressable>
                   ) : null}
@@ -711,7 +881,7 @@ export default function CategoryListingScreen() {
                       key={tile.name}
                       style={styles.circleCat}
                       onPress={() => {
-                        const shop = shops[i % Math.max(shops.length, 1)];
+                        const shop = filteredShops[i % Math.max(filteredShops.length, 1)];
                         if (shop) {
                           router.push({
                             pathname: '/store-category',
@@ -728,21 +898,25 @@ export default function CategoryListingScreen() {
                   ))}
                 </ScrollView>
                 <Section title="Popular products" />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hPad}>
-                  {products.slice(0, 10).map((p) => (
-                    <ProductCard
-                      key={`${p.restaurantId}-${p.id}`}
-                      item={p}
-                      width={124}
-                      onPress={() => router.push(`/restaurant/${p.restaurantId}`)}
-                      onAdd={() => onAdd(p)}
-                    />
-                  ))}
-                </ScrollView>
+                {isMenusLoading && filteredProducts.length === 0 ? (
+                  <ProductSkeletonRow />
+                ) : (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hPad}>
+                    {filteredProducts.slice(0, 10).map((p) => (
+                      <ProductCard
+                        key={`${p.restaurantId}-${p.id}`}
+                        item={p}
+                        width={124}
+                        onPress={() => openProductDetail(p)}
+                        onAdd={() => onAdd(p)}
+                      />
+                    ))}
+                  </ScrollView>
+                )}
               </>
             ) : null}
 
-            {shops.length === 0 && !merchantsQ.isLoading ? (
+            {filteredShops.length === 0 && !merchantsQ.isLoading ? (
               <View style={styles.emptyBox}>
                 <Ionicons name="storefront-outline" size={36} color={CaseUi.muted} />
                 <Text style={styles.emptyTitle}>Nothing here yet</Text>
@@ -766,6 +940,21 @@ export default function CategoryListingScreen() {
         bottom={cartBottom}
       />
     </ThemedView>
+  );
+}
+
+function ProductSkeletonRow() {
+  const { colors } = useThemeContext();
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hPad}>
+      {[1, 2, 3].map((id) => (
+        <View key={id} style={[styles.skeCard, { backgroundColor: colors.border || '#F4F4F5' }]}>
+          <View style={[styles.skeImg, { backgroundColor: colors.inputBg || '#E4E4E7' }]} />
+          <View style={[styles.skeLine, { backgroundColor: colors.inputBg || '#E4E4E7', width: '80%' }]} />
+          <View style={[styles.skeLine, { backgroundColor: colors.inputBg || '#E4E4E7', width: '50%' }]} />
+        </View>
+      ))}
+    </ScrollView>
   );
 }
 
@@ -1064,5 +1253,59 @@ const styles = StyleSheet.create({
     fontFamily: 'PlusJakartaSans_500Medium',
     fontSize: 12,
     color: CaseUi.muted,
+  },
+  skeCard: { width: 124, height: 160, borderRadius: 16, padding: 8, gap: 8 },
+  skeImg: { width: '100%', height: 90, borderRadius: 12 },
+  skeLine: { height: 10, borderRadius: 4 },
+  carouselContainer: {
+    marginHorizontal: 14,
+    marginTop: 10,
+    position: 'relative',
+    height: 110,
+  },
+  slideCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    height: 110,
+  },
+  slideGradient: {
+    ...StyleSheet.absoluteFill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    justifyContent: 'space-between',
+  },
+  slideTextCol: {
+    flex: 1,
+    paddingRight: 10,
+    justifyContent: 'center',
+  },
+  slideTitle: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  slideSub: {
+    marginTop: 4,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    fontSize: 11.5,
+    lineHeight: 15,
+  },
+  slideImg: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+  },
+  carouselDots: {
+    position: 'absolute',
+    bottom: 8,
+    right: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  carouselDot: {
+    height: 6,
+    borderRadius: 3,
   },
 });

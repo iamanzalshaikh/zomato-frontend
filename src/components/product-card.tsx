@@ -73,7 +73,14 @@ export const ProductCard = memo(function ProductCard({
       ]}
     >
       <View style={styles.imageWrap}>
-        <Image source={{ uri: image }} style={styles.image} contentFit="cover" transition={200} />
+        <Image 
+          source={{ uri: image }} 
+          style={styles.image} 
+          contentFit="cover" 
+          transition={200}
+          cachePolicy="memory-disk"
+          placeholder={isDark ? '#18181C' : CaseUi.field}
+        />
         <LinearGradient
           colors={['transparent', 'rgba(0,0,0,0.38)']}
           locations={[0.5, 1]}
