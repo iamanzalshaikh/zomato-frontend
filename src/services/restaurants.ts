@@ -60,4 +60,21 @@ export async function fetchRecommendedRestaurants() {
   return body.data.restaurants;
 }
 
-
+export async function fetchStorePageData(restaurantId: string) {
+  const body = await apiFetch<{
+    success: true;
+    message: string;
+    data: {
+      restaurant: Restaurant;
+      menu: {
+        items: any[];
+        categories: any[];
+      };
+      combos: any[];
+      reviews: any[];
+      coupons: any[];
+      recommendedRestaurants: Restaurant[];
+    };
+  }>(`/restaurants/${restaurantId}/store-page`);
+  return body.data;
+}

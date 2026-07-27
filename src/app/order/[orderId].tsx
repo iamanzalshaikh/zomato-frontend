@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { PressableScale } from '@/components/pressable-scale';
+import { SpellingLoader } from '@/components/spelling-loader';
 import { ErrorState } from '@/components/state-views';
 import { CaseUi } from '@/constants/caseUi';
 import { CASE_CHECKOUT_ENABLED } from '@/config/features';
@@ -170,11 +171,7 @@ export default function OrderDetailScreen() {
   }
 
   if (q.isLoading) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <Text style={styles.mutedText}>Loading order details...</Text>
-      </View>
-    );
+    return <SpellingLoader />;
   }
 
   if (q.isError || !order) {

@@ -11,8 +11,8 @@ export function useNotificationsQuery() {
   const q = useQuery({
     queryKey: notificationKeys.all,
     queryFn: fetchNotifications,
-    staleTime: 60 * 1000,       // 1 minute — fresh enough without hammering API
-    gcTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,       // 30 seconds - notifications need to be fresh
+    gcTime: 5 * 60 * 1000,     // 5 minutes
   });
   perfQuery('Notifications', q.isFetching, q.dataUpdatedAt);
   return q;

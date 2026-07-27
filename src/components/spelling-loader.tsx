@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Dimensions, Image, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown, ZoomIn } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  ZoomIn,
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  withSequence,
+} from 'react-native-reanimated';
 
 import {
   SD_LOGO,
@@ -18,7 +27,12 @@ export function SpellingLoader() {
   const [displayedText, setDisplayedText] = useState('');
   const isDark = activeScheme === 'dark';
 
+  const logoScale = useSharedValue(1);
+  const cursorOpacity = useSharedValue(1);
+  const streakOpacity = useSharedValue(1);
+
   useEffect(() => {
+    // Spelling animation
     let index = 0;
     const interval = setInterval(() => {
       index++;
@@ -28,14 +42,57 @@ export function SpellingLoader() {
       }
     }, 45);
 
+    // Continuous loop animations
+    logoScale.value = withRepeat(
+      withSequence(
+        withTiming(1.08, { duration: 1200 }),
+        withTiming(1.0, { duration: 1200 })
+      ),
+      -1,
+      true
+    );
+
+    cursorOpacity.value = withRepeat(
+      withSequence(
+        withTiming(0, { duration: 450 }),
+        withTiming(1, { duration: 450 })
+      ),
+      -1,
+      true
+    );
+
+    streakOpacity.value = withRepeat(
+      withSequence(
+        withTiming(0.4, { duration: 1000 }),
+        withTiming(1.0, { duration: 1000 })
+      ),
+      -1,
+      true
+    );
+
     return () => clearInterval(interval);
   }, []);
+
+  const animatedLogoStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: logoScale.value }],
+  }));
+
+  const animatedCursorStyle = useAnimatedStyle(() => ({
+    opacity: cursorOpacity.value,
+  }));
+
+  const animatedStreakStyle = useAnimatedStyle(() => ({
+    opacity: streakOpacity.value,
+  }));
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#000000' : '#FFFFFF' }]}>
       <View style={styles.topHeader}>
         {/* SD Services Main Logo */}
-        <Animated.View entering={ZoomIn.duration(450)} style={styles.logoWrap}>
+        <Animated.View
+          entering={ZoomIn.duration(450)}
+          style={[styles.logoWrap, animatedLogoStyle]}
+        >
           <Image
             source={isDark ? SD_LOGO : SD_LOGO_BLACK}
             style={styles.logo}
@@ -44,12 +101,16 @@ export function SpellingLoader() {
         </Animated.View>
 
         {/* Glowing Orange Streak Line */}
-        <Animated.View entering={FadeIn.delay(120).duration(400)} style={styles.glowStreak} />
+        <Animated.View
+          entering={FadeIn.delay(120).duration(400)}
+          style={[styles.glowStreak, animatedStreakStyle]}
+        />
 
         {/* Animated Spelling Text */}
         <Animated.View entering={FadeInDown.delay(180).duration(400)} style={styles.textWrap}>
           <Text style={[styles.title, { color: isDark ? '#FFFFFF' : '#111111' }]}>
-            {displayedText}<Text style={styles.cursor}>|</Text>
+            {displayedText}
+            <Animated.Text style={[styles.cursor, animatedCursorStyle]}>|</Animated.Text>
           </Text>
           <Text style={[styles.tagline, { color: isDark ? '#A0A0A0' : '#666666' }]}>
             Delivered with Care

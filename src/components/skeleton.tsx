@@ -77,22 +77,41 @@ export const SkeletonBlock = memo(function SkeletonBlock({
 export function StoreDetailSkeleton() {
   return (
     <View style={styles.storeWrap}>
-      <SkeletonBlock width="100%" height={180} radius={0} />
+      {/* 40% Hero placeholder */}
+      <SkeletonBlock width="100%" height={320} radius={0} />
       <View style={styles.pad}>
-        <SkeletonBlock width="55%" height={24} />
+        {/* Title */}
+        <SkeletonBlock width="65%" height={24} />
+        {/* Rating and Info */}
         <View style={styles.row}>
-          <SkeletonBlock width={80} height={14} />
-          <SkeletonBlock width={70} height={14} />
+          <SkeletonBlock width={100} height={16} />
+          <SkeletonBlock width={80} height={16} />
         </View>
-        <SkeletonBlock width={64} height={22} radius={999} style={{ marginTop: 10 }} />
-        <SkeletonBlock width="100%" height={48} radius={14} style={{ marginTop: 16 }} />
-        <SkeletonBlock width="40%" height={18} style={{ marginTop: 22 }} />
-        {[0, 1, 2, 3].map((i) => (
-          <View key={i} style={styles.catRow}>
-            <SkeletonBlock width={48} height={48} radius={24} />
-            <View style={{ flex: 1, gap: 6 }}>
-              <SkeletonBlock width="50%" height={14} />
-              <SkeletonBlock width="30%" height={12} />
+        {/* Highlights Row */}
+        <View style={styles.row}>
+          <SkeletonBlock width={80} height={26} radius={999} />
+          <SkeletonBlock width={90} height={26} radius={999} />
+          <SkeletonBlock width={85} height={26} radius={999} />
+        </View>
+        {/* Offer cards row */}
+        <View style={styles.row}>
+          <SkeletonBlock width={180} height={80} radius={16} />
+          <SkeletonBlock width={180} height={80} radius={16} />
+        </View>
+        {/* Category ribbon placeholder */}
+        <View style={[styles.row, { marginVertical: 12 }]}>
+          {[0, 1, 2, 3].map((i) => (
+            <SkeletonBlock key={i} width={72} height={80} radius={16} />
+          ))}
+        </View>
+        {/* Menu item cards */}
+        {[0, 1, 2].map((i) => (
+          <View key={i} style={{ flexDirection: 'row', gap: 12, marginVertical: 8, padding: 8 }}>
+            <SkeletonBlock width={90} height={90} radius={14} />
+            <View style={{ flex: 1, gap: 8 }}>
+              <SkeletonBlock width="80%" height={16} />
+              <SkeletonBlock width="50%" height={12} />
+              <SkeletonBlock width="30%" height={14} />
             </View>
           </View>
         ))}
@@ -127,19 +146,6 @@ export function HomeSkeleton() {
   const { colors } = useThemeContext();
   return (
     <View style={[styles.homePad, { backgroundColor: 'transparent' }]}>
-      {/* Category tiles */}
-      <View style={[styles.row, { marginTop: 14, justifyContent: 'space-between' }]}>
-        {[0, 1, 2, 3, 4].map((i) => (
-          <View key={i} style={{ alignItems: 'center', gap: 6 }}>
-            <SkeletonBlock width={60} height={60} radius={22} />
-            <SkeletonBlock width={44} height={10} radius={4} />
-          </View>
-        ))}
-      </View>
-
-      {/* Banner promo card */}
-      <SkeletonBlock width="100%" height={160} radius={24} style={{ marginTop: 20 }} />
-
       {/* Section title */}
       <SkeletonBlock width="45%" height={18} style={{ marginTop: 24 }} />
 

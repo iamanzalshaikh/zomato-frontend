@@ -9,6 +9,8 @@ import {
   ScrollView,
   Alert,
   Platform,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -185,6 +187,7 @@ export default function SearchScreen() {
   const [vegOnly, setVegOnly] = useState(false);
   const [topRated, setTopRated] = useState(false);
   const [hasOffers, setHasOffers] = useState(false);
+  const [showFilterModal, setShowFilterModal] = useState(false);
 
   const loadRecentSearches = useCallback(async () => {
     try {
@@ -382,12 +385,94 @@ export default function SearchScreen() {
                 <Ionicons name="close-circle" size={18} color={CaseUi.muted} />
               </PressableScale>
             ) : (
-              <PressableScale onPress={() => toast.info('Listening feature coming soon!', 'Voice search')} style={styles.iconPadding} hitSlop={6}>
-                <Ionicons name="mic-outline" size={18} color={CaseUi.orange} />
+              <PressableScale onPress={() => setShowFilterModal(true)} style={styles.iconPadding} hitSlop={6}>
+                <Ionicons name="options-outline" size={18} color={CaseUi.orange} />
               </PressableScale>
             )}
           </View>
         </Animated.View>
+
+        {/* Filter Modal */}
+        <Modal
+          visible={showFilterModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowFilterModal(false)}
+        >
+          <Pressable 
+            style={styles.modalOverlay} 
+            onPress={() => setShowFilterModal(false)}
+          >
+            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Filters</Text>
+                <Pressable onPress={() => setShowFilterModal(false)}>
+                  <Ionicons name="close" size={24} color={colors.text} />
+                </Pressable>
+              </View>
+              
+              {activeTab === 'dishes' && (
+                <View style={styles.filterSection}>
+                  <Text style={styles.filterSectionTitle}>Food Type</Text>
+                  <View style={styles.filterOption}>
+                    <Pressable
+                      style={[styles.checkbox, vegOnly && styles.checkboxChecked]}
+                      onPress={() => setVegOnly(!vegOnly)}
+                    >
+                      {vegOnly && <Ionicons name="checkmark" size={16} color="#FFFFFF" />}
+                    </Pressable>
+                    <Text style={[styles.filterOptionText, { color: colors.text }]}>Vegetarian Only</Text>
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>Rating</Text>
+                <View style={styles.filterOption}>
+                  <Pressable
+                    style={[styles.checkbox, topRated && styles.checkboxChecked]}
+                    onPress={() => setTopRated(!topRated)}
+                  >
+                    {topRated && <Ionicons name="checkmark" size={16} color="#FFFFFF" />}
+                  </Pressable>
+                  <Text style={[styles.filterOptionText, { color: colors.text }]}>Top Rated (4.0+)</Text>
+                </View>
+              </View>
+
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>Offers</Text>
+                <View style={styles.filterOption}>
+                  <Pressable
+                    style={[styles.checkbox, hasOffers && styles.checkboxChecked]}
+                    onPress={() => setHasOffers(!hasOffers)}
+                  >
+                    {hasOffers && <Ionicons name="checkmark" size={16} color="#FFFFFF" />}
+                  </Pressable>
+                  <Text style={[styles.filterOptionText, { color: colors.text }]}>Has Offers</Text>
+                </View>
+              </View>
+
+              <View style={styles.modalFooter}>
+                <Pressable
+                  style={[styles.modalButton, styles.clearButton]}
+                  onPress={() => {
+                    setVegOnly(false);
+                    setTopRated(false);
+                    setHasOffers(false);
+                  }}
+                >
+                  <Text style={styles.clearButtonText}>Clear All</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.modalButton, styles.applyButton]}
+                  onPress={() => setShowFilterModal(false)}
+                >
+                  <Text style={styles.applyButtonText}>Apply Filters</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         {/* Category quick filters - only show when not searching */}
         {debounced.trim().length === 0 && (
@@ -433,14 +518,16 @@ export default function SearchScreen() {
             style={styles.filterContainer}
             contentContainerStyle={styles.filterScroll}
           >
-            <PressableScale
-              onPress={() => setVegOnly(!vegOnly)}
-              style={[styles.filterChip, vegOnly && styles.filterChipActive]}
-            >
-              <Text style={[styles.filterText, vegOnly && styles.filterTextActive]}>
-                Veg Only {vegOnly && '✕'}
-              </Text>
-            </PressableScale>
+            {activeTab === 'dishes' && (
+              <PressableScale
+                onPress={() => setVegOnly(!vegOnly)}
+                style={[styles.filterChip, vegOnly && styles.filterChipActive]}
+              >
+                <Text style={[styles.filterText, vegOnly && styles.filterTextActive]}>
+                  Veg Only {vegOnly && '✕'}
+                </Text>
+              </PressableScale>
+            )}
             <PressableScale
               onPress={() => setTopRated(!topRated)}
               style={[styles.filterChip, topRated && styles.filterChipActive]}
@@ -537,7 +624,8 @@ export default function SearchScreen() {
                       }}
                       style={styles.tagChip}
                     >
-                      <Text style={styles.tagChipText}>🔥 {t.query}</Text>
+                      <Ionicons name="trending-up" size={14} color={CaseUi.orange} style={{ marginRight: 4 }} />
+                      <Text style={styles.tagChipText}>{t.query}</Text>
                     </PressableScale>
                   ))
                 ) : (
@@ -551,7 +639,8 @@ export default function SearchScreen() {
                       }}
                       style={styles.tagChip}
                     >
-                      <Text style={styles.tagChipText}>🔥 {name}</Text>
+                      <Ionicons name="trending-up" size={14} color={CaseUi.orange} style={{ marginRight: 4 }} />
+                      <Text style={styles.tagChipText}>{name}</Text>
                     </PressableScale>
                   ))
                 )}
@@ -976,4 +1065,89 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
   },
   errorText: { color: CaseUi.danger, fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', flex: 1 },
+
+  // Filter Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    color: CaseUi.ink,
+  },
+  filterSection: {
+    marginBottom: 20,
+  },
+  filterSectionTitle: {
+    fontSize: 14,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    color: CaseUi.muted,
+    marginBottom: 12,
+  },
+  filterOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: CaseUi.line,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: CaseUi.orange,
+    borderColor: CaseUi.orange,
+  },
+  filterOptionText: {
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: CaseUi.ink,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  clearButton: {
+    backgroundColor: CaseUi.field,
+  },
+  clearButtonText: {
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    color: CaseUi.muted,
+  },
+  applyButton: {
+    backgroundColor: CaseUi.orange,
+  },
+  applyButtonText: {
+    fontSize: 15,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    color: '#FFFFFF',
+  },
 });

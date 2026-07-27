@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { fetchRecommendedRestaurants, fetchRestaurantById } from '@/services/restaurants';
+import { fetchRecommendedRestaurants, fetchRestaurantById, fetchStorePageData } from '@/services/restaurants';
 import { usePerfQuery } from '@/lib/perf';
 
 export const restaurantKeys = {
   byId: (restaurantId: string) => ['restaurants', 'byId', restaurantId] as const,
   recommended: ['restaurants', 'recommended'] as const,
+  storePage: (restaurantId: string) => ['restaurants', 'storePage', restaurantId] as const,
 };
 
 export function useRestaurantByIdQuery(restaurantId: string) {
@@ -32,3 +33,15 @@ export function useRecommendedRestaurantsQuery() {
   return q;
 }
 
+export function useStorePageQuery(restaurantId: string) {
+  const q = useQuery({
+    queryKey: restaurantKeys.storePage(restaurantId),
+    queryFn: () => fetchStorePageData(restaurantId),
+    enabled: Boolean(restaurantId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
+  });
+  usePerfQuery(`StorePage(${restaurantId})`, q.isFetching, q.dataUpdatedAt);
+  return q;
+}

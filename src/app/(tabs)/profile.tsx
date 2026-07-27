@@ -118,7 +118,6 @@ export default function ProfileScreen() {
     return (
       <View style={[styles.container, styles.center]}>
         <ActivityIndicator size="large" color={CaseUi.orange} />
-        <Text style={styles.loadingText}>Loading profile...</Text>
       </View>
     );
   }
