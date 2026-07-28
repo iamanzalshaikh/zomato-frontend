@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { FlatList, RefreshControl, StyleSheet, View, Text, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+
 import { PressableScale } from '@/components/pressable-scale';
 import { SkeletonBlock } from '@/components/skeleton';
 import { EmptyState, ErrorState } from '@/components/state-views';
@@ -12,58 +13,246 @@ import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { useOrderHistoryQuery } from '@/hooks/queries/orders';
 import { useThemeContext } from '@/context/ThemeContext';
 import {
-  canTrackOrder,
   getPaymentStatusDisplay,
   isPaymentFailed,
   needsOnlinePayment,
 } from '@/lib/orderPayment';
+import {
+  isAwaitingBankVerification,
+  needsBankReceiptUpload,
+} from '@/lib/bankReceipt';
+import {
+  getCampusProgressSteps,
+  getOrderStatusDisplay,
+  isActiveOrderStatus,
+} from '@/lib/orderStatus';
 import type { Order } from '@/services/orders';
 
 function formatDate(dateStr?: string) {
   if (!dateStr) return '';
   const date = new Date(dateStr);
-  const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
-  const timeOptions: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
-  return `${date.toLocaleDateString(undefined, options)} at ${date.toLocaleTimeString(undefined, timeOptions)}`;
+  return `${date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  })} · ${date.toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  })}`;
 }
 
-function getStatusConfig(status?: string) {
-  const s = (status ?? 'PENDING').toUpperCase();
-  switch (s) {
-    case 'DELIVERED':
-      return { label: 'Delivered', color: CaseUi.success, icon: 'checkmark-circle' as const };
-    case 'CANCELLED':
-      return { label: 'Cancelled', color: CaseUi.danger, icon: 'close-circle' as const };
-    case 'PENDING':
-      return { label: 'Awaiting acceptance', color: '#F59E0B', icon: 'hourglass' as const };
-    case 'CONFIRMED':
-      return { label: 'Accepted', color: CaseUi.orange, icon: 'checkmark-circle' as const };
-    case 'PREPARING':
-      return { label: 'Preparing', color: CaseUi.orange, icon: 'restaurant' as const };
-    case 'READY_FOR_PICKUP':
-      return { label: 'Ready for Pickup', color: CaseUi.orange, icon: 'gift' as const };
-    case 'RIDER_ASSIGNED':
-    case 'PICKED_UP':
-    case 'ON_THE_WAY':
-      return { label: 'Out for Delivery', color: CaseUi.orange, icon: 'bicycle' as const };
-    default:
-      return { label: s, color: CaseUi.muted, icon: 'information-circle' as const };
-  }
+function ProgressRail({ status }: { status?: string }) {
+  const steps = getCampusProgressSteps(status);
+  return (
+    <View style={styles.progressRail}>
+      {steps.map((step, i) => (
+        <View key={step.key} style={styles.progressStep}>
+          <View style={styles.progressDotRow}>
+            <View
+              style={[
+                styles.progressDot,
+                step.done && styles.progressDotDone,
+                step.current && styles.progressDotCurrent,
+              ]}
+            />
+            {i < steps.length - 1 ? (
+              <View style={[styles.progressLine, step.done && styles.progressLineDone]} />
+            ) : null}
+          </View>
+          <Text
+            style={[
+              styles.progressLabel,
+              (step.done || step.current) && styles.progressLabelActive,
+            ]}
+            numberOfLines={1}
+          >
+            {step.label}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
 }
 
-function isActiveOrder(status?: string) {
-  const s = (status ?? '').toUpperCase();
-  return s !== 'DELIVERED' && s !== 'CANCELLED';
-}
+type OrderRow =
+  | { type: 'header'; key: string; label: string; count?: number; delay: number }
+  | { type: 'order'; key: string; order: Order; index: number; isActive: boolean };
 
-const PAYMENT_TONE_COLORS: Record<string, string> = {
-  failed: CaseUi.danger,
-  pending: '#F59E0B',
-  paid: CaseUi.success,
-};
+const OrderCard = memo(function OrderCard({
+  order: item,
+  index,
+  isActive,
+}: {
+  order: Order;
+  index: number;
+  isActive: boolean;
+}) {
+  const router = useRouter();
+  const { colors, activeScheme } = useThemeContext();
+  const isDark = activeScheme === 'dark';
+
+  const statusConfig = getOrderStatusDisplay(item.orderStatus);
+  const paymentInfo = getPaymentStatusDisplay(item);
+  const unpaidOnline = needsOnlinePayment(item);
+  const paymentFailed = isPaymentFailed(item);
+  const needsReceipt = needsBankReceiptUpload(item as any);
+  const awaitingVerify = isAwaitingBankVerification(item as any);
+  const itemsList =
+    item.orderItems?.map((it) => `${it.quantity}× ${it.itemName}`).join(' · ') || 'Order items';
+  const dropOff = item.customerAddress?.fullAddress;
+
+  const openOrder = () =>
+    router.push({ pathname: '/order/[orderId]', params: { orderId: item._id } });
+
+  const displayStatus =
+    awaitingVerify
+      ? {
+          label: 'Verifying payment',
+          color: '#F59E0B',
+          icon: 'time-outline' as const,
+          hint: 'Receipt received — CASE is verifying payment',
+        }
+      : statusConfig;
+
+  const primaryAction = (() => {
+    if (needsReceipt) {
+      return {
+        label: 'Upload receipt',
+        icon: 'cloud-upload-outline' as const,
+        onPress: () =>
+          router.push({
+            pathname: '/bank-transfer/[orderId]',
+            params: { orderId: item._id },
+          }),
+      };
+    }
+    if (awaitingVerify) {
+      return {
+        label: 'View order',
+        icon: 'receipt-outline' as const,
+        onPress: openOrder,
+      };
+    }
+    if (unpaidOnline) {
+      return {
+        label: paymentFailed ? 'Retry payment' : 'Pay now',
+        icon: 'card-outline' as const,
+        onPress: () =>
+          router.push({
+            pathname: '/payment/razorpay',
+            params: {
+              orderId: item._id,
+              restaurantName: item.restaurantId?.restaurantName ?? '',
+            },
+          }),
+      };
+    }
+    if (isActive) {
+      return {
+        label: 'View status',
+        icon: 'list-outline' as const,
+        onPress: openOrder,
+      };
+    }
+    return {
+      label: 'View order',
+      icon: 'receipt-outline' as const,
+      onPress: openOrder,
+    };
+  })();
+
+  return (
+    <Animated.View entering={FadeInDown.delay(Math.min(index, 6) * 40).duration(280)}>
+      <PressableScale
+        onPress={openOrder}
+        style={[
+          styles.card,
+          {
+            backgroundColor: isDark ? '#141417' : CaseUi.white,
+            borderColor: isDark ? '#27272A' : CaseUi.line,
+          },
+        ]}
+      >
+        <View style={styles.cardTop}>
+          <View
+            style={[
+              styles.storeIcon,
+              { backgroundColor: isDark ? '#222228' : CaseUi.orangeSoft },
+            ]}
+          >
+            {item.restaurantId?.logo ? (
+              <Image source={{ uri: item.restaurantId.logo }} style={styles.storeLogo} />
+            ) : (
+              <Ionicons name="bag-handle" size={18} color={CaseUi.orange} />
+            )}
+          </View>
+          <View style={styles.cardTopText}>
+            <Text style={[styles.storeName, { color: colors.text }]} numberOfLines={1}>
+              {item.restaurantId?.restaurantName || 'Campus order'}
+            </Text>
+            <Text style={styles.metaLine} numberOfLines={1}>
+              #{item.orderNumber ?? item._id.slice(-6).toUpperCase()} · {formatDate(item.createdAt)}
+            </Text>
+          </View>
+          <Text style={[styles.amount, { color: colors.text }]}>
+            J${Number(item.grandTotal ?? 0).toFixed(0)}
+          </Text>
+        </View>
+
+        <View style={styles.badgeRow}>
+          <View style={[styles.badge, { backgroundColor: `${displayStatus.color}18` }]}>
+            <Ionicons name={displayStatus.icon} size={12} color={displayStatus.color} />
+            <Text style={[styles.badgeText, { color: displayStatus.color }]}>
+              {displayStatus.label}
+            </Text>
+          </View>
+          <View style={[styles.badge, { backgroundColor: isDark ? '#222228' : CaseUi.field }]}>
+            <Text style={[styles.badgeText, { color: colors.textSecondary }]}>
+              {paymentInfo.label}
+            </Text>
+          </View>
+        </View>
+
+        {isActive ? <ProgressRail status={item.orderStatus} /> : null}
+
+        <Text style={[styles.itemsLine, { color: colors.textSecondary }]} numberOfLines={2}>
+          {itemsList}
+        </Text>
+        {dropOff ? (
+          <View style={styles.dropRow}>
+            <Ionicons name="location-outline" size={13} color={CaseUi.muted} />
+            <Text style={styles.dropText} numberOfLines={1}>
+              Drop-off · {dropOff}
+            </Text>
+          </View>
+        ) : null}
+
+        {displayStatus.hint && isActive ? (
+          <Text style={styles.hintText}>{displayStatus.hint}</Text>
+        ) : null}
+
+        <PressableScale onPress={primaryAction.onPress} style={styles.cta}>
+          <Ionicons name={primaryAction.icon} size={16} color="#FFF" />
+          <Text style={styles.ctaText}>{primaryAction.label}</Text>
+          <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.85)" />
+        </PressableScale>
+      </PressableScale>
+    </Animated.View>
+  );
+});
+
+function SectionHeaderRow({ row }: { row: Extract<OrderRow, { type: 'header' }> }) {
+  return (
+    <Animated.View entering={FadeInDown.delay(row.delay).duration(280)} style={styles.sectionRow}>
+      <Text style={styles.sectionTitle}>
+        {row.label}
+        {row.count != null ? ` · ${row.count}` : ''}
+      </Text>
+    </Animated.View>
+  );
+}
 
 export default function OrdersScreen() {
-  const router = useRouter();
   const tabBarHeight = useTabBarHeight();
   const q = useOrderHistoryQuery();
   const { colors, activeScheme } = useThemeContext();
@@ -72,164 +261,110 @@ export default function OrdersScreen() {
   const loading = q.isLoading || q.isFetching;
   const error = (q.error as any)?.message ?? null;
 
-  const activeItems = allItems.filter((o) => isActiveOrder(o.orderStatus));
-  const pastItems = allItems.filter((o) => !isActiveOrder(o.orderStatus));
+  const activeItems = useMemo(
+    () => allItems.filter((o) => isActiveOrderStatus(o.orderStatus)),
+    [allItems],
+  );
+  const pastItems = useMemo(
+    () => allItems.filter((o) => !isActiveOrderStatus(o.orderStatus)),
+    [allItems],
+  );
 
-  function renderCard(item: Order, index: number, isActive: boolean) {
-    const statusConfig = getStatusConfig(item.orderStatus);
-    const paymentInfo = getPaymentStatusDisplay(item);
-    const unpaidOnline = needsOnlinePayment(item);
-    const paymentFailed = isPaymentFailed(item);
-    const showTrack = isActive && canTrackOrder(item);
-    const itemsList = item.orderItems?.map((it) => `${it.quantity} × ${it.itemName}`).join(', ') || '';
-    const paymentToneColor = PAYMENT_TONE_COLORS[paymentInfo.tone] ?? CaseUi.muted;
+  const rows = useMemo<OrderRow[]>(() => {
+    const out: OrderRow[] = [];
+    if (activeItems.length > 0) {
+      out.push({
+        type: 'header',
+        key: 'active-header',
+        label: 'In progress',
+        count: activeItems.length,
+        delay: 0,
+      });
+      activeItems.forEach((o, i) =>
+        out.push({ type: 'order', key: o._id, order: o, index: i, isActive: true }),
+      );
+    }
+    if (pastItems.length > 0) {
+      out.push({ type: 'header', key: 'past-header', label: 'Past orders', delay: 60 });
+      pastItems.forEach((o, i) =>
+        out.push({
+          type: 'order',
+          key: o._id,
+          order: o,
+          index: activeItems.length + i,
+          isActive: false,
+        }),
+      );
+    }
+    return out;
+  }, [activeItems, pastItems]);
 
-    const openOrder = () => router.push({ pathname: '/order/[orderId]', params: { orderId: item._id } });
-    const payOrRetry = () => router.push({
-      pathname: '/payment/razorpay',
-      params: { orderId: item._id, restaurantName: item.restaurantId?.restaurantName ?? '' },
-    });
-
-    return (
-      <Animated.View key={item._id} entering={FadeInDown.delay(Math.min(index, 6) * 40).duration(280)}>
-        <PressableScale
-          onPress={openOrder}
-          style={[
-            styles.card,
-            {
-              backgroundColor: isDark ? '#141417' : CaseUi.white,
-              borderColor: isActive ? CaseUi.orange : (isDark ? '#27272A' : CaseUi.line),
-            },
-            isActive && styles.cardActive,
-          ]}
-        >
-          {isActive && <View style={styles.activeAccent} />}
-          <View style={styles.restaurantRow}>
-            <View style={styles.restaurantLeft}>
-              <View style={[styles.restaurantIconCircle, { backgroundColor: isDark ? '#222228' : CaseUi.field }]}>
-                {item.restaurantId?.logo ? (
-                  <Image source={{ uri: item.restaurantId.logo }} style={styles.restaurantLogo} />
-                ) : (
-                  <Ionicons name="restaurant" size={16} color={CaseUi.orange} />
-                )}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.restaurantName, { color: colors.text }]}>{item.restaurantId?.restaurantName || 'Restaurant'}</Text>
-                <Text style={[styles.orderDate, { color: colors.textSecondary }]}>{formatDate(item.createdAt)}</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={CaseUi.muted} />
-          </View>
-
-          <View style={styles.chipRow}>
-            <View style={[styles.statusBadge, { backgroundColor: `${statusConfig.color}18` }]}>
-              <Ionicons name={statusConfig.icon} size={10} color={statusConfig.color} style={{ marginRight: 4 }} />
-              <Text style={[styles.statusText, { color: statusConfig.color }]}>{statusConfig.label}</Text>
-            </View>
-            <View style={[styles.statusBadge, { backgroundColor: `${paymentToneColor}18` }]}>
-              <Text style={[styles.statusText, { color: paymentToneColor }]}>{paymentInfo.label}</Text>
-            </View>
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.itemsSummaryRow}>
-            <Text style={[styles.itemsListText, { color: colors.textSecondary }]} numberOfLines={2}>
-              {itemsList}
-            </Text>
-            <Text style={[styles.totalAmount, { color: colors.text }]}>JMD {item.grandTotal ?? 0}</Text>
-          </View>
-
-          {(unpaidOnline || showTrack) && (
-            <View style={styles.footerActionRow}>
-              {unpaidOnline && (
-                <PressableScale
-                  onPress={payOrRetry}
-                  style={[
-                    styles.actionBtn,
-                    paymentFailed ? styles.actionBtnDanger : styles.actionBtnPrimary,
-                    { flex: showTrack ? 1 : undefined },
-                  ]}
-                >
-                  <Ionicons name="card-outline" size={14} color={paymentFailed ? CaseUi.danger : CaseUi.orange} />
-                  <Text style={[styles.actionBtnText, { color: paymentFailed ? CaseUi.danger : CaseUi.orange }]}>
-                    {paymentFailed ? 'Retry payment' : 'Pay now'}
-                  </Text>
-                </PressableScale>
-              )}
-              {showTrack && (
-                <PressableScale
-                  onPress={() => router.push({ pathname: '/order/track/[orderId]', params: { orderId: item._id } })}
-                  style={[styles.actionBtn, styles.actionBtnPrimary, { flex: unpaidOnline ? 1 : undefined }]}
-                >
-                  <Ionicons name="bicycle-outline" size={14} color={CaseUi.orange} />
-                  <Text style={[styles.actionBtnText, { color: CaseUi.orange }]}>Track live</Text>
-                </PressableScale>
-              )}
-            </View>
-          )}
-        </PressableScale>
-      </Animated.View>
-    );
-  }
-
-  const sections = [
-    ...(activeItems.length > 0
-      ? [
-          <Animated.View key="active-header" entering={FadeInDown.duration(280)} style={styles.sectionLabel}>
-            <View style={styles.sectionLabelDot} />
-            <Text style={styles.sectionLabelText}>Active Orders ({activeItems.length})</Text>
-          </Animated.View>,
-          ...activeItems.map((o, i) => renderCard(o, i, true)),
-        ]
-      : []),
-    ...(pastItems.length > 0
-      ? [
-          <Animated.View key="past-header" entering={FadeInDown.delay(60).duration(280)} style={styles.sectionLabel}>
-            <Text style={[styles.sectionLabelText, { color: CaseUi.muted }]}>Past Orders</Text>
-          </Animated.View>,
-          ...pastItems.map((o, i) => renderCard(o, activeItems.length + i, false)),
-        ]
-      : []),
-  ];
+  const keyExtractor = useCallback((row: OrderRow) => row.key, []);
+  const renderItem = useCallback(({ item }: { item: OrderRow }) => {
+    if (item.type === 'header') return <SectionHeaderRow row={item} />;
+    return <OrderCard order={item.order} index={item.index} isActive={item.isActive} />;
+  }, []);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: isDark ? colors.background : '#FAFAFA' }]}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <Animated.View entering={FadeInDown.duration(300)} style={[styles.header, { borderBottomColor: isDark ? '#222226' : CaseUi.line }]}>
+        <Animated.View entering={FadeInDown.duration(300)} style={styles.header}>
           <Text style={[styles.headerTitle, { color: colors.text }]}>My Orders</Text>
-          <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>Track ongoing and past campus deliveries</Text>
+          <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
+            Campus drop-off status — no map needed
+          </Text>
         </Animated.View>
 
         {!!error && (
-          <ErrorState title="Couldn't load your orders" subtitle={error} actionLabel="Retry" onAction={() => q.refetch()} />
+          <ErrorState
+            title="Couldn't load your orders"
+            subtitle={error}
+            actionLabel="Retry"
+            onAction={() => q.refetch()}
+          />
         )}
 
         {loading && !allItems.length && !error ? (
           <View style={styles.listContainer}>
             {[0, 1, 2].map((i) => (
-              <View key={i} style={[styles.skeletonCard, { borderColor: isDark ? '#27272A' : CaseUi.line }]}>
+              <View
+                key={i}
+                style={[styles.skeletonCard, { borderColor: isDark ? '#27272A' : CaseUi.line }]}
+              >
                 <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                  <SkeletonBlock width={38} height={38} radius={19} />
+                  <SkeletonBlock width={44} height={44} radius={14} />
                   <View style={{ flex: 1, gap: 6 }}>
-                    <SkeletonBlock width="55%" height={14} />
-                    <SkeletonBlock width="35%" height={11} />
+                    <SkeletonBlock width="50%" height={14} />
+                    <SkeletonBlock width="40%" height={11} />
                   </View>
                 </View>
-                <SkeletonBlock width="100%" height={40} radius={10} style={{ marginTop: 14 }} />
+                <SkeletonBlock width="100%" height={48} radius={10} style={{ marginTop: 14 }} />
               </View>
             ))}
           </View>
         ) : (
           <FlatList
-            data={sections}
-            keyExtractor={(_, i) => String(i)}
-            contentContainerStyle={[styles.listContainer, { paddingBottom: tabBarHeight + 16 }]}
-            refreshControl={<RefreshControl refreshing={q.isFetching} onRefresh={() => q.refetch()} tintColor={CaseUi.orange} />}
-            ListEmptyComponent={
-              !error ? <EmptyState icon="receipt-outline" title="No orders yet" subtitle="Your campus orders will show up here." /> : null
+            data={rows}
+            keyExtractor={keyExtractor}
+            contentContainerStyle={[styles.listContainer, { paddingBottom: tabBarHeight + 20 }]}
+            refreshControl={
+              <RefreshControl
+                refreshing={q.isFetching}
+                onRefresh={() => q.refetch()}
+                tintColor={CaseUi.orange}
+              />
             }
-            renderItem={({ item }) => item as React.ReactElement}
+            ListEmptyComponent={
+              !error ? (
+                <EmptyState
+                  icon="receipt-outline"
+                  title="No orders yet"
+                  subtitle="When you place a campus order, it will show up here with clear status steps."
+                />
+              ) : null
+            }
+            renderItem={renderItem}
+            ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
           />
         )}
       </SafeAreaView>
@@ -238,99 +373,158 @@ export default function OrdersScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: CaseUi.white },
+  container: { flex: 1, backgroundColor: '#FAFAFA' },
   safeArea: { flex: 1 },
   header: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: CaseUi.line,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 14,
   },
-  headerTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 26, color: CaseUi.ink, letterSpacing: -0.5 },
-  headerSubtitle: { fontSize: 12, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 6, color: CaseUi.muted },
-  listContainer: { padding: 16, paddingBottom: 40, gap: 16 },
+  headerTitle: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 28,
+    color: CaseUi.ink,
+    letterSpacing: -0.6,
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    marginTop: 4,
+    color: CaseUi.muted,
+  },
+  listContainer: { paddingHorizontal: 16, paddingTop: 4 },
   skeletonCard: {
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: CaseUi.line,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 12,
+    backgroundColor: CaseUi.white,
+  },
+  sectionRow: { paddingTop: 10, paddingBottom: 6, paddingHorizontal: 2 },
+  sectionTitle: {
+    fontFamily: 'PlusJakartaSans_700Bold',
+    fontSize: 13,
+    color: CaseUi.muted,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
   },
   card: {
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: CaseUi.line,
-    backgroundColor: CaseUi.white,
     padding: 16,
+    backgroundColor: CaseUi.white,
     ...CaseUi.softShadow,
   },
-  restaurantRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  restaurantLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
-  restaurantIconCircle: {
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  storeIcon: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 14,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
     overflow: 'hidden',
-    backgroundColor: CaseUi.field,
   },
-  restaurantLogo: { width: '100%', height: '100%' },
-  restaurantName: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15.5, color: CaseUi.ink },
-  orderDate: { fontSize: 11, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 2, color: CaseUi.muted },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
-  statusText: { fontSize: 10, fontFamily: 'PlusJakartaSans_800ExtraBold' },
-  divider: { height: 1, marginVertical: 14, backgroundColor: CaseUi.line },
-  itemsSummaryRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 },
-  itemsListText: { fontSize: 12.5, fontFamily: 'PlusJakartaSans_500Medium', flex: 1, lineHeight: 18, color: CaseUi.muted },
-  totalAmount: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 15, color: CaseUi.ink },
-  footerActionRow: { marginTop: 14, flexDirection: 'row', gap: 8 },
-  actionBtn: {
+  storeLogo: { width: '100%', height: '100%' },
+  cardTopText: { flex: 1, minWidth: 0 },
+  storeName: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 15,
+    color: CaseUi.ink,
+  },
+  metaLine: {
+    marginTop: 2,
+    fontSize: 11,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: CaseUi.muted,
+  },
+  amount: {
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 15,
+  },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
-  actionBtnPrimary: { backgroundColor: CaseUi.orangeSoft, borderColor: CaseUi.orange },
-  actionBtnDanger: { backgroundColor: '#FEE2E2', borderColor: CaseUi.danger },
-  actionBtnText: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 12 },
-  cardActive: {
-    borderWidth: 1.5,
+  badgeText: {
+    fontSize: 11,
+    fontFamily: 'PlusJakartaSans_700Bold',
   },
-  activeAccent: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    backgroundColor: CaseUi.orange,
-    borderTopLeftRadius: 20,
-    borderBottomLeftRadius: 20,
-  },
-  sectionLabel: {
+  progressRail: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 2,
+    marginTop: 14,
     marginBottom: 4,
   },
-  sectionLabelDot: {
+  progressStep: { flex: 1, minWidth: 0 },
+  progressDotRow: { flexDirection: 'row', alignItems: 'center' },
+  progressDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: CaseUi.orange,
+    backgroundColor: CaseUi.line,
   },
-  sectionLabelText: {
+  progressDotDone: { backgroundColor: CaseUi.orange },
+  progressDotCurrent: {
+    backgroundColor: CaseUi.orange,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  progressLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: CaseUi.line,
+    marginHorizontal: 2,
+  },
+  progressLineDone: { backgroundColor: CaseUi.orange },
+  progressLabel: {
+    marginTop: 6,
+    fontSize: 9,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: CaseUi.muted,
+  },
+  progressLabelActive: { color: CaseUi.ink },
+  itemsLine: {
+    marginTop: 12,
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    lineHeight: 18,
+  },
+  dropRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+  },
+  dropText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: CaseUi.muted,
+  },
+  hintText: {
+    marginTop: 8,
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: CaseUi.orangeDeep,
+  },
+  cta: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: CaseUi.orange,
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  ctaText: {
+    color: '#FFF',
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     fontSize: 13,
-    color: CaseUi.ink,
-    letterSpacing: 0.2,
   },
 });
-

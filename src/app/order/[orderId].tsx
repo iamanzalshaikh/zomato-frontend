@@ -17,7 +17,6 @@ import { useAddToCartMutation } from '@/hooks/queries/cart';
 import {
   useCancelCaseOrderMutation,
   useCaseReorderMutation,
-  caseOrderKeys,
 } from '@/hooks/queries/caseOrders';
 import { saveReorderDraft } from '@/lib/caseCheckout';
 import { openCaseReceiptPdf } from '@/lib/caseReceipt';
@@ -27,6 +26,13 @@ import {
   isPaymentFailed,
   needsOnlinePayment,
 } from '@/lib/orderPayment';
+import {
+  isAwaitingBankVerification,
+  isBankPaymentSettled,
+  needsBankReceiptUpload,
+} from '@/lib/bankReceipt';
+import { getCampusProgressSteps, getOrderStatusDisplay } from '@/lib/orderStatus';
+import { useOrderSocket } from '@/hooks/use-order-socket';
 import { toast } from '@/lib/toast';
 
 const WARN = '#F59E0B';
@@ -41,17 +47,6 @@ function formatDate(dateStr?: string) {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function getStatusColor(s: string) {
-  switch (s.toUpperCase()) {
-    case 'DELIVERED':
-      return CaseUi.success;
-    case 'CANCELLED':
-      return CaseUi.danger;
-    default:
-      return CaseUi.orange;
-  }
 }
 
 function isLikelyNonVeg(itemName: string) {
@@ -82,21 +77,42 @@ export default function OrderDetailScreen() {
   const [refundNote, setRefundNote] = useState('');
 
   const q = useOrderByIdQuery(id);
+  useOrderSocket(id);
   const order: any = q.data;
   const addToCart = useAddToCartMutation();
   const cancelMut = useCancelCaseOrderMutation();
   const reorderMut = useCaseReorderMutation();
 
   const status = String(order?.orderStatus ?? order?.status ?? 'UNKNOWN');
+  const statusDisplay = (() => {
+    if (isAwaitingBankVerification(order ?? {})) {
+      return {
+        label: 'Verifying payment',
+        color: WARN,
+        icon: 'time-outline' as const,
+        hint: 'Receipt received — CASE is verifying your transfer',
+      };
+    }
+    return getOrderStatusDisplay(status);
+  })();
   const isDelivered = status === 'DELIVERED';
   const isCancelled = status === 'CANCELLED';
-  const isPendingPayment = status === 'PENDING_PAYMENT_VERIFICATION';
+  const showUploadReceipt = CASE_CHECKOUT_ENABLED && needsBankReceiptUpload(order ?? {});
+  const paymentSettled = isBankPaymentSettled(order ?? {});
   const paymentDisplay = order ? getPaymentStatusDisplay(order) : null;
   const showPayAgain = !CASE_CHECKOUT_ENABLED && order && needsOnlinePayment(order);
   const paymentFailed = order && isPaymentFailed(order);
   const showTrack = !CASE_CHECKOUT_ENABLED && order && canTrackOrder(order);
   const money = (n: number | undefined) =>
     CASE_CHECKOUT_ENABLED ? `J$${Number(n ?? 0).toFixed(0)}` : `₹${Number(n ?? 0).toFixed(0)}`;
+  const canEdit =
+    CASE_CHECKOUT_ENABLED &&
+    !isDelivered &&
+    !isCancelled &&
+    !paymentSettled &&
+    (status === 'PENDING' || status === 'PENDING_PAYMENT_VERIFICATION');
+  const canCancelCase =
+    CASE_CHECKOUT_ENABLED && !isDelivered && !isCancelled && !paymentSettled;
 
   function retryPayment() {
     router.push({
@@ -120,7 +136,7 @@ export default function OrderDetailScreen() {
         const payload = await reorderMut.mutateAsync(id);
         await saveReorderDraft(payload.items, payload.deliveryPointId);
         toast.success('Items ready — confirm checkout', 'Reorder');
-        router.push('/checkout');
+        router.push({ pathname: '/checkout', params: { mode: 'reorder' } });
       } catch (e: any) {
         Alert.alert('Reorder Error', e?.message ?? 'Failed to reorder');
       }
@@ -142,6 +158,8 @@ export default function OrderDetailScreen() {
           menuItemId,
           quantity: line.quantity ?? 1,
           addons: line.addons ?? [],
+          itemName: String(line.itemName ?? line.name ?? 'Item'),
+          price: Number(line.price ?? line.unitPrice ?? 0),
         });
       }
       router.push('/cart');
@@ -159,8 +177,11 @@ export default function OrderDetailScreen() {
         onPress: async () => {
           try {
             await cancelMut.mutateAsync({ orderId: id, reason: 'Cancelled by customer' });
-            await qc.invalidateQueries({ queryKey: orderDetailKeys.byId(id) });
-            await qc.invalidateQueries({ queryKey: caseOrderKeys.list() });
+            // caseOrderKeys.list()/detail() are already invalidated inside the
+            // mutation's own onSuccess; this screen only needs to additionally
+            // invalidate its own (differently-keyed) query. Fire, don't await —
+            // the cancel already succeeded, no need to block feedback on a refetch.
+            void qc.invalidateQueries({ queryKey: orderDetailKeys.byId(id) });
             toast.success('Order cancelled');
           } catch (e: any) {
             Alert.alert('Cancel failed', e?.message ?? 'Could not cancel');
@@ -198,6 +219,7 @@ export default function OrderDetailScreen() {
         : paymentDisplay?.tone === 'paid'
           ? CaseUi.success
           : CaseUi.ink;
+  const progressSteps = getCampusProgressSteps(status);
 
   return (
     <View style={styles.container}>
@@ -217,30 +239,79 @@ export default function OrderDetailScreen() {
                 {order.restaurantId?.logo ? (
                   <Image source={{ uri: order.restaurantId.logo }} style={styles.restaurantLogo} />
                 ) : (
-                  <Ionicons name="restaurant" size={18} color={CaseUi.orange} />
+                  <Ionicons name="bag-handle" size={18} color={CaseUi.orange} />
                 )}
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.restaurantName}>
-                  {order.restaurantId?.restaurantName || order.restaurant?.restaurantName || order.deliveryPoint?.name || 'CASE order'}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.restaurantName} numberOfLines={1}>
+                  {order.restaurantId?.restaurantName ||
+                    order.restaurant?.restaurantName ||
+                    'Campus order'}
                 </Text>
-                <Text style={styles.orderNumber}>Order: #{order.orderNumber ?? id.slice(-8).toUpperCase()}</Text>
-                <Text style={styles.orderDate}>Placed on {formatDate(order.createdAt)}</Text>
+                <Text style={styles.orderNumber} numberOfLines={1}>
+                  #{order.orderNumber ?? id.slice(-8).toUpperCase()}
+                </Text>
+                <Text style={styles.orderDate}>Placed {formatDate(order.createdAt)}</Text>
               </View>
             </View>
 
             <View style={styles.divider} />
 
-            <View style={styles.metaRow}>
-              <View>
-                <Text style={styles.metaLabel}>ORDER STATUS</Text>
-                <Text style={[styles.metaValue, { color: getStatusColor(status) }]}>{status.replace(/_/g, ' ')}</Text>
+            <View style={styles.statusGrid}>
+              <View style={[styles.statusCell, { backgroundColor: `${statusDisplay.color}14` }]}>
+                <Text style={styles.metaLabel}>Order status</Text>
+                <View style={styles.statusValueRow}>
+                  <Ionicons name={statusDisplay.icon} size={14} color={statusDisplay.color} />
+                  <Text
+                    style={[styles.metaValue, { color: statusDisplay.color, flex: 1 }]}
+                    numberOfLines={2}
+                  >
+                    {statusDisplay.label}
+                  </Text>
+                </View>
               </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.metaLabel}>PAYMENT</Text>
-                <Text style={[styles.metaValue, { color: paymentToneColor }]}>{paymentDisplay?.label ?? '—'}</Text>
+              <View style={[styles.statusCell, { backgroundColor: CaseUi.field }]}>
+                <Text style={styles.metaLabel}>Payment</Text>
+                <Text style={[styles.metaValue, { color: paymentToneColor }]} numberOfLines={2}>
+                  {paymentDisplay?.label ?? '—'}
+                </Text>
               </View>
             </View>
+
+            {statusDisplay.hint ? (
+              <Text style={styles.statusHint}>{statusDisplay.hint}</Text>
+            ) : null}
+
+            {CASE_CHECKOUT_ENABLED && !isCancelled ? (
+              <View style={styles.timeline}>
+                {progressSteps.map((step, i) => (
+                  <View key={step.key} style={styles.timelineStep}>
+                    <View style={styles.timelineRail}>
+                      <View
+                        style={[
+                          styles.timelineDot,
+                          step.done && styles.timelineDotDone,
+                          step.current && styles.timelineDotCurrent,
+                        ]}
+                      />
+                      {i < progressSteps.length - 1 ? (
+                        <View
+                          style={[styles.timelineLine, step.done && styles.timelineLineDone]}
+                        />
+                      ) : null}
+                    </View>
+                    <Text
+                      style={[
+                        styles.timelineLabel,
+                        (step.done || step.current) && styles.timelineLabelActive,
+                      ]}
+                    >
+                      {step.label}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </Animated.View>
 
           {showPayAgain && (
@@ -340,13 +411,18 @@ export default function OrderDetailScreen() {
             <Animated.View entering={FadeInDown.delay(120).duration(280)} style={styles.card}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <Ionicons name="location" size={16} color={CaseUi.orange} />
-                <Text style={styles.sectionTitle}>Delivered To</Text>
+                <Text style={styles.sectionTitle}>Campus drop-off</Text>
               </View>
-              <Text style={styles.addressText}>{order.deliveryPoint?.name ?? order.customerAddress?.fullAddress}</Text>
+              <Text style={styles.addressText}>
+                {order.deliveryPoint?.name ?? order.customerAddress?.fullAddress}
+              </Text>
+              <Text style={styles.dropHint}>
+                Rider brings your order to this point — no live map tracking in phase one.
+              </Text>
             </Animated.View>
           )}
 
-          {CASE_CHECKOUT_ENABLED && isPendingPayment && (
+          {showUploadReceipt && (
             <PressableScale
               onPress={() => router.push({ pathname: '/bank-transfer/[orderId]', params: { orderId: id } })}
               style={styles.primaryBtn}
@@ -356,9 +432,21 @@ export default function OrderDetailScreen() {
             </PressableScale>
           )}
 
+          {CASE_CHECKOUT_ENABLED && isAwaitingBankVerification(order ?? {}) && (
+            <View style={[styles.paymentAlert, styles.paymentAlertWarn]}>
+              <Ionicons name="time-outline" size={22} color={WARN} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.paymentAlertTitle}>Receipt submitted</Text>
+                <Text style={styles.paymentAlertBody}>
+                  CASE is verifying your bank transfer. You&apos;ll get an update when payment is approved.
+                </Text>
+              </View>
+            </View>
+          )}
+
           {CASE_CHECKOUT_ENABLED && !isDelivered && !isCancelled && (
             <>
-              {(status === 'PENDING' || status === 'PENDING_PAYMENT_VERIFICATION') && (
+              {canEdit && (
                 <PressableScale
                   onPress={() => router.push({ pathname: '/order/edit/[orderId]', params: { orderId: id } })}
                   style={styles.secondaryBtn}
@@ -374,12 +462,14 @@ export default function OrderDetailScreen() {
                 <Ionicons name="chatbubble-ellipses-outline" size={16} color={CaseUi.orange} style={{ marginRight: 6 }} />
                 <Text style={[styles.secondaryText, { color: CaseUi.orange }]}>Order chat</Text>
               </PressableScale>
-              <PressableScale onPress={cancelOrder} disabled={cancelMut.isPending} style={[styles.secondaryBtn, styles.secondaryBtnDanger]}>
-                <Ionicons name="close-circle-outline" size={16} color={CaseUi.danger} style={{ marginRight: 6 }} />
-                <Text style={[styles.secondaryText, { color: CaseUi.danger }]}>
-                  {cancelMut.isPending ? 'Cancelling…' : 'Cancel order'}
-                </Text>
-              </PressableScale>
+              {canCancelCase && (
+                <PressableScale onPress={cancelOrder} disabled={cancelMut.isPending} style={[styles.secondaryBtn, styles.secondaryBtnDanger]}>
+                  <Ionicons name="close-circle-outline" size={16} color={CaseUi.danger} style={{ marginRight: 6 }} />
+                  <Text style={[styles.secondaryText, { color: CaseUi.danger }]}>
+                    {cancelMut.isPending ? 'Cancelling…' : 'Cancel order'}
+                  </Text>
+                </PressableScale>
+              )}
             </>
           )}
 
@@ -517,10 +607,67 @@ const styles = StyleSheet.create({
   orderNumber: { fontSize: 11.5, fontFamily: 'PlusJakartaSans_700Bold', marginTop: 2, color: CaseUi.muted },
   orderDate: { fontSize: 10.5, fontFamily: 'PlusJakartaSans_500Medium', marginTop: 1, color: CaseUi.muted },
   divider: { height: 1, marginVertical: 12, backgroundColor: CaseUi.line },
-  metaRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  metaLabel: { fontSize: 8.5, fontFamily: 'PlusJakartaSans_800ExtraBold', letterSpacing: 0.5, color: CaseUi.muted },
-  metaValue: { fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold', marginTop: 2 },
+  statusGrid: { flexDirection: 'row', gap: 10 },
+  statusCell: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 12,
+    minHeight: 72,
+  },
+  statusValueRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 6 },
+  metaLabel: {
+    fontSize: 10,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    letterSpacing: 0.3,
+    color: CaseUi.muted,
+    textTransform: 'uppercase',
+  },
+  metaValue: { fontSize: 13, fontFamily: 'PlusJakartaSans_800ExtraBold', lineHeight: 18 },
+  statusHint: {
+    marginTop: 10,
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: CaseUi.muted,
+    lineHeight: 17,
+  },
+  timeline: { flexDirection: 'row', marginTop: 16 },
+  timelineStep: { flex: 1, minWidth: 0 },
+  timelineRail: { flexDirection: 'row', alignItems: 'center' },
+  timelineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: CaseUi.line,
+  },
+  timelineDotDone: { backgroundColor: CaseUi.orange },
+  timelineDotCurrent: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: CaseUi.orange,
+  },
+  timelineLine: {
+    flex: 1,
+    height: 2,
+    backgroundColor: CaseUi.line,
+    marginHorizontal: 2,
+  },
+  timelineLineDone: { backgroundColor: CaseUi.orange },
+  timelineLabel: {
+    marginTop: 6,
+    fontSize: 9,
+    fontFamily: 'PlusJakartaSans_600SemiBold',
+    color: CaseUi.muted,
+  },
+  timelineLabelActive: { color: CaseUi.ink },
   sectionTitle: { fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13, color: CaseUi.ink },
+  dropHint: {
+    marginTop: 6,
+    fontSize: 12,
+    fontFamily: 'PlusJakartaSans_500Medium',
+    color: CaseUi.muted,
+    lineHeight: 17,
+  },
   itemInvoiceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 2 },
   foodTypeBorder: { width: 12, height: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 2 },
   vegDotInner: { width: 6, height: 6, borderRadius: 3 },

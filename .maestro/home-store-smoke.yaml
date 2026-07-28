@@ -1,0 +1,26 @@
+# Maestro UI smoke — install Maestro, then:
+#   maestro test .maestro/home-store-smoke.yaml
+# Requires a running Expo/dev-client on emulator or device.
+appId: com.herridez.MyApp
+---
+- launchApp
+- assertVisible: "Popular near you"
+- extendedWaitUntil:
+    visible: "Popular near you"
+    timeout: 20000
+- tapOn:
+    text: ".*Popular near you.*"
+    optional: true
+- scroll
+- takeScreenshot: home-after-load
+- tapOn:
+    id: "shop-card-.*"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      text: ".*"
+    timeout: 8000
+    optional: true
+- takeScreenshot: store-or-home
+- back
+- assertVisible: "Popular near you"

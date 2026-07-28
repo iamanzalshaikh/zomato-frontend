@@ -4,7 +4,6 @@ import Animated, { FadeOut } from 'react-native-reanimated';
 
 import SplashScreen from './splash';
 import { refreshAccessToken } from '@/lib/tokenRefresh';
-import { registerForPushNotifications } from '@/lib/pushNotifications';
 import { getAccessToken, getRefreshToken } from '@/lib/storage';
 import { getSelectedDeliveryPointId } from '@/lib/caseCheckout';
 import { CASE_CHECKOUT_ENABLED } from '@/config/features';
@@ -31,7 +30,9 @@ export default function Index() {
           }
         }
         if (token) {
-          void registerForPushNotifications();
+          // Push registration happens once, in (tabs)/_layout.tsx's
+          // usePushNotifications — calling it here too duplicated every
+          // push-token/device-token network call on every cold start.
           if (CASE_CHECKOUT_ENABLED) {
             const pointId = await getSelectedDeliveryPointId();
             if (!pointId) {

@@ -8,6 +8,9 @@ export type CartLine = {
   price: number;
   total: number;
   addons?: { name: string; price: number }[];
+  /** Present on CASE local cart lines for multi-store quoting */
+  restaurantId?: string;
+  restaurantName?: string;
 };
 
 export type Cart = {

@@ -22,3 +22,13 @@ export async function fetchCouponsByRestaurant(restaurantId: string) {
   }>(`/coupons/restaurant/${restaurantId}`);
   return body.data;
 }
+
+/** One call for Home/category offer badges — replaces N× /coupons/restaurant/:id */
+export async function fetchActiveCoupons() {
+  const body = await apiFetch<{
+    success: true;
+    message: string;
+    data: { coupons: Coupon[]; count: number };
+  }>(`/coupons/active`);
+  return body.data;
+}

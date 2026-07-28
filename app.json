@@ -32,7 +32,9 @@
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES"
       ]
     },
     "web": {
@@ -75,6 +77,13 @@
         {
           "icon": "./assets/images/icon.png",
           "color": "#ff5a00"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "CASE needs photo access so you can upload your bank transfer receipt.",
+          "cameraPermission": "CASE needs camera access so you can photograph your bank transfer receipt."
         }
       ],
       [

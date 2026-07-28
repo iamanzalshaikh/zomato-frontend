@@ -7,20 +7,22 @@ import {
   Text,
   View,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useQueries } from '@tanstack/react-query';
-import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
+import Animated, { FadeInRight } from 'react-native-reanimated';
 
 import { ThemedView } from '@/components/themed-view';
 import { FloatingCartBar } from '@/components/floating-cart-bar';
 import { ShopCard } from '@/components/shop-card';
 import { ProductCard } from '@/components/product-card';
-import { CategoryListSkeleton } from '@/components/skeleton';
+import { BlinkitCategoryLoader } from '@/components/blinkit-loaders';
+import { RouteLoadingOverlay } from '@/components/route-loading-overlay';
 import {
   CASE_CATEGORY_META,
   CASE_HOME_CATEGORY_ROW,
@@ -28,12 +30,16 @@ import {
 } from '@/constants/caseHome';
 import { CaseUi } from '@/constants/caseUi';
 import type { MenuItemAttributes } from '@/constants/categoryFields';
-import { caseKeys, useCaseMerchantsQuery } from '@/hooks/queries/case';
+import { caseKeys, useCaseBannersQuery, useCaseBootstrapQuery, useCaseMerchantsQuery } from '@/hooks/queries/case';
 import { useCart } from '@/hooks/use-cart';
 import { useFloatingCartBottom, useFloatingCartScrollPadding } from '@/hooks/use-floating-cart-inset';
 import { useAddToCartMutation } from '@/hooks/queries/cart';
 import { getCartDisplayTotal, getCartItemCount, getCartRestaurantName } from '@/lib/cartDisplay';
-import { fetchCaseMerchantMenu } from '@/services/case';
+import {
+  fetchCaseBanners,
+  fetchCaseMerchantMenu,
+  fetchCaseMerchants,
+} from '@/services/case';
 import { useThemeContext } from '@/context/ThemeContext';
 
 type ProductRow = {
@@ -54,9 +60,29 @@ type ProductRow = {
 
 const SCREEN_W = Dimensions.get('window').width;
 
+function SafeCategoryImage({
+  uri,
+  style,
+  icon = 'image-outline',
+}: {
+  uri?: string | null;
+  style: any;
+  icon?: keyof typeof Ionicons.glyphMap;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (!uri || failed) {
+    return (
+      <View style={[style, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFEFF1' }]}>
+        <Ionicons name={icon} size={18} color="#A1A1AA" />
+      </View>
+    );
+  }
+  return <Image source={{ uri }} style={style} contentFit="cover" onError={() => setFailed(true)} />;
+}
+
 const CAROUSEL_SLIDES: Record<
   string,
-  Array<{ title: string; sub: string; colors: [string, string]; image: string }>
+  { title: string; sub: string; colors: [string, string]; image: string }[]
 > = {
   ALL: [
     {
@@ -182,12 +208,13 @@ const PRODUCT_RIBBON: Partial<Record<CaseCategoryId, { name: string; image: stri
   STORE: STORE_SUBS,
 };
 
-function PromoCarousel({ category }: { category: CaseCategoryId }) {
-  const { colors, activeScheme } = useThemeContext();
+function PromoCarousel({
+  slides,
+}: {
+  slides: { title: string; sub: string; colors: [string, string]; image: string }[];
+}) {
+  const { activeScheme } = useThemeContext();
   const isDark = activeScheme === 'dark';
-  const slides = useMemo(() => {
-    return CAROUSEL_SLIDES[category] ?? CAROUSEL_SLIDES.ALL;
-  }, [category]);
 
   const [activeIndex, setActiveIndex] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
@@ -219,12 +246,15 @@ function PromoCarousel({ category }: { category: CaseCategoryId }) {
       >
         {slides.map((slide, idx) => (
           <View key={idx} style={[styles.slideCard, { backgroundColor: isDark ? '#221F2A' : slide.colors[0], width: SCREEN_W - 28 }]}>
-            <LinearGradient colors={isDark ? ['#1B1B1F', '#24242A'] : slide.colors} style={styles.slideGradient}>
+            <Image source={{ uri: slide.image }} style={styles.slideBgImg} contentFit="cover" />
+            <LinearGradient colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.58)']} style={styles.slideGradient}>
               <View style={styles.slideTextCol}>
-                <Text style={[styles.slideTitle, { color: colors.text }]} numberOfLines={2}>{slide.title}</Text>
-                <Text style={[styles.slideSub, { color: colors.textSecondary }]} numberOfLines={2}>{slide.sub}</Text>
+                <Text style={[styles.slideTitle, { color: '#FFFFFF' }]} numberOfLines={2}>{slide.title}</Text>
+                <Text style={[styles.slideSub, { color: 'rgba(255,255,255,0.9)' }]} numberOfLines={2}>{slide.sub}</Text>
               </View>
-              <Image source={{ uri: slide.image }} style={styles.slideImg} contentFit="cover" />
+              <View style={styles.slideChip}>
+                <Text style={styles.slideChipText}>Explore</Text>
+              </View>
             </LinearGradient>
           </View>
         ))}
@@ -252,45 +282,50 @@ const LIST_FILTERS = ['Filter', 'Sort', 'Fastest', 'Offers'] as const;
 
 export default function CategoryListingScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { colors, activeScheme } = useThemeContext();
   const isDark = activeScheme === 'dark';
-  const { businessType: raw } = useLocalSearchParams<{ businessType: string }>();
+  const { businessType: raw, view } = useLocalSearchParams<{ businessType: string; view?: string }>();
   const initial = ((raw ?? 'ALL').toUpperCase() || 'ALL') as CaseCategoryId;
   const [active, setActive] = useState<CaseCategoryId>(
     initial === 'GET_ANYTHING' ? 'ALL' : initial,
   );
   /** Full shop list mode — like "All Pharmacies" reference */
-  const [viewAllShops, setViewAllShops] = useState(false);
+  const [viewAllLocal, setViewAllLocal] = useState(false);
+  const isViewAll = view === 'all' || viewAllLocal;
   const [listFilter, setListFilter] = useState<(typeof LIST_FILTERS)[number]>('Filter');
   const [productChip, setProductChip] = useState<string | null>(null);
   const [loadMoreProducts, setLoadMoreProducts] = useState(false);
+  const [routeLoading, setRouteLoading] = useState(false);
 
   useEffect(() => {
-    if (!raw) return;
-    const next = raw.toUpperCase() as CaseCategoryId;
-    if (next === 'GET_ANYTHING') {
-      router.replace('/get-anything');
-      return;
-    }
-    setActive(next);
-    setViewAllShops(false);
-    setProductChip(null);
-  }, [raw, router]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoadMoreProducts(true);
-    }, 600);
+    if (!routeLoading) return;
+    const timer = setTimeout(() => setRouteLoading(false), 1200);
     return () => clearTimeout(timer);
-  }, []);
+  }, [routeLoading]);
 
   const meta = CASE_CATEGORY_META[active] ?? CASE_CATEGORY_META.ALL;
-  const slides = CAROUSEL_SLIDES[active] ?? CAROUSEL_SLIDES.ALL;
+  const bootstrapQ = useCaseBootstrapQuery();
+  const categoryBannersQ = useCaseBannersQuery(
+    active === 'ALL' ? 'HOME' : 'CATEGORY',
+    active === 'ALL' ? null : active,
+  );
+  const slides = useMemo(() => {
+    const fromApi = (categoryBannersQ.data ?? bootstrapQ.data?.banners ?? [])
+      .filter((b) => b.imageUrl)
+      .slice(0, 4)
+      .map((b) => ({
+        title: b.title,
+        sub: b.subtitle || `Best ${meta.label.toLowerCase()} picks`,
+        colors: ['#FFF1E8', '#FFE4D6'] as [string, string],
+        image: b.imageUrl,
+      }));
+    return fromApi.length ? fromApi : CAROUSEL_SLIDES[active] ?? CAROUSEL_SLIDES.ALL;
+  }, [categoryBannersQ.data, bootstrapQ.data?.banners, active, meta.label]);
   const queryType = active === 'ALL' ? null : active;
-  const merchantsQ = useCaseMerchantsQuery(queryType, { limit: 80 });
-  const shopsRaw = merchantsQ.data?.items ?? [];
-
+  const merchantsQ = useCaseMerchantsQuery(queryType, { limit: 40 });
   const shops = useMemo(() => {
+    const shopsRaw = merchantsQ.data?.items ?? [];
     let list = [...shopsRaw];
     if (listFilter === 'Fastest') {
       list.sort((a, b) => (a.averageDeliveryTime ?? 99) - (b.averageDeliveryTime ?? 99));
@@ -302,7 +337,7 @@ export default function CategoryListingScreen() {
       );
     }
     return list;
-  }, [shopsRaw, listFilter]);
+  }, [merchantsQ.data?.items, listFilter]);
 
   const productRibbon = PRODUCT_RIBBON[active] ?? [];
   const allShopsTitle =
@@ -317,11 +352,12 @@ export default function CategoryListingScreen() {
             : 'All Shops';
 
   const menusQ = useQueries({
-    queries: shops.slice(0, 8).map((m, index) => ({
+    queries: shops.slice(0, 2).map((m, index) => ({
       queryKey: caseKeys.menu(m.id),
       queryFn: () => fetchCaseMerchantMenu(m.id),
-      enabled: shops.length > 0 && !viewAllShops && (index < 3 || loadMoreProducts),
-      staleTime: 3 * 60_000,
+      enabled: shops.length > 0 && !isViewAll && (index < 1 || loadMoreProducts),
+      staleTime: 10 * 60_000,
+      refetchOnMount: false,
     })),
   });
 
@@ -372,12 +408,11 @@ export default function CategoryListingScreen() {
 
   const filteredShops = useMemo(() => {
     if (!productChip) return shops;
-    const lowerChip = productChip.toLowerCase();
     const activeShopIds = new Set(
       filteredProducts.map((p) => p.restaurantId)
     );
     return shops.filter((m) => activeShopIds.has(m.id));
-  }, [shops, filteredProducts]);
+  }, [shops, filteredProducts, productChip]);
 
   const aisleTiles = useMemo(() => {
     const map = new Map<string, string | null>();
@@ -418,8 +453,22 @@ export default function CategoryListingScreen() {
     }
     setActive(id);
     router.setParams({ businessType: id });
+
+    if (id === 'ALL') return;
+
+    void queryClient.prefetchQuery({
+      queryKey: caseKeys.merchants({ businessType: id, search: undefined, page: undefined, limit: 40 }),
+      queryFn: () => fetchCaseMerchants({ businessType: id, limit: 40 }),
+      staleTime: 15 * 60 * 1000,
+    });
+    void queryClient.prefetchQuery({
+      queryKey: caseKeys.banners({ placement: 'CATEGORY', businessType: id }),
+      queryFn: () => fetchCaseBanners({ placement: 'CATEGORY', businessType: id }),
+      staleTime: 2 * 60 * 1000,
+    });
   };
 
+  // Add-to-cart from category product rows
   const onAdd = async (p: ProductRow) => {
     try {
       await addToCart.mutateAsync({
@@ -435,12 +484,11 @@ export default function CategoryListingScreen() {
     }
   };
 
-  const title = viewAllShops
+  const title = isViewAll
     ? allShopsTitle
     : active === 'ALL'
       ? 'All Categories'
       : meta.label;
-  const freeDeliveryGap = Math.max(0, 500 - cartTotal);
 
   const openProductChip = (name: string) => {
     if (productChip === name) {
@@ -458,11 +506,20 @@ export default function CategoryListingScreen() {
   };
 
   const onBack = () => {
-    if (viewAllShops) {
-      setViewAllShops(false);
+    if (isViewAll) {
+      if (view === 'all') {
+        router.back();
+        return;
+      }
+      setViewAllLocal(false);
       return;
     }
     router.back();
+  };
+
+  const openAllShopsList = () => {
+    setViewAllLocal(true);
+    router.setParams({ view: 'all' });
   };
 
   const isMenusLoading = menusQ.some((mq) => mq.isLoading && !mq.data);
@@ -491,7 +548,8 @@ export default function CategoryListingScreen() {
           </Pressable>
         </View>
 
-        {/* Search */}
+        {/* Search — hidden in full list mode for cleaner filter row */}
+        {!isViewAll ? (
         <Pressable
           style={[
             styles.search,
@@ -506,9 +564,10 @@ export default function CategoryListingScreen() {
           <Text style={[styles.searchPh, { color: colors.textSecondary }]}>Search in {title}…</Text>
           <Ionicons name="mic-outline" size={15} color={CaseUi.orange} />
         </Pressable>
+        ) : null}
 
         {/* Ribbon: business types only on ALL · product chips on vertical pages */}
-        {!viewAllShops && active === 'ALL' ? (
+        {!isViewAll && active === 'ALL' ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -523,7 +582,7 @@ export default function CategoryListingScreen() {
                   <View
                     style={[styles.ribTile, { backgroundColor: m.color }, on && styles.ribTileOn]}
                   >
-                    <Image source={{ uri: m.image }} style={styles.ribImg} contentFit="cover" />
+                    <SafeCategoryImage uri={m.image} style={styles.ribImg} icon="grid-outline" />
                   </View>
                   <Text style={[styles.ribLabel, on && styles.ribLabelOn]} numberOfLines={1}>
                     {m.short}
@@ -534,7 +593,7 @@ export default function CategoryListingScreen() {
           </ScrollView>
         ) : null}
 
-        {!viewAllShops && active !== 'ALL' && productRibbon.length > 0 ? (
+        {!isViewAll && active !== 'ALL' && productRibbon.length > 0 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -550,7 +609,7 @@ export default function CategoryListingScreen() {
                   onPress={() => openProductChip(chip.name)}
                 >
                   <View style={[styles.ribTile, on && styles.ribTileOn, { borderRadius: 12 }]}>
-                    <Image source={{ uri: chip.image }} style={styles.ribImg} contentFit="cover" />
+                    <SafeCategoryImage uri={chip.image} style={styles.ribImg} icon="pricetag-outline" />
                   </View>
                   <Text style={[styles.ribLabel, on && styles.ribLabelOn]} numberOfLines={2}>
                     {chip.name}
@@ -562,12 +621,14 @@ export default function CategoryListingScreen() {
         ) : null}
 
         {/* All Pharmacies / All Restaurants list mode */}
-        {viewAllShops ? (
-          <>
+        {isViewAll ? (
+          <View style={styles.listModeWrap}>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.filterRow}
+              style={styles.filterScroll}
+              nestedScrollEnabled
             >
               {LIST_FILTERS.map((f) => {
                 const on = listFilter === f;
@@ -597,6 +658,8 @@ export default function CategoryListingScreen() {
               </View>
             ) : (
               <ScrollView
+                decelerationRate={Platform.OS === 'ios' ? 'fast' : 'normal'}
+                style={styles.listScroll}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{
                   paddingHorizontal: 14,
@@ -613,7 +676,10 @@ export default function CategoryListingScreen() {
                     merchant={m}
                     index={i}
                     variant="list"
-                    onPress={(id) => router.push(`/restaurant/${id}`)}
+                    onPress={(id) => {
+                      setRouteLoading(true);
+                      router.push(`/restaurant/${id}`);
+                    }}
                   />
                 ))}
                 {filteredShops.length === 0 ? (
@@ -624,16 +690,22 @@ export default function CategoryListingScreen() {
                 ) : null}
               </ScrollView>
             )}
-          </>
+          </View>
         ) : merchantsQ.isLoading ? (
-          <CategoryListSkeleton />
+          <BlinkitCategoryLoader />
         ) : (
           <ScrollView
             showsVerticalScrollIndicator={false}
+            decelerationRate={Platform.OS === 'ios' ? 'fast' : 'normal'}
+            scrollEventThrottle={48}
+            onScroll={(e) => {
+              if (loadMoreProducts) return;
+              if (e.nativeEvent.contentOffset.y > 180) setLoadMoreProducts(true);
+            }}
             contentContainerStyle={{ paddingBottom: scrollBottomPadding }}
           >
             {/* Working Promo Carousel */}
-            <PromoCarousel category={active} />
+            <PromoCarousel slides={slides} />
 
             {/* ——— ALL ——— */}
             {active === 'ALL' ? (
@@ -700,7 +772,7 @@ export default function CategoryListingScreen() {
               <>
                 <Section
                   title="Top Rated Restaurants"
-                  onSeeAll={() => setViewAllShops(true)}
+                  onSeeAll={() => openAllShopsList()}
                 />
                 <View style={styles.listPad}>
                   {filteredShops.slice(0, 5).map((m, i) => (
@@ -713,7 +785,7 @@ export default function CategoryListingScreen() {
                     />
                   ))}
                   {filteredShops.length > 5 ? (
-                    <Pressable style={styles.seeAllBtn} onPress={() => setViewAllShops(true)}>
+                    <Pressable style={styles.seeAllBtn} onPress={() => openAllShopsList()}>
                       <Text style={styles.seeAllBtnText}>
                         View all {filteredShops.length} restaurants
                       </Text>
@@ -781,7 +853,7 @@ export default function CategoryListingScreen() {
 
                 <Section
                   title="Shop by Pharmacy"
-                  onSeeAll={() => setViewAllShops(true)}
+                  onSeeAll={() => openAllShopsList()}
                   seeAllLabel="See all"
                 />
                 <View style={styles.listPad}>
@@ -795,7 +867,7 @@ export default function CategoryListingScreen() {
                     />
                   ))}
                   {filteredShops.length > 5 ? (
-                    <Pressable style={styles.seeAllBtn} onPress={() => setViewAllShops(true)}>
+                    <Pressable style={styles.seeAllBtn} onPress={() => openAllShopsList()}>
                       <Text style={styles.seeAllBtnText}>
                         View all {filteredShops.length} pharmacies
                       </Text>
@@ -830,7 +902,7 @@ export default function CategoryListingScreen() {
                   </ScrollView>
                 )}
 
-                <Section title="Shop by Grocery" onSeeAll={() => setViewAllShops(true)} />
+                <Section title="Shop by Grocery" onSeeAll={() => openAllShopsList()} />
                 <View style={styles.listPad}>
                   {filteredShops.slice(0, 5).map((m, i) => (
                     <ShopCard
@@ -842,7 +914,7 @@ export default function CategoryListingScreen() {
                     />
                   ))}
                   {filteredShops.length > 5 ? (
-                    <Pressable style={styles.seeAllBtn} onPress={() => setViewAllShops(true)}>
+                    <Pressable style={styles.seeAllBtn} onPress={() => openAllShopsList()}>
                       <Text style={styles.seeAllBtnText}>
                         View all {filteredShops.length} grocery shops
                       </Text>
@@ -856,7 +928,7 @@ export default function CategoryListingScreen() {
             {/* ——— STORE ——— */}
             {active === 'STORE' ? (
               <>
-                <Section title="Top Stores" onSeeAll={() => setViewAllShops(true)} />
+                <Section title="Top Stores" onSeeAll={() => openAllShopsList()} />
                 <View style={styles.listPad}>
                   {filteredShops.slice(0, 5).map((m, i) => (
                     <ShopCard
@@ -868,7 +940,7 @@ export default function CategoryListingScreen() {
                     />
                   ))}
                   {filteredShops.length > 5 ? (
-                    <Pressable style={styles.seeAllBtn} onPress={() => setViewAllShops(true)}>
+                    <Pressable style={styles.seeAllBtn} onPress={() => openAllShopsList()}>
                       <Text style={styles.seeAllBtnText}>View all {filteredShops.length} stores</Text>
                       <Ionicons name="chevron-forward" size={16} color={CaseUi.orange} />
                     </Pressable>
@@ -890,7 +962,7 @@ export default function CategoryListingScreen() {
                         }
                       }}
                     >
-                      <Image source={{ uri: tile.image }} style={styles.circleImg} contentFit="cover" />
+                      <SafeCategoryImage uri={tile.image} style={styles.circleImg} icon="grid-outline" />
                       <Text style={styles.circleLabel} numberOfLines={2}>
                         {tile.name}
                       </Text>
@@ -927,15 +999,12 @@ export default function CategoryListingScreen() {
         )}
       </SafeAreaView>
 
-      <FloatingCartBar
+        <RouteLoadingOverlay visible={routeLoading} label="Loading category picks..." />
+        <FloatingCartBar
         visible={cartCount > 0}
         itemCount={cartCount}
         total={cartTotal}
-        restaurantName={
-          freeDeliveryGap > 0
-            ? `Extra J$${Math.round(freeDeliveryGap)} to free delivery`
-            : cartRestaurantName
-        }
+        restaurantName={cartRestaurantName}
         onPress={() => router.push('/(tabs)/cart')}
         bottom={cartBottom}
       />
@@ -999,7 +1068,7 @@ const styles = StyleSheet.create({
   title: {
     flex: 1,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 16,
+    fontSize: 17,
     color: CaseUi.ink,
     textAlign: 'center',
   },
@@ -1032,10 +1101,10 @@ const styles = StyleSheet.create({
   searchPh: {
     flex: 1,
     fontFamily: 'PlusJakartaSans_500Medium',
-    fontSize: 13,
+    fontSize: 12.5,
     color: CaseUi.muted,
   },
-  ribbon: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, gap: 10 },
+  ribbon: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6, gap: 10 },
   ribItem: { width: 64, alignItems: 'center' },
   ribTile: {
     width: 52,
@@ -1056,12 +1125,25 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   ribLabelOn: { color: CaseUi.ink, fontFamily: 'PlusJakartaSans_800ExtraBold' },
-  filterRow: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4, gap: 8 },
-  filterChip: {
+  listModeWrap: { flex: 1 },
+  filterScroll: { flexGrow: 0, maxHeight: 56 },
+  listScroll: { flex: 1 },
+  filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 10,
+    paddingRight: 24,
+    gap: 8,
+  },
+  filterChip: {
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    minHeight: 36,
     borderRadius: 999,
     backgroundColor: CaseUi.field,
     borderWidth: 1,
@@ -1131,11 +1213,11 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',
-    fontSize: 15,
+    fontSize: 16,
     color: CaseUi.ink,
   },
-  seeAll: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12, color: CaseUi.orange },
-  hPad: { paddingHorizontal: 14, gap: 10 },
+  seeAll: { fontFamily: 'PlusJakartaSans_700Bold', fontSize: 12.5, color: CaseUi.orange },
+  hPad: { paddingHorizontal: 14, gap: 12 },
   listPad: { paddingHorizontal: 14 },
   dishCard: { width: 88, alignItems: 'center' },
   dishImg: {
@@ -1259,21 +1341,25 @@ const styles = StyleSheet.create({
   skeLine: { height: 10, borderRadius: 4 },
   carouselContainer: {
     marginHorizontal: 14,
-    marginTop: 10,
+    marginTop: 6,
     position: 'relative',
-    height: 110,
+    height: 104,
+    marginBottom: 2,
   },
   slideCard: {
     borderRadius: 16,
     overflow: 'hidden',
-    height: 110,
+    height: 104,
   },
   slideGradient: {
     ...StyleSheet.absoluteFill,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    padding: 12,
     justifyContent: 'space-between',
+  },
+  slideBgImg: {
+    ...StyleSheet.absoluteFill,
   },
   slideTextCol: {
     flex: 1,
@@ -1291,14 +1377,22 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     lineHeight: 15,
   },
-  slideImg: {
-    width: 72,
-    height: 72,
-    borderRadius: 12,
+  slideChip: {
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexShrink: 0,
+    marginLeft: 8,
+  },
+  slideChipText: {
+    color: CaseUi.ink,
+    fontSize: 11,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
   },
   carouselDots: {
     position: 'absolute',
-    bottom: 8,
+    bottom: 6,
     right: 14,
     flexDirection: 'row',
     alignItems: 'center',

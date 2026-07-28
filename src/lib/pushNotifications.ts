@@ -56,7 +56,6 @@ export async function registerForPushNotifications(): Promise<string | null> {
       (Constants as { easConfig?: { projectId?: string } }).easConfig?.projectId;
 
     if (!projectId) {
-      console.warn('[Push] No EAS projectId in app.json extra.eas.projectId');
       return null;
     }
 
@@ -68,12 +67,16 @@ export async function registerForPushNotifications(): Promise<string | null> {
 
     await AsyncStorage.setItem(PUSH_TOKEN_KEY, token);
     const platform = Platform.OS === 'ios' ? 'ios' : 'android';
-    await registerDeviceToken(token, platform);
-    try {
-      await registerCasePushToken(token, platform);
-    } catch (err) {
-      console.warn('[Push] CASE token register failed:', err);
-    }
+    // These register the same token with two independent backend systems —
+    // run them in parallel instead of back-to-back (was ~2x the wall time).
+    await Promise.all([
+      registerDeviceToken(token, platform),
+      registerCasePushToken(token, platform).catch((err) => {
+        if (__DEV__ && process.env.EXPO_PUBLIC_PERF_VERBOSE === '1') {
+          console.warn('[Push] CASE token register failed:', err);
+        }
+      }),
+    ]);
 
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
@@ -91,10 +94,14 @@ export async function registerForPushNotifications(): Promise<string | null> {
       });
     }
 
-    console.log('[Push] Registered token:', token.slice(0, 24) + '…');
+    if (__DEV__ && process.env.EXPO_PUBLIC_PERF_VERBOSE === '1') {
+      console.log('[Push] Registered token:', token.slice(0, 24) + '…');
+    }
     return token;
   } catch (error) {
-    console.warn('[Push] Registration failed:', error);
+    if (__DEV__ && process.env.EXPO_PUBLIC_PERF_VERBOSE === '1') {
+      console.warn('[Push] Registration failed:', error);
+    }
     return null;
   }
 }
@@ -107,7 +114,9 @@ export async function unregisterForPushNotifications(): Promise<void> {
       await AsyncStorage.removeItem(PUSH_TOKEN_KEY);
     }
   } catch (error) {
-    console.warn('[Push] Unregister failed:', error);
+    if (__DEV__ && process.env.EXPO_PUBLIC_PERF_VERBOSE === '1') {
+      console.warn('[Push] Unregister failed:', error);
+    }
   }
 }
 

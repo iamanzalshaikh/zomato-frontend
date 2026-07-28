@@ -17,7 +17,7 @@ export const api: AxiosInstance = axios.create({
     'Content-Type': 'application/json',
     'Connection': 'keep-alive',
   },
-  timeout: 30000,
+  timeout: 12_000,
 });
 
 let refreshPromise: Promise<string | null> | null = null;
@@ -34,8 +34,7 @@ api.interceptors.request.use(
     const token = await getAccessToken();
     if (__DEV__) {
       const label = `${String(config.method).toUpperCase()} ${config.url ?? ''}`;
-      console.log(`🌐 [API] ${label}`);
-      // Start perf timer — stored on config so response interceptor can read it
+      // Timing only — skip per-request spam; slow calls log in perfEnd
       retryConfig._perfId = perfStart(label);
     }
     if (token) {
@@ -52,7 +51,6 @@ api.interceptors.response.use(
     if (__DEV__) {
       const cfg = response.config as RetryConfig;
       perfEnd(cfg._perfId ?? '', response.status);
-      console.log(`✅ [API] ${response.status} ${response.config.url ?? ''}`);
     }
     return response;
   },
@@ -62,10 +60,11 @@ api.interceptors.response.use(
 
     if (__DEV__) {
       perfEnd(config._perfId ?? '', status ?? 0);
-      console.log(`❌ [API] ${status ?? 'NO_STATUS'} ${config.url ?? ''}`, {
-        message: error.message,
-        data: error.response?.data,
-      });
+      if (process.env.EXPO_PUBLIC_PERF_VERBOSE === '1') {
+        console.log(`❌ [API] ${status ?? 'NO_STATUS'} ${config.url ?? ''}`, {
+          message: error.message,
+        });
+      }
     }
 
     if (status !== 401 || config._retry || config._skipAuthRefresh || isAuthEndpoint(config.url)) {

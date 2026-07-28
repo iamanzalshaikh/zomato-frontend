@@ -21,8 +21,12 @@ export type CaseDeliveryPoint = {
 export type CaseBanner = {
   id: string;
   title: string;
+  subtitle?: string | null;
+  ctaText?: string | null;
   imageUrl: string;
   linkUrl?: string | null;
+  placement?: string;
+  businessType?: string | null;
   sortOrder?: number;
 };
 
@@ -51,6 +55,7 @@ export type CaseBootstrap = {
   config: CasePlatformConfig;
   banners: CaseBanner[];
   announcements: CaseAnnouncement[];
+  popularNearYou?: CaseMerchant[];
 };
 
 export type CaseMerchant = {
@@ -118,8 +123,12 @@ function normalizeBanner(item: Record<string, unknown>): CaseBanner {
   return {
     id: String(n.id),
     title: String(n.title ?? ''),
+    subtitle: (n.subtitle as string | null) ?? null,
+    ctaText: (n.ctaText as string | null) ?? null,
     imageUrl: String(n.imageUrl ?? ''),
     linkUrl: (n.linkUrl as string | null) ?? null,
+    placement: (n.placement as string | undefined) ?? undefined,
+    businessType: (n.businessType as string | null) ?? null,
     sortOrder: n.sortOrder as number | undefined,
   };
 }
@@ -161,6 +170,7 @@ export async function fetchCaseBootstrap(): Promise<CaseBootstrap> {
   const deliveryPointsRaw = (data.deliveryPoints as Record<string, unknown>[]) ?? [];
   const bannersRaw = (data.banners as Record<string, unknown>[]) ?? [];
   const announcementsRaw = (data.announcements as Record<string, unknown>[]) ?? [];
+  const popularRaw = (data.popularNearYou as Record<string, unknown>[]) ?? [];
 
   return {
     categories: categoriesRaw.map(normalizeCategory),
@@ -168,7 +178,21 @@ export async function fetchCaseBootstrap(): Promise<CaseBootstrap> {
     config: (data.config as CasePlatformConfig) ?? {},
     banners: bannersRaw.map(normalizeBanner),
     announcements: announcementsRaw.map(normalizeAnnouncement),
+    popularNearYou: popularRaw.map(normalizeMerchant),
   };
+}
+
+export async function fetchCaseBanners(params: {
+  placement: 'HOME' | 'CATEGORY' | 'RESTAURANT' | 'CHECKOUT';
+  businessType?: string;
+}): Promise<CaseBanner[]> {
+  const qs = new URLSearchParams();
+  qs.set('placement', params.placement);
+  if (params.businessType) qs.set('businessType', params.businessType);
+  const body = await apiFetch(`/public/banners?${qs.toString()}`);
+  const data = unwrapData<{ banners?: Record<string, unknown>[] }>(body);
+  const list = data.banners ?? [];
+  return list.map(normalizeBanner);
 }
 
 export async function fetchCaseCategories(): Promise<CaseCategory[]> {
@@ -205,6 +229,28 @@ export async function fetchCaseMerchants(params?: {
     total: data.total ?? itemsRaw.length,
     page: data.page ?? params?.page ?? 1,
     limit: data.limit ?? params?.limit ?? 20,
+  };
+}
+
+export async function fetchCasePopularNearYou(params?: {
+  businessType?: string;
+  limit?: number;
+}): Promise<{ items: CaseMerchant[]; total: number; sponsoredCount: number }> {
+  const qs = new URLSearchParams();
+  if (params?.businessType) qs.set('businessType', params.businessType);
+  if (params?.limit) qs.set('limit', String(params.limit));
+  const query = qs.toString();
+  const body = await apiFetch(`/public/popular-near-you${query ? `?${query}` : ''}`);
+  const data = unwrapData<{
+    items?: Record<string, unknown>[];
+    total?: number;
+    sponsoredCount?: number;
+  }>(body);
+  const items = (data.items ?? []).map(normalizeMerchant);
+  return {
+    items,
+    total: data.total ?? items.length,
+    sponsoredCount: data.sponsoredCount ?? 0,
   };
 }
 

@@ -1,6 +1,10 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
+import Animated, {
+  FadeOutUp,
+  SlideInDown,
+  ZoomIn,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useToastStore, type ToastType } from '@/lib/toast';
@@ -30,15 +34,16 @@ export function ToastHost() {
 
   return (
     <Animated.View
-      entering={FadeInDown.springify().damping(16).stiffness(180)}
-      exiting={FadeOutUp.duration(180)}
+      key={current.id}
+      entering={SlideInDown.springify().damping(18).stiffness(220).mass(0.85)}
+      exiting={FadeOutUp.duration(200)}
       style={[styles.host, { top: insets.top + 10 }]}
       pointerEvents="box-none"
     >
       <Pressable onPress={dismiss} style={[styles.card, { backgroundColor: palette.bg }]}>
-        <View style={[styles.iconWrap, { backgroundColor: `${palette.accent}22` }]}>
+        <Animated.View entering={ZoomIn.delay(60).duration(220)} style={[styles.iconWrap, { backgroundColor: `${palette.accent}22` }]}>
           <Ionicons name={ICON[current.type]} size={22} color={palette.accent} />
-        </View>
+        </Animated.View>
         <View style={styles.textWrap}>
           {!!current.title && <Text style={styles.title}>{current.title}</Text>}
           <Text style={styles.message} numberOfLines={3}>

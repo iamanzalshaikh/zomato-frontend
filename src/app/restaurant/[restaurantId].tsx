@@ -13,6 +13,7 @@ import {
   Dimensions,
   Share,
   FlatList,
+  InteractionManager,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,7 +27,7 @@ import { Blinkit, CaseUi } from '@/constants/caseUi';
 import { type MenuItem, type ComboItem } from '@/services/menu';
 import { type Coupon } from '@/services/coupons';
 import { useTheme } from '@/hooks/use-theme';
-import { useAddToCartMutation } from '@/hooks/queries/cart';
+import { useAddToCartMutation, useUpdateCartItemMutation, useRemoveCartItemMutation } from '@/hooks/queries/cart';
 import { useStorePageQuery } from '@/hooks/queries/restaurants';
 import { FavoriteHeart } from '@/components/favorite-heart';
 import { FloatingCartBar } from '@/components/floating-cart-bar';
@@ -36,6 +37,7 @@ import { getCartDisplayTotal, getCartItemCount, getCartRestaurantName } from '@/
 import { toast } from '@/lib/toast';
 import { useFloatingCartBottom, useFloatingCartScrollPadding } from '@/hooks/use-floating-cart-inset';
 import { useThemeContext } from '@/context/ThemeContext';
+import { getRecentlyViewedStores, pushRecentlyViewedStore, type RecentlyViewedStore } from '@/lib/recentlyViewedStores';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -81,103 +83,157 @@ function FoodTypeBadge({ type }: { type?: string }) {
 const MenuItemRow = memo(function MenuItemRow({
   item,
   addingItemId,
+  cartQty,
+  cartLineId,
   onAdd,
+  onChangeQty,
   onPress,
   showRecommendedBadge,
 }: {
   item: MenuItem;
   addingItemId: string | null;
+  cartQty: number;
+  cartLineId?: string;
   onAdd: (item: MenuItem) => void;
+  onChangeQty: (item: MenuItem, lineId: string, nextQty: number) => void;
   onPress?: (item: MenuItem) => void;
   showRecommendedBadge?: boolean;
 }) {
   const { colors, activeScheme } = useThemeContext();
   const isDark = activeScheme === 'dark';
-  const busy = addingItemId === item._id;
+  const itemKey = String(item._id || (item as { id?: string }).id || '');
+  const busy = Boolean(addingItemId) && addingItemId === itemKey;
   const hasAddons = Boolean(item.addons?.length);
   const isOutOfStock = item.isAvailable === false;
+  const isSpicy =
+    item.itemName.toLowerCase().includes('spicy') || item.itemName.toLowerCase().includes('bbq');
+  const realRating =
+    typeof (item as { averageRating?: number }).averageRating === 'number'
+      ? Number((item as { averageRating?: number }).averageRating)
+      : null;
+  const realCalories =
+    typeof (item as { calories?: number }).calories === 'number'
+      ? Number((item as { calories?: number }).calories)
+      : null;
+  const inCart = cartQty > 0 && Boolean(cartLineId);
 
-  const calories = useMemo(() => Math.floor((item.price * 0.7) % 350) + 180, [item._id]);
-  const spiceRating = useMemo(() => (item.itemName.toLowerCase().includes('spicy') || item.itemName.toLowerCase().includes('bbq') ? 2 : 0), [item.itemName]);
-  const starsCount = useMemo(() => Number(4 + (Number(item._id.charCodeAt(0) % 10) / 10)).toFixed(1), [item._id]);
-
+  // Card shell is a View — info opens detail; ADD/−/+ are siblings so minus isn't stolen.
   return (
-    <Pressable
-      onPress={() => onPress?.(item)}
-      style={({ pressed }) => [
+    <View
+      style={[
         styles.menuCard,
         { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderColor: isDark ? '#2D2D34' : '#F0F0F0' },
         isOutOfStock && { opacity: 0.55 },
-        pressed && { opacity: 0.88 },
       ]}
     >
-      {/* Left: Compact thumbnail */}
-      <View style={styles.menuCardLeft}>
-        {item.images?.[0] ? (
-          <Image source={{ uri: item.images[0] }} style={styles.menuCardImg} contentFit="cover" transition={200} />
-        ) : (
-          <View style={[styles.menuCardImg, styles.noPhotoImageContainer, { backgroundColor: isDark ? '#2D2D34' : '#F3F4F6' }]}>
-            <Ionicons name="fast-food-outline" size={22} color={isDark ? '#4E4E52' : '#cccccc'} />
+      <Pressable
+        onPress={() => onPress?.(item)}
+        style={({ pressed }) => [styles.menuCardInfoPress, pressed && { opacity: 0.88 }]}
+      >
+        {/* Left: Compact thumbnail */}
+        <View style={styles.menuCardLeft}>
+          {item.images?.[0] ? (
+            <Image source={{ uri: item.images[0] }} style={styles.menuCardImg} contentFit="cover" transition={0} recyclingKey={itemKey} />
+          ) : (
+            <View style={[styles.menuCardImg, styles.noPhotoImageContainer, { backgroundColor: isDark ? '#2D2D34' : '#F3F4F6' }]}>
+              <Ionicons name="fast-food-outline" size={22} color={isDark ? '#4E4E52' : '#cccccc'} />
+            </View>
+          )}
+        </View>
+
+        {/* Center: Info details */}
+        <View style={styles.menuCardRight}>
+          <View style={styles.badgeRow}>
+            <FoodTypeBadge type={item.foodType} />
+            {(showRecommendedBadge || item.isRecommended) && (
+              <View style={styles.popularCardBadge}>
+                <ThemedText style={styles.popularCardBadgeText}>Popular</ThemedText>
+              </View>
+            )}
+            {isSpicy && (
+              <View style={styles.spicyBadge}>
+                <ThemedText style={styles.spicyBadgeText}>🌶️ Spicy</ThemedText>
+              </View>
+            )}
           </View>
-        )}
-      </View>
 
-      {/* Center: Info details */}
-      <View style={styles.menuCardRight}>
-        <View style={styles.badgeRow}>
-          <FoodTypeBadge type={item.foodType} />
-          {(showRecommendedBadge || item.isRecommended) && (
-            <View style={styles.popularCardBadge}>
-              <ThemedText style={styles.popularCardBadgeText}>Popular</ThemedText>
-            </View>
-          )}
-          {spiceRating > 0 && (
-            <View style={styles.spicyBadge}>
-              <ThemedText style={styles.spicyBadgeText}>🌶️ Spicy</ThemedText>
-            </View>
-          )}
-        </View>
-
-        <ThemedText style={[styles.menuCardName, { color: colors.text }]} numberOfLines={2}>
-          {item.itemName}
-        </ThemedText>
-
-        <View style={styles.metaRatingRow}>
-          <Ionicons name="star" size={11} color="#F59E0B" />
-          <ThemedText style={[styles.metaRatingText, { color: colors.text }]}>{starsCount}</ThemedText>
-          <View style={styles.metaDotDivider} />
-          <ThemedText style={[styles.metaCaloriesText, { color: colors.textSecondary }]}>{calories} kcal</ThemedText>
-        </View>
-
-        {!!item.shortDescription && (
-          <ThemedText themeColor="textSecondary" style={styles.menuCardDesc} numberOfLines={1}>
-            {item.shortDescription}
+          <ThemedText style={[styles.menuCardName, { color: colors.text }]} numberOfLines={2}>
+            {item.itemName}
           </ThemedText>
-        )}
 
-        <View style={styles.menuCardPriceRow}>
-          <ThemedText style={[styles.menuCardPrice, { color: colors.text }]}>J${item.discountedPrice ?? item.price}</ThemedText>
-          {!!item.discountedPrice && (
-            <ThemedText style={styles.menuCardOriginalPrice}>J${item.price}</ThemedText>
+          {realRating != null || realCalories != null ? (
+            <View style={styles.metaRatingRow}>
+              {realRating != null ? (
+                <>
+                  <Ionicons name="star" size={11} color="#F59E0B" />
+                  <ThemedText style={[styles.metaRatingText, { color: colors.text }]}>
+                    {realRating.toFixed(1)}
+                  </ThemedText>
+                </>
+              ) : null}
+              {realRating != null && realCalories != null ? <View style={styles.metaDotDivider} /> : null}
+              {realCalories != null ? (
+                <ThemedText style={[styles.metaCaloriesText, { color: colors.textSecondary }]}>
+                  {realCalories} kcal
+                </ThemedText>
+              ) : null}
+            </View>
+          ) : null}
+
+          {!!item.shortDescription && (
+            <ThemedText themeColor="textSecondary" style={styles.menuCardDesc} numberOfLines={1}>
+              {item.shortDescription}
+            </ThemedText>
           )}
-        </View>
-      </View>
 
-      {/* Right: ADD / Notify button — separate tap area so it doesn't trigger card navigation */}
+          <View style={styles.menuCardPriceRow}>
+            <ThemedText style={[styles.menuCardPrice, { color: colors.text }]}>J${item.discountedPrice ?? item.price}</ThemedText>
+            {!!item.discountedPrice && (
+              <ThemedText style={styles.menuCardOriginalPrice}>J${item.price}</ThemedText>
+            )}
+          </View>
+        </View>
+      </Pressable>
+
+      {/* Right: ADD / qty — only for THIS menuItemId; outside detail Pressable */}
       <View style={styles.menuCardAddArea}>
         {isOutOfStock ? (
           <Pressable
             style={styles.notifyBtn}
-            onPress={(e) => { e.stopPropagation?.(); toast.success("We'll notify you once available!", 'Alert Set'); }}
+            onPress={() => toast.success("We'll notify you once available!", 'Alert Set')}
           >
             <Ionicons name="notifications-outline" size={12} color={CaseUi.orange} />
           </Pressable>
+        ) : inCart ? (
+          <View style={styles.menuCardQtyPill}>
+            <Pressable
+              onPress={() => {
+                if (cartLineId) onChangeQty(item, cartLineId, cartQty - 1);
+              }}
+              hitSlop={10}
+              style={styles.menuCardQtyBtn}
+              disabled={busy}
+            >
+              <Ionicons name="remove" size={16} color={CaseUi.orange} />
+            </Pressable>
+            <ThemedText style={styles.menuCardQtyText}>{cartQty}</ThemedText>
+            <Pressable
+              onPress={() => {
+                if (cartLineId) onChangeQty(item, cartLineId, cartQty + 1);
+              }}
+              hitSlop={10}
+              style={styles.menuCardQtyBtn}
+              disabled={busy}
+            >
+              <Ionicons name="add" size={16} color={CaseUi.orange} />
+            </Pressable>
+          </View>
         ) : (
           <Pressable
-            onPress={(e) => { e.stopPropagation?.(); onAdd(item); }}
+            onPress={() => onAdd(item)}
             style={[styles.menuCardAddCircle, busy && { opacity: 0.7 }]}
             disabled={busy}
-            hitSlop={6}
+            hitSlop={10}
           >
             {busy ? (
               <ActivityIndicator size="small" color={CaseUi.orange} />
@@ -186,11 +242,11 @@ const MenuItemRow = memo(function MenuItemRow({
             )}
           </Pressable>
         )}
-        {hasAddons && !isOutOfStock && (
+        {hasAddons && !isOutOfStock && !inCart && (
           <ThemedText style={styles.menuCardCustomisable}>cust.</ThemedText>
         )}
       </View>
-    </Pressable>
+    </View>
   );
 });
 
@@ -199,6 +255,8 @@ export default function RestaurantDetailScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const add = useAddToCartMutation();
+  const updateCartLine = useUpdateCartItemMutation();
+  const removeCartLine = useRemoveCartItemMutation();
   const { restaurantId } = useLocalSearchParams<{ restaurantId: string }>();
 
   const rid = restaurantId ?? '';
@@ -214,7 +272,14 @@ export default function RestaurantDetailScreen() {
 
   const businessType = restaurant?.businessType?.toUpperCase() || 'RESTAURANT';
   const isRestaurant = businessType === 'RESTAURANT';
-  const items = useMemo(() => (storeData?.menu?.items ?? []) as MenuItem[], [storeData]);
+  const items = useMemo(() => {
+    // Backend already sets `_id`; avoid cloning image/addon arrays on every arrival.
+    return ((storeData?.menu?.items ?? []) as MenuItem[]).map((it) => {
+      const id = String(it._id || (it as { id?: string }).id || '');
+      if (it._id === id) return it;
+      return { ...it, _id: id };
+    });
+  }, [storeData?.menu?.items]);
   const combosData = useMemo(() => (storeData?.combos ?? []) as ComboItem[], [storeData]);
   const coupons: Coupon[] = useMemo(() => (storeData?.coupons ?? []) as Coupon[], [storeData]);
   const reviews = useMemo(() => (storeData?.reviews ?? []), [storeData]);
@@ -227,6 +292,33 @@ export default function RestaurantDetailScreen() {
   const cartRestaurantName = getCartRestaurantName(cart) ?? restaurant?.restaurantName;
   const cartBottom = useFloatingCartBottom();
   const scrollBottomPadding = useFloatingCartScrollPadding(cartCount > 0);
+
+  /** menuItemId → { lineId, qty } — only that product shows − qty + */
+  const cartQtyByMenuId = useMemo(() => {
+    const map = new Map<string, { lineId: string; qty: number }>();
+    for (const line of cart?.items ?? []) {
+      const lineStore = String((line as { restaurantId?: string }).restaurantId ?? '');
+      // Don't paint another store's qty onto this menu
+      if (rid && lineStore && lineStore !== rid) continue;
+      const mid = String(line.menuItemId || '').trim();
+      if (!mid) continue;
+      const prev = map.get(mid);
+      const qty = Number(line.quantity || 0);
+      if (prev) {
+        map.set(mid, { lineId: prev.lineId, qty: prev.qty + qty });
+      } else {
+        map.set(mid, { lineId: String(line._id), qty });
+      }
+    }
+    return map;
+  }, [cart?.items, rid]);
+
+  /** Stable FlatList extraData — avoid new object/{Map} every render */
+  const cartExtraKey = useMemo(() => {
+    let qtySum = 0;
+    for (const line of cart?.items ?? []) qtySum += Number(line.quantity || 0);
+    return `${addingItemId ?? ''}:${cart?.items?.length ?? 0}:${qtySum}`;
+  }, [addingItemId, cart?.items]);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -246,6 +338,17 @@ export default function RestaurantDetailScreen() {
 
   // Accordion details bottom sheet state
   const [showAboutModal, setShowAboutModal] = useState(false);
+  const [recentlyViewed, setRecentlyViewed] = useState<RecentlyViewedStore[]>([]);
+
+  // Defer featured rails + reviews until after first menu paint (cuts StorePage afterParse)
+  const [deferHeavySections, setDeferHeavySections] = useState(true);
+  useEffect(() => {
+    setDeferHeavySections(true);
+    const task = InteractionManager.runAfterInteractions(() => {
+      setDeferHeavySections(false);
+    });
+    return () => task.cancel();
+  }, [rid]);
 
   // Auto-scrolling Banner Carousel ref & state
   const bannerScrollRef = useRef<ScrollView>(null);
@@ -327,12 +430,15 @@ export default function RestaurantDetailScreen() {
     return groupedItems.filter((g) => g.categoryName === activeMenuCat);
   }, [groupedItems, activeMenuCat]);
 
-  // Carousel offer list
+  // Carousel offer list. The `base` entries are illustrative-only placeholders
+  // shown when this store has no real active coupons — they don't exist in
+  // the backend, so `isReal: false` keeps their code from being offered as
+  // something the customer can actually apply at checkout (it would 400).
   const offersList = useMemo(() => {
     const base = [
-      { discountType: 'PERCENTAGE', discountValue: 20, couponCode: 'KING20', title: '🎉 Flat 20% OFF', description: 'On orders above JMD 1,000' },
-      { discountType: 'FLAT', discountValue: 120, couponCode: 'FREED25', title: '🚚 Free Delivery', description: 'On orders above JMD 2,500' },
-      { discountType: 'PERCENTAGE', discountValue: 10, couponCode: 'STUDENT10', title: '🎓 Student Discount', description: 'Extra 10% OFF all orders' },
+      { discountType: 'PERCENTAGE', discountValue: 20, couponCode: 'KING20', title: '🎉 Flat 20% OFF', description: 'On orders above JMD 1,000', isReal: false },
+      { discountType: 'FLAT', discountValue: 120, couponCode: 'FREED25', title: '🚚 Free Delivery', description: 'On orders above JMD 2,500', isReal: false },
+      { discountType: 'PERCENTAGE', discountValue: 10, couponCode: 'STUDENT10', title: '🎓 Student Discount', description: 'Extra 10% OFF all orders', isReal: false },
     ];
     if (coupons.length > 0) {
       return coupons.map((c, i) => ({
@@ -341,6 +447,7 @@ export default function RestaurantDetailScreen() {
         couponCode: c.couponCode,
         title: c.title,
         description: c.description || 'Offers apply directly',
+        isReal: true,
       }));
     }
     return base;
@@ -358,6 +465,23 @@ export default function RestaurantDetailScreen() {
     return () => clearInterval(interval);
   }, [offersList]);
 
+  useEffect(() => {
+    if (!restaurant?.id) return;
+    const store: RecentlyViewedStore = {
+      id: String(restaurant.id),
+      restaurantName: String(restaurant.restaurantName ?? 'Store'),
+      logo: restaurant.logo ?? null,
+      bannerImage: restaurant.bannerImages?.[0] ?? null,
+      averageRating: Number(restaurant.averageRating ?? 0),
+      averageDeliveryTime: Number(restaurant.averageDeliveryTime ?? 25),
+      businessType: restaurant.businessType ?? null,
+    };
+    void pushRecentlyViewedStore(store).then(async () => {
+      const list = await getRecentlyViewedStores();
+      setRecentlyViewed(list.filter((x) => x.id !== rid).slice(0, 8));
+    });
+  }, [restaurant?.id, rid]);
+
   // Share store link utility
   const handleShareStore = async () => {
     try {
@@ -370,13 +494,18 @@ export default function RestaurantDetailScreen() {
   };
 
   const handleAddToCart = useCallback(async (item: MenuItem) => {
-    if (!item._id || !rid || addingItemId) return;
-    setAddingItemId(String(item._id));
+    const itemKey = String(item._id || (item as { id?: string }).id || '');
+    if (!itemKey || !rid || addingItemId) return;
+    setAddingItemId(itemKey);
     try {
+      const unitPrice = Number(item.discountedPrice ?? item.price ?? 0);
       await add.mutateAsync({
         restaurantId: String(rid),
-        menuItemId: String(item._id),
+        menuItemId: itemKey,
         quantity: 1,
+        itemName: item.itemName,
+        price: unitPrice,
+        restaurantName: restaurant?.restaurantName,
       });
       toast.success(`${item.itemName} added to cart`, 'Added');
     } catch (e: any) {
@@ -385,7 +514,27 @@ export default function RestaurantDetailScreen() {
     } finally {
       setAddingItemId(null);
     }
-  }, [add, addingItemId, rid]);
+  }, [add, addingItemId, rid, restaurant?.restaurantName]);
+
+  const handleChangeCartQty = useCallback(
+    async (item: MenuItem, lineId: string, nextQty: number) => {
+      const itemKey = String(item._id || (item as { id?: string }).id || '');
+      if (!lineId) return;
+      setAddingItemId(itemKey || lineId);
+      try {
+        if (nextQty <= 0) {
+          await removeCartLine.mutateAsync({ itemId: lineId });
+        } else {
+          await updateCartLine.mutateAsync({ itemId: lineId, quantity: nextQty });
+        }
+      } catch (e: any) {
+        toast.error(String(e?.message ?? 'Could not update cart'));
+      } finally {
+        setAddingItemId((cur) => (cur === itemKey || cur === lineId ? null : cur));
+      }
+    },
+    [removeCartLine, updateCartLine],
+  );
 
   const handleAddClick = useCallback((item: MenuItem) => {
     if (item.addons && item.addons.length > 0) {
@@ -406,6 +555,14 @@ export default function RestaurantDetailScreen() {
       void handleAddToCart(item);
     }
   }, [handleAddToCart]);
+
+  const openMenuItemDetail = useCallback(
+    (item: MenuItem) => {
+      const itemKey = String(item._id || (item as { id?: string }).id || '');
+      router.push({ pathname: '/product-detail', params: { restaurantId: rid, itemId: itemKey } });
+    },
+    [router, rid],
+  );
 
   const handleAddCustomizedToCart = async () => {
     if (!customizingItem || !rid) return;
@@ -428,11 +585,15 @@ export default function RestaurantDetailScreen() {
           }
         });
 
+      const unitPrice = Number(customizingItem.discountedPrice ?? customizingItem.price ?? 0);
       await add.mutateAsync({
         restaurantId: String(rid),
         menuItemId: String(customizingItem._id),
         quantity,
         addons: addonsPayload,
+        itemName: customizingItem.itemName,
+        price: unitPrice,
+        restaurantName: restaurant?.restaurantName,
       });
       setCustomizingItem(null);
       toast.success(`${customizingItem.itemName} added to cart`, 'Added');
@@ -442,14 +603,12 @@ export default function RestaurantDetailScreen() {
     }
   };
 
-  const isCategoryCollapsed = (catName: string) => collapsedCategories[catName] ?? false;
-
-  const toggleCategory = (catName: string) => {
+  const toggleCategory = useCallback((catName: string) => {
     setCollapsedCategories((prev) => ({
       ...prev,
       [catName]: !(prev[catName] ?? false),
     }));
-  };
+  }, []);
 
   const toggleAddon = (addonName: string) => {
     setSelectedAddons((prev) => ({
@@ -494,24 +653,85 @@ export default function RestaurantDetailScreen() {
     return list.filter((r: any) => r.id !== rid).slice(0, 4);
   }, [storeData, rid]);
 
-  return (
-    <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
-      {restaurantLoading ? (
-        <StoreDetailSkeleton />
-      ) : error ? (
-        <ThemedView type="backgroundElement" style={[styles.errorCard, { margin: Spacing.three, marginTop: Math.max(insets.top, 12) + 60 }]}>
-          <ThemedText style={styles.errorText}>{error}</ThemedText>
-          <Pressable onPress={() => void Promise.all([restaurantQ.refetch(), menuQ.refetch()])} style={styles.retryBtn}>
-            <ThemedText style={styles.retryText}>Retry</ThemedText>
-          </Pressable>
-        </ThemedView>
-      ) : (
-        <View style={styles.mainContainer}>
-          <ScrollView
-            stickyHeaderIndices={[5]}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: scrollBottomPadding + 20 }}
-          >
+  type RestaurantRow =
+    | { type: 'top'; key: string }
+    | { type: 'search'; key: string }
+    | { type: 'filters'; key: string }
+    | { type: 'featured'; key: string }
+    | { type: 'featuredPlaceholder'; key: string }
+    | { type: 'menuSheetSpacer'; key: string }
+    | { type: 'menuLoading'; key: string }
+    | { type: 'emptySearch'; key: string }
+    | {
+        type: 'categoryHeader';
+        key: string;
+        group: { categoryName: string; items: MenuItem[] };
+        isAllTab: boolean;
+        isCollapsed: boolean;
+        marginBottom: boolean;
+      }
+    | { type: 'menuItem'; key: string; item: MenuItem; showRecommendedBadge: boolean; marginBottom: boolean }
+    | { type: 'trailing'; key: string };
+
+  const rows = useMemo<RestaurantRow[]>(() => {
+    const out: RestaurantRow[] = [];
+    out.push({ type: 'top', key: 'top' });
+    out.push({ type: 'search', key: 'search' });
+    out.push({ type: 'filters', key: 'filters' });
+    // Featured image rails are expensive — paint menu first, then attach.
+    if (activeMenuCat === 'All' && !searchQuery && !deferHeavySections) {
+      out.push({ type: 'featured', key: 'featured' });
+    } else if (activeMenuCat === 'All' && !searchQuery && deferHeavySections) {
+      out.push({ type: 'featuredPlaceholder', key: 'featuredPlaceholder' });
+    }
+    out.push({ type: 'menuSheetSpacer', key: 'menuSheetSpacer' });
+    if (restaurantLoading) {
+      out.push({ type: 'menuLoading', key: 'menuLoading' });
+    }
+    if (filteredItems.length === 0 && !restaurantLoading) {
+      out.push({ type: 'emptySearch', key: 'emptySearch' });
+    } else {
+      const isAllTab = activeMenuCat === 'All';
+      categoriesToRender.forEach((group) => {
+        const isCollapsed = !isAllTab ? false : Boolean(collapsedCategories[group.categoryName]);
+        out.push({
+          type: 'categoryHeader',
+          key: `cat-${group.categoryName}`,
+          group,
+          isAllTab,
+          isCollapsed,
+          marginBottom: isCollapsed,
+        });
+        if (!isCollapsed) {
+          group.items.forEach((it, idx) => {
+            out.push({
+              type: 'menuItem',
+              key: `item-${String(it._id)}`,
+              item: it,
+              showRecommendedBadge: Boolean(it.isRecommended),
+              marginBottom: idx === group.items.length - 1,
+            });
+          });
+        }
+      });
+    }
+    if (!deferHeavySections) {
+      out.push({ type: 'trailing', key: 'trailing' });
+    }
+    return out;
+  }, [
+    activeMenuCat,
+    searchQuery,
+    restaurantLoading,
+    filteredItems.length,
+    categoriesToRender,
+    collapsedCategories,
+    deferHeavySections,
+  ]);
+
+  function renderTop() {
+    return (
+      <>
             {/* 1. Hero Header (40% Screen Height) */}
             <View style={styles.heroSection}>
               {restaurant?.galleryImages?.[0] || restaurant?.thumbnail || restaurant?.bannerImages?.[0] || restaurant?.logo ? (
@@ -571,10 +791,6 @@ export default function RestaurantDetailScreen() {
                         <ThemedText style={{ fontSize: 12, color: restaurant?.isOpen === false ? '#EF4444' : '#10B981', fontFamily: 'PlusJakartaSans_700Bold' }}>
                           {restaurant?.isOpen === false ? 'Closed' : `Open until ${restaurant?.closingTime || '11:00 PM'}`}
                         </ThemedText>
-                        <Pressable onPress={() => router.push(`tel:${restaurant?.phone || '876'}`)} style={styles.callIconBtn}>
-                          <Ionicons name="call" size={13} color={CaseUi.orange} />
-                          <ThemedText style={{ color: CaseUi.orange, fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold' }}>Call</ThemedText>
-                        </Pressable>
                       </View>
                     </View>
                   </View>
@@ -644,9 +860,11 @@ export default function RestaurantDetailScreen() {
                     <View style={{ flex: 1, gap: 4 }}>
                       <ThemedText style={[styles.offerTitleText, { color: isDark ? '#FF9F64' : '#E05A10' }]}>{off.title}</ThemedText>
                       <ThemedText style={[styles.offerDescText, { color: isDark ? '#D1A38C' : '#8A583C' }]}>{off.description}</ThemedText>
-                      <Pressable onPress={() => { Clipboard.setString(off.couponCode); toast.success(`Code ${off.couponCode} copied`, 'Coupon Copied'); }} style={styles.offerCardApply}>
-                        <ThemedText style={{ color: CaseUi.orange, fontSize: 11, fontFamily: 'PlusJakartaSans_800ExtraBold' }}>Apply Coupon: {off.couponCode} ›</ThemedText>
-                      </Pressable>
+                      {off.isReal ? (
+                        <Pressable onPress={() => { Clipboard.setString(off.couponCode); toast.success(`Code ${off.couponCode} copied`, 'Coupon Copied'); }} style={styles.offerCardApply}>
+                          <ThemedText style={{ color: CaseUi.orange, fontSize: 11, fontFamily: 'PlusJakartaSans_800ExtraBold' }}>Apply Coupon: {off.couponCode} ›</ThemedText>
+                        </Pressable>
+                      ) : null}
                     </View>
                     <View style={[styles.percentBadge, { backgroundColor: CaseUi.orange }]}>
                       <Ionicons name="pricetag" size={16} color="#FFF" />
@@ -669,7 +887,13 @@ export default function RestaurantDetailScreen() {
                 <ThemedText style={styles.floatingOffersFABText}>{offersList.length} Offers</ThemedText>
               </Pressable>
             </View>
+      </>
+    );
+  }
 
+  function renderSearchRow() {
+    return (
+      <>
             {/* 5. Sticky Search Area */}
             <View style={[styles.stickySearchAreaContainer, { backgroundColor: theme.backgroundElement, borderBottomColor: isDark ? '#27272A' : '#E4E4E7' }]}>
               <View style={[styles.inStoreSearchBox, { backgroundColor: isDark ? '#18181C' : '#F5F5F7', borderColor: isDark ? '#2D2D34' : '#E4E4E7' }]}>
@@ -684,7 +908,13 @@ export default function RestaurantDetailScreen() {
                 <Ionicons name="mic-outline" size={18} color={CaseUi.orange} />
               </View>
             </View>
+      </>
+    );
+  }
 
+  function renderFiltersRow() {
+    return (
+      <>
             {/* 6. Sticky Category Filters Header */}
             <View style={[styles.stickyFiltersBar, { backgroundColor: theme.backgroundElement, borderBottomColor: isDark ? '#27272A' : '#E4E4E7' }]}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stickyFilterScroll}>
@@ -748,9 +978,13 @@ export default function RestaurantDetailScreen() {
                 })}
               </ScrollView>
             </View>
+      </>
+    );
+  }
 
-            {/* 7. Featured sections (Scroll carousels before main menu list) */}
-            {activeMenuCat === 'All' && !searchQuery && (
+  function renderFeaturedSections() {
+    return (
+      <>
               <View style={{ backgroundColor: theme.background }}>
                 {/* Section A: Recommended / Featured for you */}
                 {recommendedItems.length > 0 && (
@@ -762,9 +996,10 @@ export default function RestaurantDetailScreen() {
                       </Pressable>
                     </View>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featuredScrollContent}>
-                      {recommendedItems.slice(0, 8).map((it) => (
+                      {recommendedItems.slice(0, 4).map((it) => (
                         <Pressable
                           key={it._id}
+                          testID={`featured-item-${it._id}`}
                           style={[styles.featuredProductCard, { backgroundColor: theme.backgroundElement }]}
                           onPress={() => router.push({ pathname: '/product-detail', params: { restaurantId: rid, itemId: it._id } })}
                         >
@@ -791,7 +1026,7 @@ export default function RestaurantDetailScreen() {
                       <ThemedText style={[styles.featuredTitleText, { color: theme.text }]}>🔥 Best Sellers</ThemedText>
                     </View>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featuredScrollContent}>
-                      {filteredItems.slice(0, 6).map((it) => (
+                      {filteredItems.slice(0, 4).map((it) => (
                         <Pressable
                           key={it._id}
                           style={[styles.bestSellerCompactCard, { backgroundColor: theme.backgroundElement }]}
@@ -834,29 +1069,30 @@ export default function RestaurantDetailScreen() {
                   </View>
                 )}
               </View>
-            )}
+      </>
+    );
+  }
 
-            {/* 8. Full Menu Categorized Cards Area */}
-            <View style={[styles.menuListSheet, { backgroundColor: theme.background, paddingTop: 10 }]}>
-              {restaurantLoading ? (
-                <View style={{ alignItems: 'center', paddingVertical: 24 }}>
-                  <ActivityIndicator size="small" color={theme.primary} />
-                </View>
-              ) : null}
-
-              {/* Empty Search Illustration */}
-              {filteredItems.length === 0 && !restaurantLoading ? (
+  function renderEmptySearch() {
+    return (
+      <>
                 <View style={styles.emptySearchContainer}>
                   <Ionicons name="search-outline" size={64} color={CaseUi.muted} />
                   <ThemedText style={[styles.emptySearchTitle, { color: theme.text }]}>No products found</ThemedText>
                   <ThemedText style={styles.emptySearchSub}>Try searching with another keyword or resetting filters.</ThemedText>
                 </View>
-              ) : (
-                categoriesToRender.map((group) => {
-                  const isAllTab = activeMenuCat === 'All';
-                  const isCollapsed = !isAllTab ? false : isCategoryCollapsed(group.categoryName);
-                  return (
-                    <View key={group.categoryName} style={styles.categorySection}>
+      </>
+    );
+  }
+
+  function renderCategoryHeaderRow(
+    group: { categoryName: string; items: MenuItem[] },
+    isAllTab: boolean,
+    isCollapsed: boolean,
+    marginBottom: boolean,
+  ) {
+    return (
+      <View style={marginBottom ? { marginBottom: 16 } : undefined}>
                       <Pressable onPress={() => isAllTab && toggleCategory(group.categoryName)} style={styles.categoryHeader}>
                         <View style={{ flex: 1 }}>
                           <ThemedText style={[styles.categoryTitleText, { color: theme.text }]}>
@@ -865,26 +1101,35 @@ export default function RestaurantDetailScreen() {
                         </View>
                         {isAllTab && <Ionicons name={isCollapsed ? 'chevron-down' : 'chevron-up'} size={18} color={theme.textSecondary} />}
                       </Pressable>
-                      {!isCollapsed && (
-                        <View style={styles.categoryList}>
-                          {group.items.map((it) => (
-                            <MenuItemRow
-                              key={it._id}
-                              item={it}
-                              addingItemId={addingItemId}
-                              onAdd={handleAddClick}
-                              onPress={(item) => router.push({ pathname: '/product-detail', params: { restaurantId: rid, itemId: item._id } })}
-                              showRecommendedBadge={Boolean(it.isRecommended)}
-                            />
-                          ))}
-                        </View>
-                      )}
-                    </View>
-                  );
-                })
-              )}
-            </View>
+      </View>
+    );
+  }
 
+  function renderMenuItemRow(item: MenuItem, showRecommendedBadge: boolean, marginBottom: boolean) {
+    const itemKey = String(item._id || (item as { id?: string }).id || '');
+    const altKey = String((item as { id?: string }).id || '');
+    const cartLine =
+      cartQtyByMenuId.get(itemKey) ??
+      (altKey && altKey !== itemKey ? cartQtyByMenuId.get(altKey) : undefined);
+    return (
+      <View key={itemKey} style={marginBottom ? { marginBottom: 16 } : undefined}>
+        <MenuItemRow
+          item={item}
+          addingItemId={addingItemId}
+          cartQty={cartLine?.qty ?? 0}
+          cartLineId={cartLine?.lineId}
+          onAdd={handleAddClick}
+          onChangeQty={handleChangeCartQty}
+          onPress={openMenuItemDetail}
+          showRecommendedBadge={showRecommendedBadge}
+        />
+      </View>
+    );
+  }
+
+  function renderTrailing() {
+    return (
+      <>
             {/* 9. Customer Reviews Panel */}
             {reviews.length > 0 && (
               <View style={[styles.reviewsPanelContainer, { backgroundColor: theme.backgroundElement }]}>
@@ -990,29 +1235,113 @@ export default function RestaurantDetailScreen() {
             )}
 
             {/* 12. Recently Viewed Stores */}
-            <View style={styles.similarStoresContainer}>
-              <ThemedText style={[styles.similarStoresTitle, { color: theme.text }]}>Recently Viewed</ThemedText>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
-                {[
-                  { id: '1', name: "Domino's Pizza", logo: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=200', rating: '4.6' },
-                  { id: '2', name: 'Healthy Place', logo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200', rating: '4.5' },
-                  { id: '3', name: 'MedPlus Pharmacy', logo: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=200', rating: '4.7' },
-                ].map((item) => (
-                  <View key={item.id} style={[styles.similarStoreCard, { backgroundColor: theme.backgroundElement, width: 140 }]}>
-                    <Image source={{ uri: item.logo }} style={styles.similarStoreImg} contentFit="cover" />
-                    <View style={styles.similarStoreDetails}>
-                      <ThemedText style={[styles.similarStoreName, { color: theme.text }]} numberOfLines={1}>{item.name}</ThemedText>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                        <Ionicons name="star" size={12} color="#F59E0B" />
-                        <ThemedText style={{ fontSize: 11, color: theme.text, fontFamily: 'PlusJakartaSans_700Bold' }}>{item.rating}</ThemedText>
+            {recentlyViewed.length > 0 && (
+              <View style={styles.similarStoresContainer}>
+                <ThemedText style={[styles.similarStoresTitle, { color: theme.text }]}>Recently Viewed</ThemedText>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
+                  {recentlyViewed.map((item) => (
+                    <Pressable
+                      key={item.id}
+                      style={[styles.similarStoreCard, { backgroundColor: theme.backgroundElement, width: 150 }]}
+                      onPress={() => router.push(`/restaurant/${item.id}`)}
+                    >
+                      <Image
+                        source={{ uri: item.bannerImage || item.logo || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200' }}
+                        style={styles.similarStoreImg}
+                        contentFit="cover"
+                      />
+                      <View style={styles.similarStoreDetails}>
+                        <ThemedText style={[styles.similarStoreName, { color: theme.text }]} numberOfLines={1}>
+                          {item.restaurantName}
+                        </ThemedText>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                          <Ionicons name="star" size={12} color="#F59E0B" />
+                          <ThemedText style={{ fontSize: 11, color: theme.text, fontFamily: 'PlusJakartaSans_700Bold' }}>
+                            {Number(item.averageRating ?? 0).toFixed(1)}
+                          </ThemedText>
+                          <ThemedText style={{ fontSize: 11, color: theme.textSecondary }}>
+                            · {item.averageDeliveryTime ?? 25} mins
+                          </ThemedText>
+                        </View>
                       </View>
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
-            </View>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+      </>
+    );
+  }
 
-          </ScrollView>
+  const renderRow = ({ item }: { item: RestaurantRow }) => {
+    switch (item.type) {
+      case 'top':
+        return renderTop();
+      case 'search':
+        return renderSearchRow();
+      case 'filters':
+        return renderFiltersRow();
+      case 'featured':
+        return renderFeaturedSections();
+      case 'featuredPlaceholder':
+        return (
+          <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+            <View
+              style={{
+                height: 110,
+                borderRadius: 16,
+                backgroundColor: isDark ? '#1C1C22' : '#FFF3EA',
+              }}
+            />
+          </View>
+        );
+      case 'menuSheetSpacer':
+        return <View style={{ height: 10 }} />;
+      case 'menuLoading':
+        return (
+          <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+            <ActivityIndicator size="small" color={theme.primary} />
+          </View>
+        );
+      case 'emptySearch':
+        return renderEmptySearch();
+      case 'categoryHeader':
+        return renderCategoryHeaderRow(item.group, item.isAllTab, item.isCollapsed, item.marginBottom);
+      case 'menuItem':
+        return renderMenuItemRow(item.item, item.showRecommendedBadge, item.marginBottom);
+      case 'trailing':
+        return renderTrailing();
+      default:
+        return null;
+    }
+  };
+  return (
+    <ThemedView style={[styles.container, { backgroundColor: theme.background }]}>
+      {restaurantLoading ? (
+        <StoreDetailSkeleton />
+      ) : error ? (
+        <ThemedView type="backgroundElement" style={[styles.errorCard, { margin: Spacing.three, marginTop: Math.max(insets.top, 12) + 60 }]}>
+          <ThemedText style={styles.errorText}>{error}</ThemedText>
+          <Pressable onPress={() => void storePageQ.refetch()} style={styles.retryBtn}>
+            <ThemedText style={styles.retryText}>Retry</ThemedText>
+          </Pressable>
+        </ThemedView>
+      ) : (
+        <View style={styles.mainContainer}>
+          <FlatList
+            data={rows}
+            keyExtractor={(row) => row.key}
+            renderItem={renderRow}
+            extraData={cartExtraKey}
+            stickyHeaderIndices={[1]}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: scrollBottomPadding + 20 }}
+            initialNumToRender={8}
+            maxToRenderPerBatch={6}
+            updateCellsBatchingPeriod={50}
+            windowSize={7}
+            removeClippedSubviews={Platform.OS === 'android'}
+          />
         </View>
       )}
 
@@ -1139,10 +1468,12 @@ export default function RestaurantDetailScreen() {
                       <View style={styles.couponCodeBadge}>
                         <ThemedText style={styles.couponCodeText}>{coupon.couponCode}</ThemedText>
                       </View>
-                      <Pressable onPress={() => { Clipboard.setString(coupon.couponCode); toast.success(`Code "${coupon.couponCode}" copied`, 'Copied'); }} style={styles.copyBtn}>
-                        <Ionicons name="copy-outline" size={14} color={theme.primary} />
-                        <ThemedText style={[styles.copyBtnText, { color: theme.primary }]}>COPY</ThemedText>
-                      </Pressable>
+                      {coupon.isReal ? (
+                        <Pressable onPress={() => { Clipboard.setString(coupon.couponCode); toast.success(`Code "${coupon.couponCode}" copied`, 'Copied'); }} style={styles.copyBtn}>
+                          <Ionicons name="copy-outline" size={14} color={theme.primary} />
+                          <ThemedText style={[styles.copyBtnText, { color: theme.primary }]}>COPY</ThemedText>
+                        </Pressable>
+                      ) : null}
                     </View>
                     <ThemedText style={[styles.couponDiscount, { color: theme.primary }]}>{discountLabel}</ThemedText>
                     <ThemedText style={[styles.couponTitle, { color: theme.text }]}>{coupon.title}</ThemedText>
@@ -1192,46 +1523,29 @@ export default function RestaurantDetailScreen() {
                 </ThemedText>
               </View>
 
-              <View style={styles.aboutInfoBox}>
-                <ThemedText style={[styles.aboutInfoTitle, { color: theme.text }]}>📞 Contact & Support</ThemedText>
-                <ThemedText style={[styles.aboutInfoText, { color: theme.textSecondary }]}>
-                  Email: {restaurant?.email || 'support@case.jm'} {'\n'}Phone: {restaurant?.phone || '876-000-0000'}
-                </ThemedText>
-              </View>
+              {restaurant?.email ? (
+                <View style={styles.aboutInfoBox}>
+                  <ThemedText style={[styles.aboutInfoTitle, { color: theme.text }]}>📧 Contact</ThemedText>
+                  <ThemedText style={[styles.aboutInfoText, { color: theme.textSecondary }]}>
+                    {restaurant.email}
+                  </ThemedText>
+                </View>
+              ) : null}
             </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* Floating Cart Bar (Enhanced custom version with progress indicator) */}
+      {/* Floating cart — single bar (no fake free-delivery strip) */}
       {cartCount > 0 && !customizingItem && !showOffersModal && !showAboutModal && (
-        <View style={[styles.floatingCartWrapper, { bottom: cartBottom }]}>
-          <Pressable onPress={() => router.push('/cart')} style={styles.floatingCartBar}>
-            <View style={styles.floatingCartLeft}>
-              <View style={styles.cartIconCircle}>
-                <Ionicons name="cart" size={18} color={CaseUi.orange} />
-                <View style={styles.cartCountPill}>
-                  <ThemedText style={styles.cartCountText}>{cartCount}</ThemedText>
-                </View>
-              </View>
-              <View>
-                <ThemedText style={styles.cartTitle}>{cartRestaurantName || 'Your Cart'}</ThemedText>
-                <ThemedText style={styles.cartSub}>JMD {Math.round(cartTotal)}</ThemedText>
-              </View>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <ThemedText style={styles.cartActionText}>View Cart</ThemedText>
-              <Ionicons name="arrow-forward" size={16} color="#FFF" />
-            </View>
-          </Pressable>
-          {/* Progress bar to free delivery (JMD 2500 threshold) */}
-          <View style={styles.cartProgressBarContainer}>
-            <View style={[styles.cartProgressBarFill, { width: `${Math.min(100, (cartTotal / 2500) * 100)}%` }]} />
-            <ThemedText style={styles.cartProgressText}>
-              {cartTotal >= 2500 ? '🎉 Free delivery unlocked!' : `Add J$${Math.max(0, 2500 - Math.round(cartTotal))} more for Free Delivery`}
-            </ThemedText>
-          </View>
-        </View>
+        <FloatingCartBar
+          visible
+          itemCount={cartCount}
+          total={cartTotal}
+          restaurantName={cartRestaurantName}
+          bottom={cartBottom}
+          onPress={() => router.push('/(tabs)/cart')}
+        />
       )}
     </ThemedView>
   );
@@ -1262,7 +1576,6 @@ const styles = StyleSheet.create({
   storeRatingVal: { fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold' },
   storeStatusHours: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
-  callIconBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 14, paddingVertical: 2, paddingHorizontal: 8, backgroundColor: CaseUi.orangeSoft, borderRadius: 999 },
 
   metricsPillScroll: { paddingHorizontal: 16, gap: 8, paddingVertical: 12 },
   metricPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
@@ -1345,6 +1658,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
     borderBottomWidth: 1,
   },
+  menuCardInfoPress: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minWidth: 0,
+  },
   menuCardLeft: { width: 70, height: 70, flexShrink: 0 },
   menuCardImg: { width: 70, height: 70, borderRadius: 12 },
   noPhotoImageContainer: { alignItems: 'center', justifyContent: 'center' },
@@ -1357,16 +1677,36 @@ const styles = StyleSheet.create({
   menuCardCustomisable: { fontSize: 8, color: CaseUi.orange, fontFamily: 'PlusJakartaSans_700Bold', marginTop: 2, textAlign: 'center' },
   menuCardRight: { flex: 1, gap: 2 },
   // Right-side ADD button area
-  menuCardAddArea: { alignItems: 'center', width: 38, flexShrink: 0 },
+  menuCardAddArea: { alignItems: 'center', width: 72, flexShrink: 0 },
   menuCardAddCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 10,
     borderWidth: 1.5,
     borderColor: CaseUi.orange,
     backgroundColor: '#FFF',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  menuCardQtyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minWidth: 78,
+    height: 34,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: CaseUi.orange,
+    backgroundColor: CaseUi.orangeSoft,
+    paddingHorizontal: 4,
+  },
+  menuCardQtyBtn: { width: 26, height: 26, alignItems: 'center', justifyContent: 'center' },
+  menuCardQtyText: {
+    minWidth: 18,
+    textAlign: 'center',
+    color: CaseUi.orange,
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
   },
   notifyBtn: {
     width: 32,
@@ -1467,20 +1807,6 @@ const styles = StyleSheet.create({
   aboutInfoBox: { gap: 4 },
   aboutInfoTitle: { fontSize: 14, fontFamily: 'PlusJakartaSans_800ExtraBold' },
   aboutInfoText: { fontSize: 13, lineHeight: 18 },
-
-  // Enhanced Floating Cart Bar
-  floatingCartWrapper: { position: 'absolute', left: 14, right: 14, zIndex: 60, gap: 4 },
-  floatingCartBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: CaseUi.orange, borderRadius: 16, paddingVertical: 10, paddingHorizontal: 14, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 6 },
-  floatingCartLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  cartIconCircle: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  cartCountPill: { position: 'absolute', top: -4, right: -4, backgroundColor: '#1a1c1c', borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, borderWidth: 1.5, borderColor: CaseUi.orange },
-  cartCountText: { color: '#FFF', fontSize: 8, fontFamily: 'PlusJakartaSans_800ExtraBold' },
-  cartTitle: { color: '#FFF', fontSize: 13, fontFamily: 'PlusJakartaSans_800ExtraBold' },
-  cartSub: { color: 'rgba(255,255,255,0.85)', fontSize: 11, fontFamily: 'PlusJakartaSans_600SemiBold' },
-  cartActionText: { color: '#FFF', fontSize: 13, fontFamily: 'PlusJakartaSans_800ExtraBold' },
-  cartProgressBarContainer: { backgroundColor: '#1A1C1C', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 10, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, overflow: 'hidden' },
-  cartProgressBarFill: { position: 'absolute', top: 0, left: 0, bottom: 0, backgroundColor: 'rgba(255,90,0,0.35)' },
-  cartProgressText: { color: '#FFF', fontSize: 9, fontFamily: 'PlusJakartaSans_700Bold' },
 
   badgeContainer: { width: 14, height: 14, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', borderRadius: 3, padding: 1 },
   badgeDot: { width: 5, height: 5 },

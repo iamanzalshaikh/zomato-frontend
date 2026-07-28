@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { CASE_CHECKOUT_ENABLED } from '@/config/features';
-import { fetchCaseOrderById, fetchCaseOrders, type CaseOrder } from '@/services/caseOrders';
-import { fetchOrderById, fetchOrderHistory, trackOrder, type Order } from '@/services/orders';
-import { perfQuery } from '@/lib/perf';
+import { fetchCaseOrders, type CaseOrder } from '@/services/caseOrders';
+import { fetchOrderHistory, type Order } from '@/services/orders';
+import { caseOrderKeys } from '@/hooks/queries/caseOrders';
+import { usePerfQuery } from '@/lib/perf';
 
 export const orderKeys = {
   history: ['orders', 'history'] as const,
@@ -11,18 +12,20 @@ export const orderKeys = {
 
 function normalizeCaseAsOrder(o: CaseOrder): Order & CaseOrder {
   const firstRestaurant = o.restaurant;
+  const storeName =
+    String((firstRestaurant as any)?.restaurantName ?? '').trim() ||
+    (o.items?.length === 1 ? 'Campus store' : `${o.items?.length ?? 0} items`) ||
+    'Campus order';
   return {
     ...o,
     _id: o._id || o.id,
     orderNumber: o.orderNumber,
     customerId: '',
-    restaurantId: firstRestaurant
-      ? {
-          _id: String((firstRestaurant as any).id ?? ''),
-          restaurantName: String((firstRestaurant as any).restaurantName ?? 'Store'),
-          logo: (firstRestaurant as any).logo,
-        }
-      : undefined,
+    restaurantId: {
+      _id: String((firstRestaurant as any)?.id ?? o.items?.[0]?.restaurantId ?? ''),
+      restaurantName: storeName === `${o.items?.length ?? 0} items` ? 'Campus order' : storeName,
+      logo: (firstRestaurant as any)?.logo,
+    },
     orderItems: (o.items ?? []).map((i) => ({
       menuItemId: String(i.menuItemId ?? ''),
       itemName: String(i.itemName ?? 'Item'),
@@ -33,13 +36,14 @@ function normalizeCaseAsOrder(o: CaseOrder): Order & CaseOrder {
     subtotal: o.subtotal,
     taxAmount: 0,
     deliveryFee: o.deliveryFee,
-    platformFee: 0,
+    platformFee: Number((o as any).multiStoreFee ?? 0) + Number((o as any).extraItemFee ?? 0),
     couponDiscount: o.couponDiscount,
     walletDeduction: 0,
     grandTotal: o.grandTotal,
     paymentMethod: o.paymentMethod,
     paymentStatus: o.paymentStatus,
     orderStatus: o.orderStatus,
+    payment: (o as any).payment ?? undefined,
     customerAddress: {
       fullAddress: o.deliveryPoint?.name ?? 'Campus drop-off',
       latitude: 0,
@@ -55,21 +59,25 @@ async function fetchHistoryPreferCase(): Promise<Order[]> {
   if (CASE_CHECKOUT_ENABLED) {
     try {
       const caseOrders = await fetchCaseOrders();
-      if (caseOrders.length) return caseOrders.map(normalizeCaseAsOrder);
+      return caseOrders.map(normalizeCaseAsOrder);
     } catch {
-      /* fall through */
+      return [];
     }
   }
   return fetchOrderHistory();
 }
 
-export function useOrderHistoryQuery() {
+/** Shared key with useCaseOrdersQuery when CASE is on — one network fetch for tabs + home. */
+export function useOrderHistoryQuery(options?: { enabled?: boolean }) {
   const q = useQuery({
-    queryKey: orderKeys.history,
+    queryKey: CASE_CHECKOUT_ENABLED ? caseOrderKeys.list() : orderKeys.history,
     queryFn: fetchHistoryPreferCase,
+    enabled: options?.enabled !== false,
     staleTime: 2 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
-  perfQuery('OrderHistory', q.isFetching, q.dataUpdatedAt);
+  usePerfQuery('OrderHistory', q.isFetching, q.dataUpdatedAt);
   return q;
 }

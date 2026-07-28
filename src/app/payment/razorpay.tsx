@@ -18,7 +18,7 @@ import {
   openRazorpayCheckout,
   type RazorpayOpenResult,
 } from '@/lib/razorpayCheckout';
-import { createPaymentOrder, verifyPayment } from '@/services/payments';
+import { createPaymentOrder, verifyPayment, type PaymentOrderResponse } from '@/services/payments';
 
 type PaymentPhase = 'loading' | 'native' | 'webview' | 'verifying' | 'error';
 type WebViewComponent = ComponentType<WebViewProps>;
@@ -49,7 +49,15 @@ export default function RazorpayPaymentScreen() {
   const [webHtml, setWebHtml] = useState<string | null>(null);
   const [WebView, setWebView] = useState<WebViewComponent | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [paymentOrder, setPaymentOrder] = useState<PaymentOrderResponse | null>(null);
+
   const nativeAttempted = useRef(false);
+  const launchStarted = useRef(false);
+  const prefillRef = useRef<{ email?: string; mobile?: string }>({});
+  prefillRef.current = {
+    email: profileQuery.data?.email,
+    mobile: profileQuery.data?.mobile,
+  };
 
   useEffect(() => {
     if (!hasWebViewNativeModule()) return;
@@ -59,15 +67,18 @@ export default function RazorpayPaymentScreen() {
   }, []);
 
   const goToSuccess = useCallback(async () => {
-    await qc.invalidateQueries({ queryKey: ['cart'] });
-    await qc.invalidateQueries({ queryKey: cartKeys.all });
-    await qc.invalidateQueries({ queryKey: ['orders'] });
-    await qc.invalidateQueries({ queryKey: ['orders', 'byId', orderId] });
+    void qc.invalidateQueries({ queryKey: ['cart'] });
+    void qc.invalidateQueries({ queryKey: cartKeys.all });
+    void qc.invalidateQueries({ queryKey: ['orders'] });
+    void qc.invalidateQueries({ queryKey: ['orders', 'byId', orderId] });
     router.replace({
       pathname: '/order-success',
       params: { orderId, payment: 'ONLINE' },
     });
   }, [orderId, qc, router]);
+
+  const goToSuccessRef = useRef(goToSuccess);
+  goToSuccessRef.current = goToSuccess;
 
   const handlePaymentSuccess = useCallback(
     async (result: RazorpayOpenResult) => {
@@ -79,7 +90,7 @@ export default function RazorpayPaymentScreen() {
           razorpay_payment_id: result.razorpay_payment_id,
           razorpay_signature: result.razorpay_signature,
         });
-        await goToSuccess();
+        await goToSuccessRef.current();
       } catch (e: unknown) {
         const msg =
           (e as { message?: string })?.message ?? 'Payment verification failed. Please contact support.';
@@ -87,31 +98,13 @@ export default function RazorpayPaymentScreen() {
         setPhase('error');
       }
     },
-    [goToSuccess, orderId],
+    [orderId],
   );
 
-  const openWebCheckout = useCallback(
-    (input: {
-      keyId: string;
-      razorpayOrderId: string;
-      amountPaise: number;
-    }) => {
-      setWebHtml(
-        buildRazorpayWebCheckoutHtml({
-          keyId: input.keyId,
-          razorpayOrderId: input.razorpayOrderId,
-          amountPaise: input.amountPaise,
-          name: 'QuickBite',
-          description: restaurantName ? `Order from ${restaurantName}` : 'Food order',
-          prefillEmail: profileQuery.data?.email,
-          prefillContact: profileQuery.data?.mobile,
-        }),
-      );
-      setPhase('webview');
-    },
-    [profileQuery.data?.email, profileQuery.data?.mobile, restaurantName],
-  );
+  const handlePaymentSuccessRef = useRef(handlePaymentSuccess);
+  handlePaymentSuccessRef.current = handlePaymentSuccess;
 
+  // Create payment order once per orderId/retry — do not restart when profile loads.
   useEffect(() => {
     if (!orderId) {
       setErrorMessage('Missing order id.');
@@ -120,58 +113,27 @@ export default function RazorpayPaymentScreen() {
     }
 
     let cancelled = false;
+    setPaymentOrder(null);
+    launchStarted.current = false;
+    setPhase('loading');
+    setErrorMessage(null);
+    setWebHtml(null);
 
     (async () => {
       try {
-        const paymentOrder = await createPaymentOrder(orderId);
+        const po = await createPaymentOrder(orderId);
         if (cancelled) return;
 
-        if (paymentOrder.autoConfirmed) {
-          await goToSuccess();
+        if (po.autoConfirmed) {
+          await goToSuccessRef.current();
           return;
         }
 
-        const keyId = paymentOrder.keyId;
-        const razorpayOrderId = paymentOrder.razorpayOrderId;
-        if (!keyId || !razorpayOrderId) {
+        if (!po.keyId || !po.razorpayOrderId) {
           throw new Error('Online payment is not configured on the server.');
         }
 
-        const checkoutInput = {
-          keyId,
-          razorpayOrderId,
-          amountPaise: paymentOrder.razorpayAmount,
-        };
-
-        if (isRazorpayNativeAvailable() && !nativeAttempted.current) {
-          nativeAttempted.current = true;
-          setPhase('native');
-          const result = await openRazorpayCheckout({
-            ...checkoutInput,
-            name: 'QuickBite',
-            description: restaurantName ? `Order from ${restaurantName}` : 'Food order',
-            prefillEmail: profileQuery.data?.email,
-            prefillContact: profileQuery.data?.mobile,
-          });
-          if (cancelled) return;
-
-          if (result) {
-            await handlePaymentSuccess(result);
-            return;
-          }
-
-          router.back();
-          return;
-        }
-
-        if (!hasWebViewNativeModule()) {
-          throw new Error(
-            'Payment UI needs a rebuilt app. Run: npx expo run:android — or use Cash on Delivery.',
-          );
-        }
-        if (!WebView) return;
-
-        openWebCheckout(checkoutInput);
+        setPaymentOrder(po);
       } catch (e: unknown) {
         if (cancelled) return;
         const msg = (e as { message?: string })?.message ?? 'Could not start payment.';
@@ -183,23 +145,80 @@ export default function RazorpayPaymentScreen() {
     return () => {
       cancelled = true;
     };
-  }, [
-    goToSuccess,
-    handlePaymentSuccess,
-    openWebCheckout,
-    orderId,
-    profileQuery.data?.email,
-    profileQuery.data?.mobile,
-    restaurantName,
-    router,
-    WebView,
-    retryCount,
-  ]);
+  }, [orderId, retryCount]);
+
+  // Launch native or WebView checkout once payment order is ready.
+  useEffect(() => {
+    if (!paymentOrder || launchStarted.current || phase === 'error' || phase === 'verifying') return;
+
+    const checkoutInput = {
+      keyId: paymentOrder.keyId!,
+      razorpayOrderId: paymentOrder.razorpayOrderId!,
+      amountPaise: paymentOrder.razorpayAmount,
+    };
+
+    let cancelled = false;
+
+    (async () => {
+      if (isRazorpayNativeAvailable() && !nativeAttempted.current) {
+        launchStarted.current = true;
+        nativeAttempted.current = true;
+        setPhase('native');
+        const result = await openRazorpayCheckout({
+          ...checkoutInput,
+          name: 'QuickBite',
+          description: restaurantName ? `Order from ${restaurantName}` : 'Food order',
+          prefillEmail: prefillRef.current.email,
+          prefillContact: prefillRef.current.mobile,
+        });
+        if (cancelled) return;
+
+        if (result) {
+          await handlePaymentSuccessRef.current(result);
+          return;
+        }
+
+        router.back();
+        return;
+      }
+
+      if (!hasWebViewNativeModule()) {
+        setErrorMessage(
+          'Payment UI needs a rebuilt app. Run: npx expo run:android — or use Cash on Delivery.',
+        );
+        setPhase('error');
+        return;
+      }
+
+      // Wait until WebView module is loaded before marking launch started.
+      if (!WebView) return;
+
+      launchStarted.current = true;
+      setWebHtml(
+        buildRazorpayWebCheckoutHtml({
+          keyId: checkoutInput.keyId,
+          razorpayOrderId: checkoutInput.razorpayOrderId,
+          amountPaise: checkoutInput.amountPaise,
+          name: 'QuickBite',
+          description: restaurantName ? `Order from ${restaurantName}` : 'Food order',
+          prefillEmail: prefillRef.current.email,
+          prefillContact: prefillRef.current.mobile,
+        }),
+      );
+      setPhase('webview');
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [paymentOrder, WebView, restaurantName, router, phase]);
 
   const retryPayment = useCallback(() => {
     nativeAttempted.current = false;
+    launchStarted.current = false;
     setErrorMessage(null);
     setWebHtml(null);
+    setPaymentOrder(null);
     setPhase('loading');
     setRetryCount((n) => n + 1);
   }, []);

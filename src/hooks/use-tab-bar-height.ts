@@ -1,8 +1,11 @@
-import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-/** Standard mockup tab bar height */
+/**
+ * Matches AppTabs `tabBarStyle.height`.
+ * Tab scenes are already laid out above the tab bar — do NOT use this as
+ * `bottom` offset inside a tab screen (that double-counts and creates a gap).
+ */
 export function useTabBarHeight(): number {
   const insets = useSafeAreaInsets();
-  return 58 + Math.max(insets.bottom, Platform.OS === 'ios' ? 0 : 6) + 12;
+  return 58 + Math.max(insets.bottom, 0);
 }

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Dimensions,
   FlatList,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -21,8 +22,7 @@ import { EmptyState } from '@/components/state-views';
 import { CaseUi } from '@/constants/caseUi';
 import { formatProductMeta, type MenuItemAttributes } from '@/constants/categoryFields';
 import { useCaseMerchantMenuQuery } from '@/hooks/queries/case';
-import { useMenuByRestaurantQuery } from '@/hooks/queries/menu';
-import { useAddToCartMutation } from '@/hooks/queries/cart';
+import { useAddToCartMutation, useUpdateCartItemMutation, useRemoveCartItemMutation } from '@/hooks/queries/cart';
 import { useCart } from '@/hooks/use-cart';
 import { useFloatingCartBottom, useFloatingCartScrollPadding } from '@/hooks/use-floating-cart-inset';
 import { getCartDisplayTotal, getCartItemCount, getCartRestaurantName } from '@/lib/cartDisplay';
@@ -39,7 +39,6 @@ export default function StoreCategoryScreen() {
   const { restaurantId, category } = useLocalSearchParams<{ restaurantId: string; category?: string }>();
   const rid = restaurantId ?? '';
 
-  const menuQ = useMenuByRestaurantQuery(rid);
   const caseMenuQ = useCaseMerchantMenuQuery(rid);
   const businessType = caseMenuQ.data?.businessType;
   const storeName = caseMenuQ.data?.restaurantName ?? 'Store';
@@ -51,6 +50,8 @@ export default function StoreCategoryScreen() {
     return map;
   }, [caseMenuQ.data]);
   const add = useAddToCartMutation();
+  const updateCartLine = useUpdateCartItemMutation();
+  const removeCartLine = useRemoveCartItemMutation();
   const [addingItemId, setAddingItemId] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>(category ?? 'All');
 
@@ -62,7 +63,27 @@ export default function StoreCategoryScreen() {
     return map;
   }, [caseMenuQ.data]);
 
-  const items = useMemo(() => (menuQ.data ?? []) as MenuItem[], [menuQ.data]);
+  // Derived from the already-fetched CASE menu (same shape useMenuByRestaurantQuery
+  // would normalize to) instead of a second, duplicate /case/merchants/:id/menu call.
+  const items = useMemo(
+    () =>
+      (caseMenuQ.data?.items ?? []).map(
+        (item): MenuItem => ({
+          _id: item._id || item.id,
+          restaurantId: item.restaurantId,
+          categoryId: item.categoryId,
+          itemName: item.itemName,
+          description: item.description,
+          images: item.images,
+          price: item.discountedPrice != null ? item.discountedPrice : item.price,
+          discountedPrice: item.discountedPrice ?? undefined,
+          foodType: item.foodType,
+          isAvailable: item.isAvailable !== false && !item.isSoldOut,
+          addons: item.addons,
+        }),
+      ),
+    [caseMenuQ.data],
+  );
 
   const groupedItems = useMemo(() => {
     const groups: Record<string, MenuItem[]> = {};
@@ -90,6 +111,21 @@ export default function StoreCategoryScreen() {
   const cartBottom = useFloatingCartBottom();
   const scrollBottomPadding = useFloatingCartScrollPadding(cartCount > 0);
 
+  const cartQtyByMenuId = useMemo(() => {
+    const map = new Map<string, { lineId: string; qty: number }>();
+    for (const line of cart?.items ?? []) {
+      const lineStore = String((line as { restaurantId?: string }).restaurantId ?? '');
+      if (rid && lineStore && lineStore !== rid) continue;
+      const mid = String(line.menuItemId || '').trim();
+      if (!mid) continue;
+      const prev = map.get(mid);
+      const qty = Number(line.quantity || 0);
+      if (prev) map.set(mid, { lineId: prev.lineId, qty: prev.qty + qty });
+      else map.set(mid, { lineId: String(line._id), qty });
+    }
+    return map;
+  }, [cart?.items, rid]);
+
   const handleAdd = useCallback(
     async (item: MenuItem) => {
       if (item.addons && item.addons.length > 0) {
@@ -98,7 +134,13 @@ export default function StoreCategoryScreen() {
       }
       setAddingItemId(String(item._id));
       try {
-        await add.mutateAsync({ restaurantId: rid, menuItemId: String(item._id), quantity: 1 });
+        await add.mutateAsync({
+          restaurantId: rid,
+          menuItemId: String(item._id),
+          quantity: 1,
+          itemName: item.itemName,
+          price: Number(item.discountedPrice ?? item.price ?? 0),
+        });
         toast.success(`${item.itemName} added to cart`, 'Added');
       } catch (e: any) {
         toast.error(String(e?.message ?? 'Failed to add item'));
@@ -107,6 +149,22 @@ export default function StoreCategoryScreen() {
       }
     },
     [add, rid, router],
+  );
+
+  const handleChangeQty = useCallback(
+    async (item: MenuItem, lineId: string, nextQty: number) => {
+      const itemKey = String(item._id);
+      setAddingItemId(itemKey);
+      try {
+        if (nextQty <= 0) await removeCartLine.mutateAsync({ itemId: lineId });
+        else await updateCartLine.mutateAsync({ itemId: lineId, quantity: nextQty });
+      } catch (e: any) {
+        toast.error(String(e?.message ?? 'Could not update cart'));
+      } finally {
+        setAddingItemId((cur) => (cur === itemKey ? null : cur));
+      }
+    },
+    [removeCartLine, updateCartLine],
   );
 
   return (
@@ -148,7 +206,7 @@ export default function StoreCategoryScreen() {
           />
         </View>
 
-        {menuQ.isLoading ? (
+        {caseMenuQ.isLoading ? (
           <View style={styles.skeletonGrid}>
             {[0, 1, 2, 3].map((i) => (
               <View key={i} style={styles.skeletonCard}>
@@ -232,19 +290,54 @@ export default function StoreCategoryScreen() {
                         <Text style={styles.cardWas}>J${Math.round(item.price)}</Text>
                       ) : null}
                     </View>
-                    <PressableScale
-                      onPress={() => handleAdd(item)}
-                      style={[styles.addBtn, (addingItemId === item._id || soldOut) && { opacity: 0.6 }]}
-                      disabled={addingItemId === item._id || soldOut}
-                    >
-                      {addingItemId === item._id ? (
-                        <ActivityIndicator size="small" color={CaseUi.orange} />
-                      ) : soldOut ? (
-                        <Text style={styles.soldOut}>OUT</Text>
-                      ) : (
-                        <Text style={styles.addText}>ADD</Text>
-                      )}
-                    </PressableScale>
+                    {(() => {
+                      const line = cartQtyByMenuId.get(String(item._id));
+                      const qty = line?.qty ?? 0;
+                      const busy = addingItemId === String(item._id);
+                      if (soldOut) {
+                        return (
+                          <View style={[styles.addBtn, { opacity: 0.6 }]}>
+                            <Text style={styles.soldOut}>OUT</Text>
+                          </View>
+                        );
+                      }
+                      if (qty > 0 && line?.lineId) {
+                        return (
+                          <View style={styles.qtyPill}>
+                            <Pressable
+                              hitSlop={8}
+                              disabled={busy}
+                              onPress={() => void handleChangeQty(item, line.lineId, qty - 1)}
+                              style={styles.qtyPillBtn}
+                            >
+                              <Ionicons name="remove" size={14} color={CaseUi.orange} />
+                            </Pressable>
+                            <Text style={styles.qtyPillText}>{qty}</Text>
+                            <Pressable
+                              hitSlop={8}
+                              disabled={busy}
+                              onPress={() => void handleChangeQty(item, line.lineId, qty + 1)}
+                              style={styles.qtyPillBtn}
+                            >
+                              <Ionicons name="add" size={14} color={CaseUi.orange} />
+                            </Pressable>
+                          </View>
+                        );
+                      }
+                      return (
+                        <PressableScale
+                          onPress={() => handleAdd(item)}
+                          style={[styles.addBtn, busy && { opacity: 0.6 }]}
+                          disabled={busy}
+                        >
+                          {busy ? (
+                            <ActivityIndicator size="small" color={CaseUi.orange} />
+                          ) : (
+                            <Text style={styles.addText}>ADD</Text>
+                          )}
+                        </PressableScale>
+                      );
+                    })()}
                   </View>
                 </PressableScale>
                 </Animated.View>
@@ -414,6 +507,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
+  },
+  qtyPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 32,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: CaseUi.orange,
+    backgroundColor: CaseUi.white,
+    paddingHorizontal: 2,
+  },
+  qtyPillBtn: {
+    width: 26,
+    height: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qtyPillText: {
+    minWidth: 16,
+    textAlign: 'center',
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    fontSize: 12,
+    color: CaseUi.orange,
   },
   addText: {
     fontFamily: 'PlusJakartaSans_800ExtraBold',

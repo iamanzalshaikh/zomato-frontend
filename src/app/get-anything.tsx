@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -20,6 +20,7 @@ import { toast } from '@/lib/toast';
 
 export default function GetAnythingScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [note, setNote] = useState('');
   const [tip, setTip] = useState('');
   const [estimatedPrice, setEstimatedPrice] = useState('300');
@@ -51,7 +52,11 @@ export default function GetAnythingScreen() {
             </View>
           </View>
 
-          <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + Math.max(insets.bottom, 8) }]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <Animated.View entering={FadeInDown.duration(300)} style={styles.heroCard}>
               <Ionicons name="sparkles" size={28} color={CaseUi.orange} />
               <Text style={styles.heroText}>
@@ -94,7 +99,10 @@ export default function GetAnythingScreen() {
             </Animated.View>
           </ScrollView>
 
-          <PressableScale onPress={handleContinue} style={styles.cta}>
+          <PressableScale
+            onPress={handleContinue}
+            style={[styles.cta, { marginBottom: 12 + Math.max(insets.bottom, 8) }]}
+          >
             <Text style={styles.ctaText}>Continue to checkout</Text>
           </PressableScale>
         </KeyboardAvoidingView>
@@ -150,7 +158,6 @@ const styles = StyleSheet.create({
   },
   cta: {
     marginHorizontal: 16,
-    marginBottom: 16,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',

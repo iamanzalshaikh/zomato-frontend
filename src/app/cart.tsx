@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -8,12 +8,11 @@ import {
   Text,
   ScrollView,
   ActivityIndicator,
-  Platform,
   Modal,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { ThemedView } from '@/components/themed-view';
@@ -22,6 +21,7 @@ import { CaseUi } from '@/constants/caseUi';
 import { useCart } from '@/hooks/use-cart';
 import { toast } from '@/lib/toast';
 import { useThemeContext } from '@/context/ThemeContext';
+import { getCartRestaurantName } from '@/lib/cartDisplay';
 import {
   useClearCartMutation,
   useRemoveCartItemMutation,
@@ -29,7 +29,9 @@ import {
   useAddToCartMutation,
   useUpdateCartPreferencesMutation,
 } from '@/hooks/queries/cart';
-import { useCaseQuoteQuery } from '@/hooks/queries/caseOrders';
+import { useCaseQuoteQuery, buildCaseQuoteInput } from '@/hooks/queries/caseOrders';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useProfileQuery } from '@/hooks/queries/profile';
 import {
   getSelectedCouponCode,
   getSelectedDeliveryPointId,
@@ -40,7 +42,8 @@ import {
   setSelectedPaymentMethod,
   type CasePaymentMethod,
 } from '@/lib/caseCheckout';
-import { fetchMenuItemsByRestaurant, type MenuItem } from '@/services/menu';
+import type { MenuItem } from '@/services/menu';
+import { useMenuByRestaurantQuery } from '@/hooks/queries/menu';
 import { useCouponsByRestaurantQuery } from '@/hooks/queries/coupons';
 import { formatCouponDescription, pickPrimaryCoupon } from '@/lib/offerDisplay';
 
@@ -78,12 +81,21 @@ function Row({ label, value, color, bold }: { label: string; value: string; colo
 export default function CartScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const [isFocused, setIsFocused] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setIsFocused(true);
+      return () => setIsFocused(false);
+    }, []),
+  );
   const { cart, loading } = useCart();
   const { colors, activeScheme } = useThemeContext();
   const isDark = activeScheme === 'dark';
-  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 8 : 0);
-  const checkoutBarPaddingBottom = bottomInset + 10;
-  const checkoutBarHeight = 108 + checkoutBarPaddingBottom;
+  // Tab scenes already sit above the tab bar — pin checkout strip to bottom: 0.
+  const checkoutBarPaddingBottom = 10;
+  const checkoutBarHeight = 72 + checkoutBarPaddingBottom;
+  const cartTitle = getCartRestaurantName(cart) || 'Your order';
+  const modalBottomPad = Math.max(insets.bottom, 12);
 
   const updateLine = useUpdateCartItemMutation();
   const removeLine = useRemoveCartItemMutation();
@@ -94,7 +106,6 @@ export default function CartScreen() {
   const [note, setNote] = useState('');
   const [showNoteInput, setShowNoteInput] = useState(false);
   const [noCutlery, setNoCutlery] = useState(true);
-  const [recommendations, setRecommendations] = useState<MenuItem[]>([]);
   const [couponCode, setCouponCode] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<CasePaymentMethod>('COD');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -143,43 +154,70 @@ export default function CartScreen() {
     }
   }, [cart]);
 
-  useEffect(() => {
-    if (restaurant?._id) {
-      fetchMenuItemsByRestaurant(restaurant._id)
-        .then((items) => {
-          const inCartIds = new Set(cart?.items.map((it) => it.menuItemId) ?? []);
-          setRecommendations(items.filter((it) => !inCartIds.has(it._id)).slice(0, 5));
-        })
-        .catch((err) => console.log('Error fetching recommendations', err));
-    }
-  }, [restaurant?._id, cart?.items]);
+  const menuQ = useMenuByRestaurantQuery(restaurantId);
+  const cartItemIds = useMemo(
+    () => new Set(cart?.items.map((it) => it.menuItemId) ?? []),
+    [cart?.items],
+  );
+  const recommendations = useMemo(() => {
+    const items = menuQ.data ?? [];
+    return items.filter((it) => !cartItemIds.has(it._id)).slice(0, 5);
+  }, [menuQ.data, cartItemIds]);
 
-  // Build a menuItemId -> imageUrl lookup from already-fetched recommendations + all items
+  // Build a menuItemId -> imageUrl lookup from cached menu (covers cart lines too)
   const menuItemImageMap = useMemo(() => {
     const map: Record<string, string> = {};
-    recommendations.forEach((item) => {
-      if (item.images && item.images.length > 0) {
-        map[item._id] = item.images[0];
-      }
-    });
+    for (const item of menuQ.data ?? []) {
+      if (item.images?.[0]) map[item._id] = item.images[0];
+    }
     return map;
-  }, [recommendations]);
+  }, [menuQ.data]);
 
   const caseItems = useMemo(() => mapCartToCaseItems(cart), [cart]);
+  const cartSubtotal = useMemo(
+    () =>
+      (cart?.items ?? []).reduce((s, it) => {
+        const line = Number(it.total);
+        if (Number.isFinite(line) && line > 0) return s + line;
+        return s + Number(it.price || 0) * Number(it.quantity || 0);
+      }, 0),
+    [cart?.items],
+  );
+  // Debounce coupon before it enters the quote key — matches Checkout, and
+  // keeps a shared cache entry between the two screens for the same cart.
+  const debouncedCoupon = useDebouncedValue(couponCode.trim(), 400);
+  const profileQuery = useProfileQuery();
+  const profileUserId =
+    (profileQuery.data as { _id?: string; id?: string } | undefined)?._id ??
+    (profileQuery.data as { id?: string } | undefined)?.id;
   const quoteInput = useMemo(() => {
-    if (!caseItems.length) return null;
-    return {
+    if (!caseItems.length || cartSubtotal <= 0) return null;
+    return buildCaseQuoteInput({
       lines: caseItems.map((i) => ({
         merchantId: i.restaurantId ?? null,
         quantity: i.quantity,
         unitPrice: i.price,
       })),
-      deliveryPointId: deliveryPointId ?? undefined,
-      couponCode: couponCode.trim() || undefined,
-    };
-  }, [caseItems, deliveryPointId, couponCode]);
-  const quoteQ = useCaseQuoteQuery(quoteInput, caseItems.length > 0);
+      deliveryPointId,
+      couponCode: debouncedCoupon,
+      userId: profileUserId,
+    });
+  }, [caseItems, cartSubtotal, deliveryPointId, debouncedCoupon, profileUserId]);
+  const quoteQ = useCaseQuoteQuery(
+    quoteInput,
+    // Same fix as Checkout: wait for deliveryPointId to resolve first,
+    // otherwise the first quote fires without it and shows a price missing
+    // the delivery fee before a second request silently corrects it.
+    isFocused && caseItems.length > 0 && cartSubtotal > 0 && Boolean(deliveryPointId),
+  );
   const quote = quoteQ.data;
+
+  const subtotal =
+    quote?.subtotal != null && quote.subtotal > 0 ? quote.subtotal : cartSubtotal;
+  const total =
+    quote?.totalJmd != null && quote.totalJmd > 0
+      ? quote.totalJmd
+      : subtotal + Number(quote?.deliveryFee ?? 0);
 
   const handleSelectPayment = async (method: CasePaymentMethod) => {
     setPaymentMethod(method);
@@ -251,9 +289,6 @@ export default function CartScreen() {
     );
   }
 
-  const subtotal = quote?.subtotal ?? cart.subtotal ?? 0;
-  const total = quote?.totalJmd ?? cart.grandTotal ?? subtotal;
-
   return (
     <ThemedView style={[styles.container, { backgroundColor: colors.background }]}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -264,7 +299,7 @@ export default function CartScreen() {
             </Pressable>
             <View style={{ flex: 1 }}>
               <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
-                {restaurant?.restaurantName || 'Your order'}
+                {cartTitle}
               </Text>
               <Pressable
                 onPress={() => router.push('/(onboarding)/delivery-point')}
@@ -284,7 +319,7 @@ export default function CartScreen() {
 
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.scrollBody, { paddingBottom: checkoutBarHeight + 16 }]}
+          contentContainerStyle={[styles.scrollBody, { paddingBottom: checkoutBarHeight + 12 }]}
         >
           {/* Cart items */}
           <View style={[styles.itemsCard, { backgroundColor: isDark ? '#141417' : CaseUi.white, borderColor: isDark ? '#27272A' : CaseUi.line }]}>
@@ -295,9 +330,10 @@ export default function CartScreen() {
                   : null;
               const itemImage = menuItemImageMap[it.menuItemId] ?? null;
               const restaurantName =
-                typeof restaurant === 'object' && restaurant?.restaurantName
+                (it as { restaurantName?: string }).restaurantName ||
+                (typeof restaurant === 'object' && restaurant?.restaurantName
                   ? restaurant.restaurantName
-                  : 'Store';
+                  : 'Store');
 
               return (
                 <View key={it._id} style={[styles.cartItemRow, { borderBottomColor: isDark ? '#27272A' : CaseUi.line }]}>
@@ -323,7 +359,9 @@ export default function CartScreen() {
                     ) : (
                       <Text style={[styles.itemStoreName, { color: colors.textSecondary }]} numberOfLines={1}>{restaurantName}</Text>
                     )}
-                    <Text style={[styles.itemPriceText, { color: isDark ? '#FF9F64' : CaseUi.ink }]}>JMD {it.price * it.quantity}</Text>
+                    <Text style={[styles.itemPriceText, { color: isDark ? '#FF9F64' : CaseUi.ink }]}>
+                      JMD {Math.round(Number(it.price || 0) * Number(it.quantity || 0))}
+                    </Text>
                   </View>
 
                   {/* Inline qty pill */}
@@ -536,6 +574,11 @@ export default function CartScreen() {
           {/* Bill breakdown — driven by the real /public/quote API, same as Checkout */}
           <View style={[styles.billDetailsCard, { backgroundColor: isDark ? '#141417' : CaseUi.white, borderColor: isDark ? '#27272A' : CaseUi.line }]}>
             <Text style={[styles.billDetailsTitle, { color: colors.text }]}>Bill Details</Text>
+            {quoteQ.isError && !quote ? (
+              <Text style={{ color: CaseUi.danger, fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 13, marginBottom: 8 }}>
+                Couldn't load bill total. Check your connection and try again.
+              </Text>
+            ) : null}
             {quoteQ.isFetching && !quote ? (
               <ActivityIndicator color={CaseUi.orange} style={{ marginVertical: 8 }} />
             ) : (
@@ -547,7 +590,7 @@ export default function CartScreen() {
                   color={colors.text}
                 />
                 {quote && quote.multiStoreFee > 0 ? (
-                  <Row label="Multi-store Fee" value={`JMD ${quote.multiStoreFee}`} color={colors.text} />
+                  <Row label="Multi-store pickup" value={`JMD ${quote.multiStoreFee}`} color={colors.text} />
                 ) : null}
                 {quote && quote.discountAmount > 0 ? (
                   <Row label="Coupon Discount" value={`-JMD ${quote.discountAmount}`} color={CaseUi.success} />
@@ -559,28 +602,44 @@ export default function CartScreen() {
           </View>
         </ScrollView>
 
-        <View style={[styles.bottomCheckoutBar, { backgroundColor: isDark ? '#141417' : CaseUi.white, borderTopColor: isDark ? '#27272A' : CaseUi.line, paddingBottom: checkoutBarPaddingBottom }]}>
-          <Pressable onPress={() => setShowPaymentModal(true)} style={styles.paymentMethodSelect}>
-            <View>
+        <View
+          style={[
+            styles.bottomCheckoutBar,
+            {
+              backgroundColor: isDark ? '#141417' : CaseUi.white,
+              borderTopColor: isDark ? '#27272A' : CaseUi.line,
+              bottom: 0,
+              paddingBottom: checkoutBarPaddingBottom,
+            },
+          ]}
+        >
+          <View style={styles.bottomCheckoutRow}>
+            <Pressable onPress={() => setShowPaymentModal(true)} style={styles.paymentMethodSelect}>
               <Text style={styles.payUsingLabel}>PAY USING</Text>
-              <Text style={[styles.payUsingMethod, { color: colors.text }]}>
-                {paymentMethod === 'BANK_TRANSFER' ? 'Bank Transfer' : 'Cash on Delivery'}
-              </Text>
-            </View>
-            <Ionicons name="chevron-up" size={16} color={CaseUi.muted} />
-          </Pressable>
-          <Pressable disabled={mutating} onPress={() => router.push('/checkout')} style={styles.placeOrderBtn}>
-            <View style={styles.placeOrderInner}>
-              <View style={{ alignItems: 'flex-start' }}>
-                <Text style={styles.btnTotalText}>JMD {total}</Text>
-                <Text style={styles.btnTotalLabel}>TOTAL</Text>
-              </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={styles.placeOrderText}>Proceed to Checkout</Text>
-                <Ionicons name="caret-forward" size={14} color="#FFFFFF" />
+                <Text style={[styles.payUsingMethod, { color: colors.text }]} numberOfLines={1}>
+                  {paymentMethod === 'BANK_TRANSFER' ? 'Bank Transfer' : 'Cash on Delivery'}
+                </Text>
+                <Ionicons name="chevron-up" size={14} color={CaseUi.muted} />
               </View>
-            </View>
-          </Pressable>
+            </Pressable>
+            <Pressable
+              disabled={mutating || cartSubtotal <= 0}
+              onPress={() => router.push('/checkout')}
+              style={[styles.placeOrderBtn, cartSubtotal <= 0 && { opacity: 0.55 }]}
+            >
+              <View style={styles.placeOrderInner}>
+                <View style={{ alignItems: 'flex-start' }}>
+                  <Text style={styles.btnTotalText}>JMD {Math.round(total)}</Text>
+                  <Text style={styles.btnTotalLabel}>TOTAL</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={styles.placeOrderText}>Checkout</Text>
+                  <Ionicons name="caret-forward" size={14} color="#FFFFFF" />
+                </View>
+              </View>
+            </Pressable>
+          </View>
         </View>
       </SafeAreaView>
 
@@ -647,7 +706,7 @@ export default function CartScreen() {
               </Pressable>
             </View>
 
-            <View style={[styles.modalFooter, { paddingBottom: bottomInset + 12 }]}>
+            <View style={[styles.modalFooter, { paddingBottom: modalBottomPad + 12 }]}>
               <Pressable onPress={() => setShowPaymentModal(false)} style={styles.cancelBtn}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </Pressable>
@@ -689,7 +748,7 @@ const styles = StyleSheet.create({
   locationSelector: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   locationText: { fontSize: 11, color: CaseUi.muted, maxWidth: 220 },
   locationTextStrong: { fontFamily: 'PlusJakartaSans_700Bold', color: CaseUi.orange },
-  scrollBody: { padding: 14, gap: 14 },
+  scrollBody: { padding: 14, gap: 10 },
   itemsCard: {
     backgroundColor: CaseUi.white,
     borderRadius: CaseUi.radius.lg,
@@ -874,30 +933,46 @@ const styles = StyleSheet.create({
   shopBtnText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13 },
   bottomCheckoutBar: {
     position: 'absolute',
-    bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: CaseUi.white,
     borderTopWidth: 1,
     borderTopColor: CaseUi.line,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingTop: 10,
     ...CaseUi.cardShadow,
   },
-  paymentMethodSelect: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10 },
-  payUsingLabel: { fontSize: 9, color: CaseUi.muted, fontFamily: 'PlusJakartaSans_800ExtraBold', letterSpacing: 0.6 },
-  payUsingMethod: { fontSize: 12, color: CaseUi.ink, fontFamily: 'PlusJakartaSans_700Bold' },
-  placeOrderBtn: { borderRadius: 14, overflow: 'hidden', backgroundColor: CaseUi.orange },
+  bottomCheckoutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  paymentMethodSelect: {
+    width: 118,
+    justifyContent: 'center',
+    paddingVertical: 4,
+  },
+  payUsingLabel: {
+    fontSize: 9,
+    color: CaseUi.muted,
+    fontFamily: 'PlusJakartaSans_800ExtraBold',
+    letterSpacing: 0.6,
+    marginBottom: 2,
+    includeFontPadding: false,
+    lineHeight: 12,
+  },
+  payUsingMethod: { fontSize: 11, color: CaseUi.ink, fontFamily: 'PlusJakartaSans_700Bold', flexShrink: 1 },
+  placeOrderBtn: { flex: 1, borderRadius: 14, overflow: 'hidden', backgroundColor: CaseUi.orange },
   placeOrderInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 18,
+    paddingHorizontal: 14,
     height: 52,
   },
-  btnTotalText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14 },
+  btnTotalText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13 },
   btnTotalLabel: { color: 'rgba(255,255,255,0.75)', fontSize: 8, fontFamily: 'PlusJakartaSans_800ExtraBold', marginTop: -2 },
-  placeOrderText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 14 },
+  placeOrderText: { color: '#FFFFFF', fontFamily: 'PlusJakartaSans_800ExtraBold', fontSize: 13 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: {
     backgroundColor: '#FFFFFF',

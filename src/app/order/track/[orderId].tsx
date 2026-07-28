@@ -16,6 +16,7 @@ import Animated, {
 import { OrderTrackingMap } from '@/components/order-tracking-map';
 import { PressableScale } from '@/components/pressable-scale';
 import { CaseUi } from '@/constants/caseUi';
+import { CASE_CHECKOUT_ENABLED } from '@/config/features';
 import { useOrderByIdQuery, useOrderTrackQuery } from '@/hooks/queries/orderDetail';
 import { fetchOrderRoute } from '@/services/orders';
 import { useOrderSocket } from '@/hooks/use-order-socket';
@@ -95,7 +96,8 @@ export default function TrackOrderScreen() {
   const orderQ = useOrderByIdQuery(id);
   useOrderSocket(id);
 
-  const tracking: any = trackQ.data;
+  // Prefer live track payload; fall back to order detail (CASE-friendly).
+  const tracking: any = trackQ.data ?? orderQ.data;
   const order: any = orderQ.data;
 
   const status = String(tracking?.orderStatus ?? tracking?.status ?? order?.orderStatus ?? 'PENDING');
@@ -132,7 +134,12 @@ export default function TrackOrderScreen() {
     (tracking?.liveLocation as { heading?: number } | undefined)?.heading ??
     (tracking?.riderLocation as { heading?: number } | undefined)?.heading;
 
-  const customerCoord = pickCoord(tracking?.deliveryLocation, order?.customerAddress, order?.deliveryAddress);
+  const customerCoord = pickCoord(
+    tracking?.deliveryLocation,
+    order?.customerAddress,
+    order?.deliveryAddress,
+    order?.deliveryPoint,
+  );
 
   const restaurantCoord = pickCoord(
     tracking?.restaurantLocation,
@@ -145,6 +152,12 @@ export default function TrackOrderScreen() {
     order?.restaurant?.location,
   );
 
+  const hasUsableMapPoint = Boolean(
+    (customerCoord && Math.abs(customerCoord.latitude) > 0.01) ||
+      (restaurantCoord && Math.abs(restaurantCoord.latitude) > 0.01) ||
+      riderCoord,
+  );
+
   const routeQ = useQuery({
     queryKey: [
       'order-route',
@@ -154,8 +167,9 @@ export default function TrackOrderScreen() {
       status,
     ],
     queryFn: () => fetchOrderRoute(id),
-    enabled: Boolean(id) && Boolean(riderCoord || restaurantCoord),
+    enabled: Boolean(id) && hasUsableMapPoint && !CASE_CHECKOUT_ENABLED,
     staleTime: 45_000,
+    retry: false,
   });
 
   const timeline = useMemo(() => {
@@ -198,6 +212,9 @@ export default function TrackOrderScreen() {
     riderInfo && ['RIDER_ASSIGNED', 'PICKED_UP', 'ON_THE_WAY', 'DELIVERED'].includes(status),
   );
 
+  const loading = (trackQ.isLoading || orderQ.isLoading) && !tracking && !order;
+  const failed = trackQ.isError && orderQ.isError && !tracking && !order;
+
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -209,17 +226,25 @@ export default function TrackOrderScreen() {
           <View style={{ width: 40 }} />
         </View>
 
-        {trackQ.isLoading && !tracking ? (
+        {loading ? (
           <View style={[styles.container, styles.center]}>
             <Text style={styles.mutedText}>Connecting to live status...</Text>
           </View>
-        ) : trackQ.isError ? (
+        ) : failed ? (
           <View style={[styles.container, styles.center]}>
             <View style={styles.errorCard}>
               <Text style={styles.errorText}>
-                {(trackQ.error as Error)?.message ?? 'Failed to load tracking data.'}
+                {(trackQ.error as Error)?.message ??
+                  (orderQ.error as Error)?.message ??
+                  'Failed to load tracking data.'}
               </Text>
-              <PressableScale onPress={() => trackQ.refetch()} style={styles.retryBtn}>
+              <PressableScale
+                onPress={() => {
+                  void trackQ.refetch();
+                  void orderQ.refetch();
+                }}
+                style={styles.retryBtn}
+              >
                 <Text style={styles.retryText}>Retry</Text>
               </PressableScale>
             </View>
@@ -239,7 +264,9 @@ export default function TrackOrderScreen() {
               />
               <View style={[styles.socketBadge, { backgroundColor: socketLive ? 'rgba(22,163,74,0.92)' : 'rgba(15,15,15,0.85)' }]}>
                 <LivePulse color="#FFFFFF" />
-                <Text style={styles.socketText}>{socketLive ? 'Live Tracking' : 'Updating every 10s'}</Text>
+                <Text style={styles.socketText}>
+                  {socketLive ? 'Live Tracking' : 'Updating every 20s'}
+                </Text>
               </View>
             </View>
 

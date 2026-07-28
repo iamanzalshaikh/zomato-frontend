@@ -1,6 +1,7 @@
 import { FlatList, Image, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
@@ -11,9 +12,12 @@ import { CaseUi } from '@/constants/caseUi';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { useFavoritesQuery, useToggleFavoriteMutation } from '@/hooks/queries/favorites';
 import { ShopCard } from '@/components/shop-card';
+import { restaurantKeys } from '@/hooks/queries/restaurants';
+import { fetchStorePageData } from '@/services/restaurants';
 
 export default function FavoritesListScreen() {
   const router = useRouter();
+  const qc = useQueryClient();
   const tabBarHeight = useTabBarHeight();
   const favsQuery = useFavoritesQuery();
   const toggleFavMut = useToggleFavoriteMutation();
@@ -64,7 +68,14 @@ export default function FavoritesListScreen() {
                     merchant={merchant}
                     index={index}
                     variant="list"
-                    onPress={(shopId) => router.push({ pathname: '/restaurant/[restaurantId]', params: { restaurantId: shopId } })}
+                    onPress={(shopId) => {
+                      void qc.prefetchQuery({
+                        queryKey: restaurantKeys.storePage(shopId),
+                        queryFn: () => fetchStorePageData(shopId),
+                        staleTime: 5 * 60 * 1000,
+                      });
+                      router.push({ pathname: '/restaurant/[restaurantId]', params: { restaurantId: shopId } });
+                    }}
                   />
                 </Animated.View>
               );

@@ -16,35 +16,67 @@ import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { storageGetItem, storageSetItem, storageRemoveItem } from '@/lib/storage';
 
 import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/pressable-scale';
-import { SkeletonBlock } from '@/components/skeleton';
 import { EmptyState } from '@/components/state-views';
+import { BlinkitSearchLoader } from '@/components/blinkit-loaders';
+import { RouteLoadingOverlay } from '@/components/route-loading-overlay';
 import { CaseUi } from '@/constants/caseUi';
 import { ShopCard } from '@/components/shop-card';
 import { useThemeContext } from '@/context/ThemeContext';
 import { CASE_CATEGORY_META, CASE_SHOP_CATEGORIES } from '@/constants/caseHome';
 import { useGlobalSearchQuery, useTrendingSearchesQuery } from '@/hooks/queries/search';
 import { useRecommendedRestaurantsQuery } from '@/hooks/queries/restaurants';
-import { useProfileQuery } from '@/hooks/queries/profile';
 import { cartKeys, useAddToCartMutation } from '@/hooks/queries/cart';
-import { fetchWallet } from '@/services/wallet';
 import { toast } from '@/lib/toast';
+import { restaurantKeys } from '@/hooks/queries/restaurants';
+import { fetchStorePageData } from '@/services/restaurants';
+
+function SafeThumb({
+  uri,
+  style,
+  fallbackIcon = 'image-outline',
+}: {
+  uri?: string | null;
+  style: any;
+  fallbackIcon?: keyof typeof Ionicons.glyphMap;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (!uri || failed) {
+    return (
+      <View style={[style, { alignItems: 'center', justifyContent: 'center', backgroundColor: CaseUi.field }]}>
+        <Ionicons name={fallbackIcon} size={18} color={CaseUi.muted} />
+      </View>
+    );
+  }
+  return (
+    <Image
+      source={{ uri }}
+      style={style}
+      transition={200}
+      contentFit="cover"
+      cachePolicy="memory-disk"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 type SearchRestaurant = {
   _id: string;
   restaurantName: string;
   cuisines?: string[];
+  businessType?: string;
   averageRating?: number;
   logo?: string;
   averageDeliveryTime?: number;
   distanceKm?: number;
   minimumOrderAmount?: number;
   isOpen?: boolean;
+  bannerImages?: string[];
 };
 
 type SearchFood = {
@@ -63,15 +95,6 @@ type SearchFood = {
     logo?: string;
   };
 };
-
-const POPULAR_CRAVINGS = [
-  { name: 'Biryani', display: 'Biryani Cravings', image: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=150&auto=format&fit=crop&q=80' },
-  { name: 'Pizza', display: 'Cheesy Pizza', image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=150&auto=format&fit=crop&q=80' },
-  { name: 'Burgers', display: 'Juicy Burgers', image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=150&auto=format&fit=crop&q=80' },
-  { name: 'Cake', display: 'Sweet Cakes', image: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=150&auto=format&fit=crop&q=80' },
-  { name: 'Dessert', display: 'Desserts & Sweets', image: 'https://images.unsplash.com/photo-1551024601-bec78aea704b?w=150&auto=format&fit=crop&q=80' },
-  { name: 'Kebab', display: 'Hot Kebabs', image: 'https://images.unsplash.com/photo-1603360946369-dc9bb6258143?w=150&auto=format&fit=crop&q=80' },
-];
 
 // ─── Memoized search result rows ───────────────────────────────────────────
 
@@ -119,14 +142,10 @@ const FoodSearchItem = memo(({ item, index, onAddPress, onRestaurantPress }: Foo
           isClosed && styles.dimmed,
         ]}
       >
-        <Image
-          source={item.images && item.images.length > 0 && item.images[0]
-            ? { uri: item.images[0] }
-            : { uri: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=150&auto=format&fit=crop&q=80' }
-          }
+        <SafeThumb
+          uri={item.images && item.images.length > 0 ? item.images[0] : null}
           style={styles.foodRowImage}
-          transition={200}
-          contentFit="cover"
+          fallbackIcon="fast-food-outline"
         />
         <View style={{ flex: 1, gap: 4 }}>
           <View style={styles.foodTitleRow}>
@@ -138,7 +157,10 @@ const FoodSearchItem = memo(({ item, index, onAddPress, onRestaurantPress }: Foo
           <Text style={styles.foodRowPrice}>J${Math.round(item.price)}</Text>
           <PressableScale onPress={onRestaurantPress}>
             <Text style={[styles.foodSellerText, { color: colors.textSecondary }]} numberOfLines={1}>
-              by {item.restaurantId.restaurantName} · {(item.restaurantId.averageRating ?? 4.4).toFixed(1)} ★
+              by {item.restaurantId.restaurantName}
+              {item.restaurantId.averageRating
+                ? ` · ${Number(item.restaurantId.averageRating).toFixed(1)} ★`
+                : ''}
             </Text>
           </PressableScale>
         </View>
@@ -171,23 +193,17 @@ export default function SearchScreen() {
   const [q, setQ] = useState('');
   const [debounced, setDebounced] = useState('');
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'restaurants' | 'dishes'>('restaurants');
-
-  const profileQ = useProfileQuery();
-  const user = profileQ.data;
-  const walletQ = useQuery({
-    queryKey: ['wallet'],
-    queryFn: fetchWallet,
-    retry: false,
-    staleTime: 60 * 1000,
-  });
-  const walletBalance = Number(walletQ.data?.balance ?? walletQ.data?.walletBalance ?? 0);
+  const [activeTab, setActiveTab] = useState<'stores' | 'items'>('stores');
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
 
   // Filters State
   const [vegOnly, setVegOnly] = useState(false);
   const [topRated, setTopRated] = useState(false);
   const [hasOffers, setHasOffers] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const liveSearch = q.trim();
+  const isSearching = liveSearch.length > 0;
 
   const loadRecentSearches = useCallback(async () => {
     try {
@@ -195,8 +211,8 @@ export default function SearchScreen() {
       if (val) {
         setRecentSearches(JSON.parse(val));
       }
-    } catch (e) {
-      console.log('Error loading recent searches', e);
+    } catch {
+      /* ignore */
     }
   }, []);
 
@@ -208,8 +224,8 @@ export default function SearchScreen() {
         void storageSetItem('recent_searches', JSON.stringify(updated));
         return updated;
       });
-    } catch (e) {
-      console.log('Error saving recent search', e);
+    } catch {
+      /* ignore */
     }
   }, []);
 
@@ -221,20 +237,28 @@ export default function SearchScreen() {
 
   useEffect(() => {
     const t = setTimeout(() => {
-      setDebounced(q);
+      setDebounced(q.trim());
       if (q.trim().length >= 2) {
         void saveSearch(q.trim());
       }
-    }, 450);
+    }, 320);
     return () => clearTimeout(t);
   }, [q, saveSearch]);
+
+  // Reset sticky filters when the query changes
+  useEffect(() => {
+    setVegOnly(false);
+    setTopRated(false);
+    setHasOffers(false);
+    setActiveTab('stores');
+  }, [debounced]);
 
   const clearRecentSearches = async () => {
     try {
       setRecentSearches([]);
       await storageRemoveItem('recent_searches');
-    } catch (e) {
-      console.log('Error clearing recent searches', e);
+    } catch {
+      /* ignore */
     }
   };
 
@@ -245,15 +269,15 @@ export default function SearchScreen() {
         void storageSetItem('recent_searches', JSON.stringify(updated));
         return updated;
       });
-    } catch (e) {
-      console.log('Error deleting recent search', e);
+    } catch {
+      /* ignore */
     }
   };
 
-  // Queries
+  // Queries — idle queries only when not actively searching
   const searchQuery = useGlobalSearchQuery(debounced);
-  const trendingQuery = useTrendingSearchesQuery();
-  const recommendedQuery = useRecommendedRestaurantsQuery();
+  const trendingQuery = useTrendingSearchesQuery(!isSearching);
+  const recommendedQuery = useRecommendedRestaurantsQuery(!isSearching);
   const recommended = useMemo(
     () => (Array.isArray(recommendedQuery.data) ? recommendedQuery.data : []),
     [recommendedQuery.data],
@@ -263,34 +287,72 @@ export default function SearchScreen() {
     return trendingQuery.data ?? [];
   }, [trendingQuery.data]);
 
-  const rawRestaurants = useMemo(
-    () => ((searchQuery.data as any)?.search?.restaurants ?? []) as SearchRestaurant[],
-    [searchQuery.data]
-  );
+  const rawRestaurants = useMemo(() => {
+    const data = searchQuery.data as any;
+    const list = data?.search?.restaurants ?? data?.restaurants ?? [];
+    return (Array.isArray(list) ? list : []) as SearchRestaurant[];
+  }, [searchQuery.data]);
 
-  const rawFoods = useMemo(
-    () => ((searchQuery.data as any)?.search?.foods ?? []) as SearchFood[],
-    [searchQuery.data]
-  );
+  const rawFoods = useMemo(() => {
+    const data = searchQuery.data as any;
+    const list = data?.search?.foods ?? data?.foods ?? [];
+    return (Array.isArray(list) ? list : []) as SearchFood[];
+  }, [searchQuery.data]);
 
   // Filtered lists
   const filteredRestaurants = useMemo(() => {
     return rawRestaurants.filter((r) => {
+      if (activeCategory && String((r as any).businessType ?? '').toUpperCase() !== activeCategory) {
+        return false;
+      }
       if (topRated && (r.averageRating ?? 0) < 4.0) return false;
       return true;
     });
-  }, [rawRestaurants, topRated]);
+  }, [rawRestaurants, topRated, activeCategory]);
 
   const filteredFoods = useMemo(() => {
     return rawFoods.filter((f) => {
+      if (
+        activeCategory &&
+        String((f as any).restaurantId?.businessType ?? '').toUpperCase() !== activeCategory
+      ) {
+        return false;
+      }
       if (vegOnly && f.foodType !== 'veg') return false;
       if (topRated && (f.restaurantId?.averageRating ?? 0) < 4.0) return false;
       return true;
     });
-  }, [rawFoods, vegOnly, topRated]);
+  }, [rawFoods, vegOnly, topRated, activeCategory]);
 
-  const busy = searchQuery.isFetching;
+  const hasRestaurantResults = filteredRestaurants.length > 0;
+  const hasDishResults = filteredFoods.length > 0;
+  const hasAnyResults = hasRestaurantResults || hasDishResults;
+  const showTabs = hasRestaurantResults && hasDishResults;
+  const effectiveTab: 'stores' | 'items' =
+    showTabs
+      ? activeTab
+      : hasRestaurantResults
+        ? 'stores'
+        : 'items';
+  const showVegFilter = effectiveTab === 'items' && (filteredFoods.length > 1 || vegOnly);
+
+  const busy = searchQuery.isFetching && !searchQuery.data;
   const error = (searchQuery.error as any)?.message ?? null;
+
+  useEffect(() => {
+    if (debounced.trim().length === 0) return;
+    if (activeTab === 'stores' && filteredRestaurants.length === 0 && filteredFoods.length > 0) {
+      setActiveTab('items');
+    } else if (activeTab === 'items' && filteredFoods.length === 0 && filteredRestaurants.length > 0) {
+      setActiveTab('stores');
+    }
+  }, [debounced, activeTab, filteredRestaurants.length, filteredFoods.length]);
+
+  useEffect(() => {
+    if (!routeLoading) return;
+    const timer = setTimeout(() => setRouteLoading(false), 1200);
+    return () => clearTimeout(timer);
+  }, [routeLoading]);
 
   const handleAddFoodDirect = async (item: SearchFood) => {
     if (item.restaurantId?.isOpen === false) {
@@ -334,22 +396,38 @@ export default function SearchScreen() {
     }
   };
 
+  const prefetchRestaurant = useCallback((restaurantId: string) => {
+    void qc.prefetchQuery({
+      queryKey: restaurantKeys.storePage(restaurantId),
+      queryFn: () => fetchStorePageData(restaurantId),
+      staleTime: 5 * 60 * 1000,
+    });
+  }, [qc]);
+
   const renderRestaurantItem = useCallback(({ item, index }: { item: SearchRestaurant; index: number }) => (
     <RestaurantSearchItem
       item={item}
       index={index}
-      onPress={() => router.push({ pathname: '/restaurant/[restaurantId]', params: { restaurantId: item._id } })}
+      onPress={() => {
+        setRouteLoading(true);
+        prefetchRestaurant(item._id);
+        router.push({ pathname: '/restaurant/[restaurantId]', params: { restaurantId: item._id } });
+      }}
     />
-  ), [router]);
+  ), [prefetchRestaurant, router]);
 
   const renderFoodItem = useCallback(({ item, index }: { item: SearchFood; index: number }) => (
     <FoodSearchItem
       item={item}
       index={index}
       onAddPress={() => handleAddFoodDirect(item)}
-      onRestaurantPress={() => router.push({ pathname: '/restaurant/[restaurantId]', params: { restaurantId: item.restaurantId._id } })}
+      onRestaurantPress={() => {
+        setRouteLoading(true);
+        prefetchRestaurant(item.restaurantId._id);
+        router.push({ pathname: '/restaurant/[restaurantId]', params: { restaurantId: item.restaurantId._id } });
+      }}
     />
-  ), [router, handleAddFoodDirect]);
+  ), [prefetchRestaurant, router, handleAddFoodDirect]);
 
   return (
     <ThemedView style={styles.container}>
@@ -375,10 +453,13 @@ export default function SearchScreen() {
             <TextInput
               value={q}
               onChangeText={setQ}
-              placeholder="Search restaurants, cuisines, or dishes..."
+              placeholder="Search stores, products, or cuisines..."
               placeholderTextColor={colors.textSecondary}
               style={[styles.searchInput, { color: colors.text }]}
               returnKeyType="search"
+              autoCorrect={false}
+              autoCapitalize="none"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
             />
             {q.length > 0 ? (
               <PressableScale onPress={() => setQ('')} style={styles.iconPadding} hitSlop={6}>
@@ -411,7 +492,7 @@ export default function SearchScreen() {
                 </Pressable>
               </View>
               
-              {activeTab === 'dishes' && (
+              {activeTab === 'items' && (
                 <View style={styles.filterSection}>
                   <Text style={styles.filterSectionTitle}>Food Type</Text>
                   <View style={styles.filterOption}>
@@ -474,8 +555,7 @@ export default function SearchScreen() {
           </Pressable>
         </Modal>
 
-        {/* Category quick filters - only show when not searching */}
-        {debounced.trim().length === 0 && (
+        {!isSearching ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -483,42 +563,56 @@ export default function SearchScreen() {
           >
             {CASE_SHOP_CATEGORIES.map((catId) => {
               const meta = CASE_CATEGORY_META[catId];
+              const selected = activeCategory === catId;
               return (
                 <PressableScale
                   key={catId}
-                  onPress={() =>
-                    router.push({ pathname: '/category/[businessType]', params: { businessType: catId } })
-                  }
+                  onPress={() => setActiveCategory(selected ? null : catId)}
                   style={[
                     styles.categoryFilterChip,
                     {
-                      backgroundColor: isDark ? '#1C1C22' : meta.bg,
-                      borderColor: isDark ? '#2A2A32' : 'rgba(0,0,0,0.04)',
+                      backgroundColor: selected
+                        ? meta.color
+                        : isDark
+                          ? '#1C1C22'
+                          : meta.bg,
+                      borderColor: selected
+                        ? meta.color
+                        : isDark
+                          ? '#2A2A32'
+                          : 'rgba(0,0,0,0.04)',
                     },
                   ]}
                 >
                   <View style={[
                     styles.categoryIconWrap,
-                    { backgroundColor: isDark ? '#2A2A32' : meta.color }
+                    { backgroundColor: selected ? 'rgba(255,255,255,0.18)' : isDark ? '#2A2A32' : meta.color },
                   ]}>
-                    <Ionicons name={meta.icon} size={15} color={isDark ? '#FFFFFF' : '#FFFFFF'} />
+                    <Ionicons name={meta.icon} size={15} color="#FFFFFF" />
                   </View>
-                  <Text style={[styles.categoryFilterText, { color: isDark ? '#E5E5EA' : CaseUi.ink }]}>{meta.short}</Text>
+                  <Text
+                    style={[
+                      styles.categoryFilterText,
+                      { color: selected ? '#FFFFFF' : isDark ? '#E5E5EA' : CaseUi.ink },
+                    ]}
+                  >
+                    {meta.short}
+                  </Text>
                 </PressableScale>
               );
             })}
           </ScrollView>
-        )}
+        ) : null}
 
         {/* Filter chips bar (Shown only when results are present) */}
-        {debounced.trim().length > 0 && (
+        {isSearching && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.filterContainer}
             contentContainerStyle={styles.filterScroll}
           >
-            {activeTab === 'dishes' && (
+            {showVegFilter && (
               <PressableScale
                 onPress={() => setVegOnly(!vegOnly)}
                 style={[styles.filterChip, vegOnly && styles.filterChipActive]}
@@ -556,7 +650,7 @@ export default function SearchScreen() {
         )}
 
         {/* CONDITIONAL LAYOUT STATES */}
-        {debounced.trim().length === 0 ? (
+        {!isSearching ? (
           // STATE A: BEFORE TYPING SCREEN
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
             {/* Recent Searches */}
@@ -590,62 +684,27 @@ export default function SearchScreen() {
               </Animated.View>
             )}
 
-            {/* Popular Cravings Grid */}
-            <Animated.View entering={FadeInDown.delay(80).duration(260)} style={styles.sectionContainer}>
-              <Text style={styles.sectionTitle}>Popular Cravings</Text>
-              <View style={styles.gridContainer}>
-                {POPULAR_CRAVINGS.map((item) => (
-                  <PressableScale
-                    key={item.name}
-                    onPress={() => {
-                      setQ(item.name);
-                      setDebounced(item.name);
-                    }}
-                    style={styles.gridCard}
-                  >
-                    <Text style={styles.gridCardText}>{item.display}</Text>
-                    <Image source={{ uri: item.image }} style={styles.gridCardImage} transition={200} contentFit="cover" />
-                  </PressableScale>
-                ))}
-              </View>
-            </Animated.View>
-
-            {/* Trending Search Tags */}
-            <Animated.View entering={FadeInDown.delay(120).duration(260)} style={styles.sectionContainer}>
-              <Text style={styles.sectionTitle}>Trending Searches</Text>
-              <View style={styles.tagsContainer}>
-                {trendingList.length > 0 ? (
-                  trendingList.slice(0, 8).map((t, idx) => (
-                    <PressableScale
-                      key={`trend-${idx}`}
-                      onPress={() => {
-                        setQ(t.query);
-                        setDebounced(t.query);
-                      }}
-                      style={styles.tagChip}
-                    >
-                      <Ionicons name="trending-up" size={14} color={CaseUi.orange} style={{ marginRight: 4 }} />
-                      <Text style={styles.tagChipText}>{t.query}</Text>
-                    </PressableScale>
-                  ))
-                ) : (
-                  // Fallbacks if no search trending scores yet
-                  ['Biryani', 'Margherita', 'Garlic Bread', 'Smoothie', 'Protein Bowl'].map((name) => (
-                    <PressableScale
-                      key={`fallback-${name}`}
-                      onPress={() => {
-                        setQ(name);
-                        setDebounced(name);
-                      }}
-                      style={styles.tagChip}
-                    >
-                      <Ionicons name="trending-up" size={14} color={CaseUi.orange} style={{ marginRight: 4 }} />
-                      <Text style={styles.tagChipText}>{name}</Text>
-                    </PressableScale>
-                  ))
-                )}
-              </View>
-            </Animated.View>
+            {/* Popular / trending from API only */}
+            {trendingList.length > 0 ? (
+              <Animated.View entering={FadeInDown.delay(80).duration(260)} style={styles.sectionContainer}>
+                <Text style={styles.sectionTitle}>Trending Searches</Text>
+                <View style={styles.tagsContainer}>
+                  {trendingList.slice(0, 10).map((t, idx) => (
+                      <PressableScale
+                        key={`trend-${idx}`}
+                        onPress={() => {
+                          setQ(t.query);
+                          setDebounced(t.query);
+                        }}
+                        style={styles.tagChip}
+                      >
+                        <Ionicons name="trending-up" size={14} color={CaseUi.orange} style={{ marginRight: 4 }} />
+                        <Text style={styles.tagChipText}>{t.query}</Text>
+                      </PressableScale>
+                    ))}
+                </View>
+              </Animated.View>
+            ) : null}
 
             {recommended.length > 0 ? (
               <Animated.View entering={FadeInDown.delay(160).duration(260)} style={styles.sectionContainer}>
@@ -654,16 +713,18 @@ export default function SearchScreen() {
                   {recommended.slice(0, 8).map((r: any) => (
                     <PressableScale
                       key={r._id}
-                      onPress={() =>
+                      onPress={() => {
+                        prefetchRestaurant(String(r._id));
+                        setRouteLoading(true);
                         router.push({
                           pathname: '/restaurant/[restaurantId]',
                           params: { restaurantId: String(r._id) },
-                        })
-                      }
+                        });
+                      }}
                       style={styles.recCard}
                     >
                       {r.logo ? (
-                        <Image source={{ uri: r.logo }} style={styles.recImage} transition={200} contentFit="cover" />
+                        <SafeThumb uri={r.logo} style={styles.recImage} fallbackIcon="storefront-outline" />
                       ) : (
                         <View style={[styles.recImage, styles.recImagePlaceholder]}>
                           <Ionicons name="restaurant" size={28} color={CaseUi.muted} />
@@ -684,41 +745,47 @@ export default function SearchScreen() {
         ) : (
           // STATE B & C: RESULTS LIST
           <View style={{ flex: 1 }}>
-            {/* Custom Tab Selector */}
-            <View style={styles.tabsContainer}>
-              <PressableScale
-                onPress={() => setActiveTab('restaurants')}
-                style={[styles.tabButton, activeTab === 'restaurants' && styles.tabButtonActive]}
-              >
-                <Text style={[styles.tabButtonText, activeTab === 'restaurants' && styles.tabButtonTextActive]}>
-                  Restaurants ({filteredRestaurants.length})
+            {showTabs ? (
+              <View style={styles.tabsContainer}>
+                <PressableScale
+                  onPress={() => setActiveTab('stores')}
+                  style={[styles.tabButton, activeTab === 'stores' && styles.tabButtonActive]}
+                >
+                  <Text style={[styles.tabButtonText, activeTab === 'stores' && styles.tabButtonTextActive]}>
+                    Stores ({filteredRestaurants.length})
+                  </Text>
+                </PressableScale>
+                <PressableScale
+                  onPress={() => setActiveTab('items')}
+                  style={[styles.tabButton, activeTab === 'items' && styles.tabButtonActive]}
+                >
+                  <Text style={[styles.tabButtonText, activeTab === 'items' && styles.tabButtonTextActive]}>
+                    Items ({filteredFoods.length})
+                  </Text>
+                </PressableScale>
+              </View>
+            ) : hasAnyResults ? (
+              <View style={styles.resultsInfoBar}>
+                <Text style={styles.resultsInfoText}>
+                  {hasRestaurantResults
+                    ? `Stores (${filteredRestaurants.length})`
+                    : `Items (${filteredFoods.length})`}
                 </Text>
-              </PressableScale>
-              <PressableScale
-                onPress={() => setActiveTab('dishes')}
-                style={[styles.tabButton, activeTab === 'dishes' && styles.tabButtonActive]}
-              >
-                <Text style={[styles.tabButtonText, activeTab === 'dishes' && styles.tabButtonTextActive]}>
-                  Dishes ({filteredFoods.length})
-                </Text>
-              </PressableScale>
-            </View>
+              </View>
+            ) : null}
 
             {/* Main results list */}
             {busy ? (
-              <View style={styles.skeletonList}>
-                {[0, 1, 2, 3].map((i) => (
-                  <View key={i} style={styles.skeletonRow}>
-                    <SkeletonBlock width={70} height={70} radius={12} />
-                    <View style={{ flex: 1, gap: 8 }}>
-                      <SkeletonBlock width="70%" height={15} />
-                      <SkeletonBlock width="45%" height={11} />
-                      <SkeletonBlock width="30%" height={11} />
-                    </View>
-                  </View>
-                ))}
+              <BlinkitSearchLoader />
+            ) : !hasAnyResults ? (
+              <View style={styles.noResultWrap}>
+                <EmptyState
+                  icon="search-outline"
+                  title={`No results for "${liveSearch}"`}
+                  subtitle="Try a different search term or remove a filter."
+                />
               </View>
-            ) : activeTab === 'restaurants' ? (
+            ) : effectiveTab === 'stores' ? (
               // RESTAURANT RESULTS
               <FlatList
                 data={filteredRestaurants}
@@ -726,12 +793,12 @@ export default function SearchScreen() {
                 contentContainerStyle={{ padding: 4, paddingBottom: 60 }}
                 refreshControl={<RefreshControl refreshing={busy} onRefresh={() => searchQuery.refetch()} tintColor={CaseUi.orange} />}
                 initialNumToRender={6}
-                maxToRenderPerBatch={10}
-                windowSize={5}
+                maxToRenderPerBatch={6}
+                updateCellsBatchingPeriod={40}
+                windowSize={4}
                 removeClippedSubviews={Platform.OS === 'android'}
-                ListEmptyComponent={
-                  <EmptyState icon="restaurant-outline" title="No restaurants found" subtitle="Try a different search term." />
-                }
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
                 renderItem={renderRestaurantItem}
               />
             ) : (
@@ -742,17 +809,18 @@ export default function SearchScreen() {
                 contentContainerStyle={{ padding: 4, paddingBottom: 60 }}
                 refreshControl={<RefreshControl refreshing={busy} onRefresh={() => searchQuery.refetch()} tintColor={CaseUi.orange} />}
                 initialNumToRender={6}
-                maxToRenderPerBatch={10}
-                windowSize={5}
+                maxToRenderPerBatch={6}
+                updateCellsBatchingPeriod={40}
+                windowSize={4}
                 removeClippedSubviews={Platform.OS === 'android'}
-                ListEmptyComponent={
-                  <EmptyState icon="fast-food-outline" title="No dishes found" subtitle="Try a different search term." />
-                }
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
                 renderItem={renderFoodItem}
               />
             )}
           </View>
         )}
+        <RouteLoadingOverlay visible={routeLoading} label="Finding the best results..." />
       </SafeAreaView>
     </ThemedView>
   );
@@ -765,7 +833,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 8,
+    marginBottom: 12,
   },
   headerBackBtn: {
     width: 36,
@@ -781,25 +849,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 14,
-    height: 40,
-    borderRadius: 12,
+    height: 44,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: CaseUi.line,
     backgroundColor: CaseUi.field,
     justifyContent: 'center',
   },
   categoryFilterRow: {
-    gap: 6,
-    paddingBottom: 8,
+    gap: 8,
+    paddingHorizontal: 2,
+    paddingBottom: 12,
+    paddingTop: 4,
+    alignItems: 'center',
   },
   categoryFilterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    height: 34,
-    borderRadius: 14,
+    gap: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: CaseUi.line,
     backgroundColor: CaseUi.white,
@@ -813,7 +884,7 @@ const styles = StyleSheet.create({
   },
   categoryFilterText: {
     fontFamily: 'PlusJakartaSans_600SemiBold',
-    fontSize: 11,
+    fontSize: 11.5,
     color: CaseUi.ink,
   },
   searchBar: {
@@ -839,14 +910,17 @@ const styles = StyleSheet.create({
 
   // Filters
   filterContainer: {
-    marginBottom: 0,
+    marginTop: 6,
+    marginBottom: 8,
     maxHeight: 40,
     flexGrow: 0,
   },
   filterScroll: {
     gap: 10,
+    paddingLeft: 2,
     paddingRight: 16,
     alignItems: 'center',
+    paddingVertical: 2,
   },
   filterChip: {
     height: 32,
@@ -863,18 +937,18 @@ const styles = StyleSheet.create({
   filterTextActive: { color: CaseUi.orange },
 
   // Sections
-  sectionContainer: { marginTop: 4, marginBottom: 12 },
+  sectionContainer: { marginTop: 8, marginBottom: 14 },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontFamily: 'PlusJakartaSans_800ExtraBold',
     color: CaseUi.ink,
-    marginBottom: 6,
+    marginBottom: 8,
   },
   clearBtnText: { fontSize: 12, color: CaseUi.orange, fontFamily: 'PlusJakartaSans_700Bold' },
 
@@ -925,7 +999,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 4,
+    marginTop: 2,
+    minHeight: 8,
   },
   tagChip: {
     paddingHorizontal: 12,
@@ -937,7 +1012,7 @@ const styles = StyleSheet.create({
   },
   tagChipText: { fontSize: 12, fontFamily: 'PlusJakartaSans_600SemiBold', color: CaseUi.ink },
 
-  recScroll: { gap: 12, paddingTop: 8, paddingRight: 4 },
+  recScroll: { gap: 12, paddingTop: 4, paddingRight: 4 },
   recCard: {
     width: 140,
     borderRadius: 14,
@@ -956,16 +1031,27 @@ const styles = StyleSheet.create({
   recMeta: { marginTop: 4, fontSize: 11, color: CaseUi.muted },
 
   // Tab View selectors
+  resultsInfoBar: {
+    paddingHorizontal: 4,
+    paddingTop: 4,
+    paddingBottom: 10,
+  },
+  resultsInfoText: {
+    fontSize: 13,
+    fontFamily: 'PlusJakartaSans_700Bold',
+    color: CaseUi.ink,
+  },
   tabsContainer: {
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: CaseUi.line,
-    marginBottom: 4,
+    marginBottom: 6,
+    marginTop: 2,
   },
   tabButton: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: 2.5,
     borderBottomColor: 'transparent',
   },
@@ -978,6 +1064,11 @@ const styles = StyleSheet.create({
   tabButtonTextActive: { fontFamily: 'PlusJakartaSans_800ExtraBold', color: CaseUi.orange },
 
   // Results Layout
+  noResultWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingBottom: 80,
+  },
   restaurantRowCard: {
     flexDirection: 'row',
     alignItems: 'center',

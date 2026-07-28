@@ -22,7 +22,18 @@ export function getCartDisplayTotal(cart: Cart | null | undefined): number {
 }
 
 export function getCartRestaurantName(cart: Cart | null | undefined): string | null {
-  const r = cart?.restaurantId;
+  if (!cart?.items?.length) return null;
+  const names = [
+    ...new Set(
+      cart.items
+        .map((it) => (it as { restaurantName?: string }).restaurantName)
+        .filter((n): n is string => Boolean(n && String(n).trim())),
+    ),
+  ];
+  if (names.length > 1) return `${names.length} stores`;
+  if (names.length === 1) return names[0];
+
+  const r = cart.restaurantId;
   if (r && typeof r === 'object' && 'restaurantName' in r) {
     return String(r.restaurantName ?? '') || null;
   }

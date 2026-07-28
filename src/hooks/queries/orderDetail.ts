@@ -21,13 +21,25 @@ async function fetchOrderPreferCase(orderId: string) {
   return fetchOrderById(orderId);
 }
 
+const TERMINAL_ORDER_STATUSES = new Set(['DELIVERED', 'CANCELLED']);
+
 export function useOrderByIdQuery(orderId: string) {
   const q = useQuery({
     queryKey: orderDetailKeys.byId(orderId),
     queryFn: () => fetchOrderPreferCase(orderId),
     enabled: Boolean(orderId),
     staleTime: 30_000,
-    refetchInterval: CASE_CHECKOUT_ENABLED ? 15_000 : false,
+    refetchInterval: CASE_CHECKOUT_ENABLED
+      ? (query) => {
+          const status = String(
+            (query.state.data as { orderStatus?: string; status?: string } | undefined)?.orderStatus ??
+              (query.state.data as { status?: string } | undefined)?.status ??
+              '',
+          ).toUpperCase();
+          if (TERMINAL_ORDER_STATUSES.has(status)) return false;
+          return 20_000;
+        }
+      : false,
   });
   perfQuery(`OrderById(${orderId})`, q.isFetching, q.dataUpdatedAt);
   return q;
@@ -36,9 +48,19 @@ export function useOrderByIdQuery(orderId: string) {
 export function useOrderTrackQuery(orderId: string) {
   const q = useQuery({
     queryKey: orderDetailKeys.track(orderId),
+    // Classic track payload works for CASE orders (same Order table).
     queryFn: () => trackOrder(orderId),
-    enabled: Boolean(orderId) && !CASE_CHECKOUT_ENABLED,
-    staleTime: 120_000,
+    enabled: Boolean(orderId),
+    staleTime: 15_000,
+    refetchInterval: (query) => {
+      const status = String(
+        (query.state.data as { orderStatus?: string; status?: string } | undefined)?.orderStatus ??
+          (query.state.data as { status?: string } | undefined)?.status ??
+          '',
+      ).toUpperCase();
+      if (TERMINAL_ORDER_STATUSES.has(status)) return false;
+      return 20_000;
+    },
   });
   perfQuery(`TrackOrder(${orderId})`, q.isFetching, q.dataUpdatedAt);
   return q;

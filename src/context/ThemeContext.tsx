@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useColorScheme as useDeviceColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -40,14 +40,14 @@ export function ThemeProviderCustom({ children }: { children: React.ReactNode })
     })();
   }, []);
 
-  const setThemePreference = async (pref: ThemePreference) => {
+  const setThemePreference = useCallback(async (pref: ThemePreference) => {
     setThemePreferenceState(pref);
     try {
       await AsyncStorage.setItem(STORAGE_KEY, pref);
     } catch (err) {
       console.error('Failed to save theme preference', err);
     }
-  };
+  }, []);
 
   const activeScheme: ActiveScheme =
     themePreference === 'system'
@@ -58,18 +58,17 @@ export function ThemeProviderCustom({ children }: { children: React.ReactNode })
 
   const colors = Colors[activeScheme];
 
-  return (
-    <ThemeContext.Provider
-      value={{
-        themePreference,
-        activeScheme,
-        colors,
-        setThemePreference,
-      }}
-    >
-      {children}
-    </ThemeContext.Provider>
+  const value = useMemo(
+    () => ({
+      themePreference,
+      activeScheme,
+      colors,
+      setThemePreference,
+    }),
+    [themePreference, activeScheme, colors, setThemePreference]
   );
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useThemeContext() {

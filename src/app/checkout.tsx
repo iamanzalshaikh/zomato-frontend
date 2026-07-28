@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -19,10 +19,11 @@ import { SkeletonBlock } from '@/components/skeleton';
 import { CaseUi } from '@/constants/caseUi';
 import { CASE_CHECKOUT_ENABLED } from '@/config/features';
 import { useCart } from '@/hooks/use-cart';
-import { useCartQuery, cartKeys } from '@/hooks/queries/cart';
+import { cartKeys } from '@/hooks/queries/cart';
 import { useProfileQuery } from '@/hooks/queries/profile';
 import { useCaseDeliveryPointsQuery } from '@/hooks/queries/case';
-import { useCaseQuoteQuery, usePlaceCaseOrderMutation, caseOrderKeys } from '@/hooks/queries/caseOrders';
+import { useCaseQuoteQuery, usePlaceCaseOrderMutation, caseOrderKeys, buildCaseQuoteInput } from '@/hooks/queries/caseOrders';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import {
   buildPlaceCaseOrderFromCart,
   clearGetAnythingDraft,
@@ -43,6 +44,52 @@ import { clearCart } from '@/services/cart';
 import type { CaseOrderItemInput } from '@/services/caseOrders';
 import type { Address } from '@/services/profile';
 import { toast } from '@/lib/toast';
+import {
+  ensureCaseCartPrices,
+  repairCaseCartZeroPrices,
+  waitForCaseCartHydration,
+} from '@/lib/repairCaseCartPrices';
+import { getCaseCartSnapshot, useCaseCartStore } from '@/stores/caseCart';
+
+function lineTotal(price: unknown, qty: unknown) {
+  return Number(price || 0) * Number(qty || 0);
+}
+
+function sumItems(items: { price?: number; quantity?: number }[]) {
+  return items.reduce((s, i) => s + lineTotal(i.price, i.quantity), 0);
+}
+
+async function healCheckoutCartPrices() {
+  try {
+    if (typeof ensureCaseCartPrices === 'function') {
+      return await ensureCaseCartPrices();
+    }
+  } catch (e) {
+    if (__DEV__) console.warn('[checkout] ensureCaseCartPrices failed', e);
+  }
+  try {
+    await waitForCaseCartHydration();
+    const repaired =
+      typeof repairCaseCartZeroPrices === 'function' ? await repairCaseCartZeroPrices() : 0;
+    const snap = getCaseCartSnapshot();
+    const items = snap?.items ?? [];
+    return {
+      repaired,
+      dropped: 0,
+      itemCount: items.length,
+      subtotal: sumItems(items),
+    };
+  } catch (e) {
+    if (__DEV__) console.warn('[checkout] heal fallback failed', e);
+    const items = useCaseCartStore.getState().items;
+    return {
+      repaired: 0,
+      dropped: 0,
+      itemCount: items.length,
+      subtotal: sumItems(items),
+    };
+  }
+}
 
 const TIP_PRESETS = [0, 20, 50, 100];
 
@@ -70,9 +117,10 @@ export default function CheckoutScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ mode?: string }>();
   const isGetAnything = params.mode === 'get-anything';
+  const isReorder = params.mode === 'reorder';
   const { cart } = useCart();
+  const localCartItems = useCaseCartStore((s) => s.items);
   const qc = useQueryClient();
-  const cartQuery = useCartQuery();
   const profileQuery = useProfileQuery();
   const pointsQ = useCaseDeliveryPointsQuery();
   const placeMut = usePlaceCaseOrderMutation();
@@ -92,6 +140,15 @@ export default function CheckoutScreen() {
   const [deliveryPointName, setDeliveryPointName] = useState('Select drop-off');
   const [customItems, setCustomItems] = useState<CaseOrderItemInput[] | null>(null);
   const [getAnything, setGetAnything] = useState<GetAnythingDraft | null>(null);
+  const [instructionsSeeded, setInstructionsSeeded] = useState(false);
+  const [checkoutReady, setCheckoutReady] = useState(false);
+  const [repairingPrices, setRepairingPrices] = useState(false);
+  // Set the instant navigation fires post-order-success, so this screen's own
+  // dev-only debug effects stop reacting to the cart emptying out underneath
+  // it during the transition (was logging a misleading "0 items" bill-inputs
+  // snapshot right after a successful order — real navigation had already
+  // happened, this was just a stale re-render of the screen being replaced).
+  const hasFinishedRef = useRef(false);
 
   // Classic fallback state
   const addresses = useMemo(
@@ -108,6 +165,16 @@ export default function CheckoutScreen() {
   useEffect(() => {
     if (!addressId && defaultAddressId) setAddressId(defaultAddressId);
   }, [defaultAddressId, addressId]);
+
+  // Carry cart note into checkout once
+  useEffect(() => {
+    if (instructionsSeeded) return;
+    const note = cart?.generalNote?.trim();
+    if (note) {
+      setInstructions(note);
+      setInstructionsSeeded(true);
+    }
+  }, [cart?.generalNote, instructionsSeeded]);
 
   // Hydrate payment method + coupon chosen on the Cart screen so the choice
   // actually carries through instead of silently resetting to defaults.
@@ -126,14 +193,21 @@ export default function CheckoutScreen() {
     void setSelectedPaymentMethod(paymentMethod);
   }, [paymentMethod]);
 
+  // Debounce coupon persistence so typing doesn't hammer AsyncStorage.
+  const debouncedCoupon = useDebouncedValue(couponCode.trim(), 400);
   useEffect(() => {
-    void setSelectedCouponCode(couponCode.trim());
-  }, [couponCode]);
+    void setSelectedCouponCode(debouncedCoupon);
+  }, [debouncedCoupon]);
 
   useEffect(() => {
     void (async () => {
-      const id = await getSelectedDeliveryPointId();
-      const name = await getSelectedDeliveryPointName();
+      const [id, name, draft, reorder] = await Promise.all([
+        getSelectedDeliveryPointId(),
+        getSelectedDeliveryPointName(),
+        isGetAnything ? loadGetAnythingDraft() : Promise.resolve(null),
+        isReorder ? loadReorderDraft() : Promise.resolve(null),
+      ]);
+
       if (id) setDeliveryPointId(id);
       if (name) setDeliveryPointName(name);
 
@@ -143,99 +217,184 @@ export default function CheckoutScreen() {
         setDeliveryPointName(first.name);
       }
 
-      if (isGetAnything) {
-        const draft = await loadGetAnythingDraft();
-        if (draft) {
-          setGetAnything(draft);
-          setTipAmount(String(draft.tip || 0));
-          setCustomItems([
-            {
-              itemType: 'CUSTOM_REQUEST',
-              itemName: 'Get Anything',
-              quantity: 1,
-              price: draft.estimatedPrice,
-              customNote: draft.note,
-            },
-          ]);
+      if (isGetAnything && draft) {
+        setGetAnything(draft);
+        setTipAmount(String(draft.tip || 0));
+        setCustomItems([
+          {
+            itemType: 'CUSTOM_REQUEST',
+            itemName: 'Get Anything',
+            quantity: 1,
+            price: draft.estimatedPrice,
+            customNote: draft.note,
+          },
+        ]);
+      } else if (isReorder && reorder?.items?.length) {
+        const reorderTotal = sumItems(reorder.items);
+        if (__DEV__) {
+          console.log('[checkout] applying reorder draft', {
+            lines: reorder.items.length,
+            total: reorderTotal,
+            sample: reorder.items.slice(0, 3).map((i) => ({
+              name: i.itemName,
+              price: i.price,
+              qty: i.quantity,
+            })),
+          });
+        }
+        if (reorderTotal > 0) {
+          setCustomItems(reorder.items);
+        } else {
+          // Broken draft — ignore and use live cart instead
+          if (__DEV__) console.warn('[checkout] reorder draft has J$0 — ignoring');
+          await clearReorderDraft();
+          setCustomItems(null);
+        }
+        if (reorder.deliveryPointId) {
+          setDeliveryPointId(reorder.deliveryPointId);
         }
       } else {
-        const reorder = await loadReorderDraft();
-        if (reorder?.items?.length) {
-          setCustomItems(reorder.items);
-          if (reorder.deliveryPointId) {
-            setDeliveryPointId(reorder.deliveryPointId);
-          }
+        // Normal cart checkout — never let a leftover reorder draft hijack prices
+        setCustomItems(null);
+        await clearReorderDraft();
+      }
+
+      // Heal legacy price=0 lines before quote / place-order
+      setRepairingPrices(true);
+      try {
+        const result = await healCheckoutCartPrices();
+        if (__DEV__) {
+          console.log('[checkout] cart heal', result, {
+            storeLines: useCaseCartStore.getState().items.map((i) => ({
+              name: i.itemName,
+              price: i.price,
+              qty: i.quantity,
+              rid: i.restaurantId,
+              mid: i.menuItemId,
+            })),
+          });
         }
+        if (result.dropped > 0 && result.itemCount === 0 && !isGetAnything && !isReorder) {
+          toast.warning('Cart items had no prices. Please add them again.', 'Checkout');
+          router.replace('/cart');
+          return;
+        }
+        if (result.dropped > 0) {
+          toast.info('Some items without prices were removed.', 'Cart updated');
+        }
+      } finally {
+        setRepairingPrices(false);
+        setCheckoutReady(true);
       }
     })();
-  }, [isGetAnything, pointsQ.data]);
+  }, [isGetAnything, isReorder, pointsQ.data]);
 
   const caseItems = useMemo(() => {
-    if (customItems?.length) return customItems;
+    if (customItems?.length && sumItems(customItems) > 0) return customItems;
     return mapCartToCaseItems(cart);
-  }, [customItems, cart]);
+  }, [customItems, cart, localCartItems]);
+
+  const itemsSubtotal = useMemo(() => sumItems(caseItems), [caseItems]);
+
+  useEffect(() => {
+    if (!__DEV__ || !checkoutReady || repairingPrices || hasFinishedRef.current) return;
+    console.log('[checkout] bill inputs', {
+      mode: params.mode ?? 'cart',
+      caseItemCount: caseItems.length,
+      itemsSubtotal,
+      quoteEnabled: itemsSubtotal > 0 && caseItems.length > 0,
+      lines: caseItems.map((i) => ({
+        name: i.itemName,
+        price: i.price,
+        qty: i.quantity,
+        rid: i.restaurantId,
+      })),
+    });
+  }, [checkoutReady, repairingPrices, caseItems, itemsSubtotal, params.mode]);
 
   const tipNum = Number(tipAmount) || 0;
+  const profileUserId =
+    (profileQuery.data as { _id?: string; id?: string } | undefined)?._id ??
+    (profileQuery.data as { id?: string } | undefined)?.id;
 
+  // Tip is applied client-side — do NOT put tipAmount in the quote payload
+  // (avoids a network round-trip on every tip tap).
   const quoteInput = useMemo(() => {
-    if (!CASE_CHECKOUT_ENABLED || !caseItems.length) return null;
-    return {
+    if (!CASE_CHECKOUT_ENABLED || !caseItems.length || itemsSubtotal <= 0) return null;
+    return buildCaseQuoteInput({
       lines: caseItems.map((i) => ({
         merchantId: i.restaurantId ?? null,
         quantity: i.quantity,
         unitPrice: i.price,
       })),
-      deliveryPointId: deliveryPointId ?? undefined,
-      tipAmount: tipNum,
-      couponCode: couponCode.trim() || undefined,
+      deliveryPointId,
+      couponCode: debouncedCoupon,
       useLoyaltyFreeDelivery: useLoyalty,
       expressDelivery,
-      userId:
-        (profileQuery.data as { _id?: string; id?: string } | undefined)?._id ??
-        (profileQuery.data as { id?: string } | undefined)?.id,
-    };
+      userId: profileUserId,
+    });
   }, [
     caseItems,
+    itemsSubtotal,
     deliveryPointId,
-    tipNum,
-    couponCode,
+    debouncedCoupon,
     useLoyalty,
     expressDelivery,
-    profileQuery.data,
+    profileUserId,
   ]);
 
-  const quoteQ = useCaseQuoteQuery(quoteInput, CASE_CHECKOUT_ENABLED && caseItems.length > 0);
+  const quoteQ = useCaseQuoteQuery(
+    quoteInput,
+    // Wait for deliveryPointId to actually resolve too — otherwise the first
+    // quote fires with it undefined and briefly shows a price missing the
+    // delivery fee, before a second request silently corrects it.
+    CASE_CHECKOUT_ENABLED &&
+      checkoutReady &&
+      !repairingPrices &&
+      itemsSubtotal > 0 &&
+      caseItems.length > 0 &&
+      Boolean(deliveryPointId),
+  );
   const quote = quoteQ.data;
 
   const restaurant = cart?.restaurantId as any;
 
   async function finishCaseCheckout(orderId: string, method: 'COD' | 'BANK_TRANSFER') {
-    await clearGetAnythingDraft();
-    await clearReorderDraft();
-    try {
-      await clearCart();
-    } catch {
-      /* ignore */
-    }
-    try {
-      const { useCaseCartStore } = await import('@/stores/caseCart');
-      useCaseCartStore.getState().clear();
-    } catch {
-      /* ignore */
-    }
-    await qc.invalidateQueries({ queryKey: cartKeys.all });
-    await qc.invalidateQueries({ queryKey: caseOrderKeys.all });
-    await cartQuery.refetch();
+    hasFinishedRef.current = true;
     toast.success('Your order has been placed', 'Order placed');
 
+    // Navigate immediately — clear cart / drafts in the background so UI feels instant.
     if (method === 'BANK_TRANSFER') {
       router.replace({ pathname: '/bank-transfer/[orderId]', params: { orderId } });
-      return;
+    } else {
+      router.replace({
+        pathname: '/order-success',
+        params: { orderId, payment: method },
+      });
     }
-    router.replace({
-      pathname: '/order-success',
-      params: { orderId, payment: method },
-    });
+
+    void (async () => {
+      try {
+        await Promise.all([clearGetAnythingDraft(), clearReorderDraft()]);
+      } catch {
+        /* ignore */
+      }
+      try {
+        const { useCaseCartStore } = await import('@/stores/caseCart');
+        useCaseCartStore.getState().clear();
+      } catch {
+        /* ignore */
+      }
+      if (!CASE_CHECKOUT_ENABLED) {
+        try {
+          await clearCart();
+        } catch {
+          /* ignore */
+        }
+      }
+      void qc.invalidateQueries({ queryKey: cartKeys.all });
+      void qc.invalidateQueries({ queryKey: caseOrderKeys.all });
+    })();
   }
 
   async function placeCase() {
@@ -248,10 +407,29 @@ export default function CheckoutScreen() {
       toast.warning('Your cart is empty', 'Checkout');
       return;
     }
+
+    setBusy(true);
     try {
-      setBusy(true);
+      const repaired = await healCheckoutCartPrices();
+      if (repaired.itemCount === 0 && !customItems?.length) {
+        toast.warning('Your cart was cleared — items had no prices. Please add them again.', 'Checkout');
+        router.replace('/cart');
+        return;
+      }
+      const freshCart = getCaseCartSnapshot();
+      const freshItems = customItems?.length ? customItems : mapCartToCaseItems(freshCart);
+      const itemsTotal = freshItems.reduce(
+        (s, i) => s + Number(i.price || 0) * Number(i.quantity || 0),
+        0,
+      );
+      if (itemsTotal <= 0) {
+        toast.warning('Could not load item prices. Please add the items again from the store.', 'Checkout');
+        router.replace('/cart');
+        return;
+      }
+
       const payload = buildPlaceCaseOrderFromCart({
-        cart,
+        cart: freshCart,
         deliveryPointId,
         paymentMethod,
         notes: instructions.trim() || getAnything?.note || undefined,
@@ -259,14 +437,15 @@ export default function CheckoutScreen() {
         couponCode: couponCode.trim() || undefined,
         useLoyaltyFreeDelivery: useLoyalty,
         expressDelivery,
-        customItems: caseItems,
+        customItems: freshItems,
       });
       const order = await placeMut.mutateAsync(payload);
       const orderId = String(order.id ?? order._id ?? '');
       if (!orderId) throw new Error('Order created but no id returned');
       await finishCaseCheckout(orderId, paymentMethod);
     } catch (e: any) {
-      toast.error(e?.message ?? 'Failed to place order', 'Order failed');
+      const msg = String(e?.message ?? 'Failed to place order');
+      toast.error(msg.length > 120 ? 'Invalid order data. Clear cart and try again.' : msg, 'Order failed');
     } finally {
       setBusy(false);
     }
@@ -296,12 +475,12 @@ export default function CheckoutScreen() {
         });
         return;
       }
-      await qc.invalidateQueries({ queryKey: cartKeys.all });
       toast.success('Your order has been placed', 'Order placed');
       router.replace({
         pathname: '/order-success',
         params: { orderId, payment: classicPayment },
       });
+      void qc.invalidateQueries({ queryKey: cartKeys.all });
     } catch (e: any) {
       toast.error(e?.message ?? 'Failed to place order', 'Order failed');
     } finally {
@@ -355,7 +534,11 @@ export default function CheckoutScreen() {
     );
   }
 
-  const total = quote?.totalJmd ?? caseItems.reduce((s, i) => s + i.price * i.quantity, 0) + tipNum;
+  const total =
+    (quote?.totalJmd != null && quote.totalJmd > 0
+      ? quote.totalJmd
+      : itemsSubtotal + Number(quote?.deliveryFee ?? 0) + Number(quote?.multiStoreFee ?? 0) + Number(quote?.expressFee ?? 0) - Number(quote?.discountAmount ?? 0)) +
+    tipNum;
 
   return (
     <ThemedView style={styles.container}>
@@ -520,6 +703,11 @@ export default function CheckoutScreen() {
 
           <Animated.View entering={FadeInDown.delay(280).duration(300)} style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Bill summary</Text>
+            {quoteQ.isError && !quote ? (
+              <Text style={{ color: CaseUi.danger, fontFamily: 'PlusJakartaSans_600SemiBold', fontSize: 13 }}>
+                Couldn't load bill total. Check your connection and try again.
+              </Text>
+            ) : null}
             {quoteQ.isFetching && !quote ? (
               <View style={{ gap: 10, marginTop: 4 }}>
                 {[0, 1, 2].map((i) => (
@@ -531,10 +719,17 @@ export default function CheckoutScreen() {
               </View>
             ) : (
               <>
-                <Row label="Subtotal" value={`J$${(quote?.subtotal ?? 0).toFixed(0)}`} color={CaseUi.ink} />
+                <Row
+                  label="Subtotal"
+                  value={`J$${(quote?.subtotal && quote.subtotal > 0
+                    ? quote.subtotal
+                    : itemsSubtotal
+                  ).toFixed(0)}`}
+                  color={CaseUi.ink}
+                />
                 <Row label="Delivery" value={`J$${(quote?.deliveryFee ?? 0).toFixed(0)}`} color={CaseUi.ink} />
                 {(quote?.multiStoreFee ?? 0) > 0 ? (
-                  <Row label="Multi-store" value={`J$${quote!.multiStoreFee.toFixed(0)}`} color={CaseUi.ink} />
+                  <Row label="Multi-store pickup" value={`J$${quote!.multiStoreFee.toFixed(0)}`} color={CaseUi.ink} />
                 ) : null}
                 {(quote?.extraItemFee ?? 0) > 0 ? (
                   <Row label="Extra items" value={`J$${quote!.extraItemFee.toFixed(0)}`} color={CaseUi.ink} />
@@ -542,8 +737,8 @@ export default function CheckoutScreen() {
                 {(quote?.expressFee ?? 0) > 0 ? (
                   <Row label="Express" value={`J$${quote!.expressFee.toFixed(0)}`} color={CaseUi.ink} />
                 ) : null}
-                {(quote?.tipAmount ?? tipNum) > 0 ? (
-                  <Row label="Tip" value={`J$${(quote?.tipAmount ?? tipNum).toFixed(0)}`} color={CaseUi.ink} />
+                {tipNum > 0 ? (
+                  <Row label="Rider tip" value={`J$${tipNum.toFixed(0)}`} color={CaseUi.ink} />
                 ) : null}
                 {(quote?.discountAmount ?? 0) > 0 ? (
                   <Row label="Discount" value={`-J$${quote!.discountAmount.toFixed(0)}`} color={CaseUi.success} />
@@ -567,9 +762,9 @@ export default function CheckoutScreen() {
             <Text style={styles.bottomTotalValue}>J${total.toFixed(0)}</Text>
           </View>
           <PressableScale
-            disabled={busy || !caseItems.length}
+            disabled={busy || !caseItems.length || (quoteQ.isError && !quote)}
             onPress={placeCase}
-            style={[styles.placeBtn, (busy || !caseItems.length) && { opacity: 0.6 }]}
+            style={[styles.placeBtn, (busy || !caseItems.length || (quoteQ.isError && !quote)) && { opacity: 0.6 }]}
           >
             <Text style={styles.placeBtnText}>
               {busy ? 'Placing…' : paymentMethod === 'BANK_TRANSFER' ? 'Place & pay by bank' : 'Place order'}
@@ -604,12 +799,12 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 16, fontFamily: 'PlusJakartaSans_800ExtraBold', color: CaseUi.ink },
   changeBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: CaseUi.orangeSoft },
   changeBtnText: { color: CaseUi.orange, fontSize: 12, fontFamily: 'PlusJakartaSans_700Bold' },
-  scrollBody: { padding: 14, gap: 12 },
+  scrollBody: { padding: 14, gap: 8 },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    padding: 14,
+    padding: 12,
     borderRadius: CaseUi.radius.lg,
     backgroundColor: CaseUi.white,
     borderWidth: 1,
@@ -628,14 +823,14 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 14, fontFamily: 'PlusJakartaSans_700Bold', color: CaseUi.ink, marginTop: 2 },
   cardSub: { fontSize: 11, fontFamily: 'PlusJakartaSans_500Medium', color: CaseUi.muted, marginTop: 2 },
   sectionCard: {
-    padding: 14,
+    padding: 12,
     borderRadius: CaseUi.radius.lg,
     backgroundColor: CaseUi.white,
     borderWidth: 1,
     borderColor: CaseUi.line,
     ...CaseUi.softShadow,
   },
-  sectionTitle: { fontSize: 13, fontFamily: 'PlusJakartaSans_800ExtraBold', color: CaseUi.ink, marginBottom: 10 },
+  sectionTitle: { fontSize: 13, fontFamily: 'PlusJakartaSans_800ExtraBold', color: CaseUi.ink, marginBottom: 8 },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',

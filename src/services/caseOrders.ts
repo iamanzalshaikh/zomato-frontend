@@ -48,11 +48,30 @@ export type CaseQuote = {
 };
 
 export async function fetchCaseQuote(input: CaseQuoteInput): Promise<CaseQuote> {
+  if (__DEV__) {
+    console.log('[quote] request', {
+      lines: input.lines?.map((l) => ({
+        merchantId: l.merchantId,
+        qty: l.quantity,
+        unitPrice: l.unitPrice,
+      })),
+      deliveryPointId: input.deliveryPointId,
+      coupon: input.couponCode,
+    });
+  }
   const body = await apiFetch('/public/quote', {
     method: 'POST',
     body: JSON.stringify(input),
   });
-  return unwrapData<CaseQuote>(body);
+  const quote = unwrapData<CaseQuote>(body);
+  if (__DEV__) {
+    console.log('[quote] response', {
+      subtotal: quote?.subtotal,
+      deliveryFee: quote?.deliveryFee,
+      totalJmd: quote?.totalJmd,
+    });
+  }
+  return quote;
 }
 
 // ─── Place / list / detail ─────────────────────────────────────
@@ -103,6 +122,14 @@ export type CaseOrder = {
   notes?: string | null;
   estimatedPreparationTime?: number | null;
   createdAt?: string;
+  bankDetails?: {
+    bankName?: string | null;
+    accountNumber?: string | null;
+    accountName?: string | null;
+    instructions?: string | null;
+    transferReference?: string | null;
+    receiptDeadlineAt?: string | null;
+  } | null;
   deliveryPoint?: {
     id?: string;
     name?: string;
@@ -184,6 +211,57 @@ export async function uploadCaseBankReceipts(
     body: JSON.stringify({ receiptUrls }),
   });
   return unwrapData(body);
+}
+
+/** Upload receipt image as base64 JSON (no FormData / no expo-file-system). */
+export async function uploadCaseBankReceiptImage(
+  orderId: string,
+  file: {
+    imageBase64: string;
+    mimeType?: string | null;
+    uri?: string | null;
+    fileName?: string | null;
+  },
+): Promise<{ order: CaseOrder; payment: unknown }> {
+  const imageBase64 = String(file.imageBase64 || '').replace(/^data:image\/\w+;base64,/, '');
+  if (!imageBase64 || imageBase64.length < 100) {
+    throw new Error('Receipt image data is missing. Pick the photo again.');
+  }
+
+  if (__DEV__) {
+    console.log('[receipt] upload start', {
+      orderId,
+      mimeType: file.mimeType || 'image/jpeg',
+      base64Chars: imageBase64.length,
+      approxKb: Math.round((imageBase64.length * 0.75) / 1024),
+      fileName: file.fileName,
+    });
+  }
+
+  const t0 = Date.now();
+  try {
+    const body = await apiFetch(`/orders/case/${orderId}/receipts/base64`, {
+      method: 'POST',
+      body: JSON.stringify({
+        imageBase64,
+        mimeType: file.mimeType || 'image/jpeg',
+      }),
+    });
+    if (__DEV__) {
+      console.log('[receipt] upload ok', { orderId, ms: Date.now() - t0 });
+    }
+    return unwrapData(body);
+  } catch (e: any) {
+    if (__DEV__) {
+      console.warn('[receipt] upload failed', {
+        orderId,
+        ms: Date.now() - t0,
+        message: e?.message,
+        status: e?.status,
+      });
+    }
+    throw e;
+  }
 }
 
 /** Absolute URL for receipt PDF (caller must send Authorization). */

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { CASE_CHECKOUT_ENABLED } from '@/config/features';
@@ -13,7 +13,10 @@ import {
   updateCartPreferences,
   type Cart,
 } from '@/services/cart';
+import { ensureCaseCartPrices } from '@/lib/repairCaseCartPrices';
 import { useCaseCartStore, getCaseCartSnapshot } from '@/stores/caseCart';
+import { fetchCaseMerchantMenu } from '@/services/case';
+import { clearReorderDraft } from '@/lib/caseCheckout';
 
 export const cartKeys = {
   all: ['cart'] as const,
@@ -29,22 +32,47 @@ function useCaseCartAsQueryData(): Cart | null {
   const restaurantId = useCaseCartStore((s) => s.restaurantId);
   const restaurantName = useCaseCartStore((s) => s.restaurantName);
   const generalNote = useCaseCartStore((s) => s.generalNote);
+  const dontSendCutlery = useCaseCartStore((s) => s.dontSendCutlery);
+
+  // Auto-heal legacy lines saved with price=0; drop any that stay unpriced.
+  useEffect(() => {
+    if (!CASE_CHECKOUT_ENABLED) return;
+    if (!items.some((i) => !(Number(i.price) > 0))) return;
+    void ensureCaseCartPrices().catch(() => {});
+  }, [items]);
 
   return useMemo<Cart | null>(() => {
-    if (!items.length || !restaurantId) return null;
+    if (!items.length) return null;
+    const storeIds = [...new Set(items.map((i) => i.restaurantId).filter(Boolean))];
+    const primaryId = restaurantId && restaurantId !== 'multi' ? restaurantId : storeIds[0] ?? 'multi';
+    const primaryName =
+      storeIds.length > 1
+        ? `${storeIds.length} stores`
+        : restaurantName ?? items.find((i) => i.restaurantId === primaryId)?.restaurantName ?? 'Store';
     const subtotal = items.reduce((s, i) => s + i.total, 0);
     return {
       _id: 'case-local-cart',
-      restaurantId: { _id: restaurantId, restaurantName: restaurantName ?? 'Store' },
-      items: items.map(({ restaurantId: _r, restaurantName: _n, specialInstructions: _s, ...line }) => line),
+      restaurantId: { _id: primaryId, restaurantName: primaryName },
+      items: items.map((line) => ({
+        _id: line._id,
+        menuItemId: line.menuItemId,
+        itemName: line.itemName,
+        quantity: line.quantity,
+        price: line.price,
+        total: line.total,
+        addons: line.addons,
+        // retained for multi-store billing (extra fields ok on runtime objects)
+        restaurantId: line.restaurantId,
+        restaurantName: line.restaurantName,
+      })) as Cart['items'],
       subtotal,
       total: subtotal,
       grandTotal: subtotal,
-      dontSendCutlery: false,
+      dontSendCutlery,
       isVipMode: false,
       generalNote,
     };
-  }, [items, restaurantId, restaurantName, generalNote]);
+  }, [items, restaurantId, restaurantName, generalNote, dontSendCutlery]);
 }
 
 export function useCartQuery() {
@@ -88,14 +116,57 @@ export function useAddToCartMutation() {
     }) => {
       if (CASE_CHECKOUT_ENABLED) {
         const addonExtra = (input.addons ?? []).reduce((s, a) => s + Number(a.price ?? 0), 0);
-        const unit = Number(input.price ?? 0) + addonExtra;
+        let unit = Number(input.price ?? 0) + addonExtra;
+        let itemName = input.itemName ?? 'Item';
+        let restaurantName = input.restaurantName;
+
+        // If caller forgot price, resolve from merchant menu so cart never stores 0.
+        if (!(unit > 0) && input.restaurantId && input.menuItemId) {
+          try {
+            const menu = await fetchCaseMerchantMenu(input.restaurantId);
+            const match = menu.items.find(
+              (it) =>
+                String(it.id) === String(input.menuItemId) ||
+                String(it._id) === String(input.menuItemId),
+            );
+            if (match) {
+              unit = Number(match.discountedPrice ?? match.price ?? 0) + addonExtra;
+              if (!input.itemName || input.itemName === 'Item') itemName = match.itemName;
+              if (!restaurantName) restaurantName = menu.restaurantName;
+            }
+          } catch {
+            /* keep unit as-is; repair pass can still heal later */
+          }
+        }
+
+        if (!(unit > 0)) {
+          throw new Error('Item price is missing. Try again from the store menu.');
+        }
+
+        // Normal adds must not leave a reorder draft that hijacks checkout totals
+        try {
+          await clearReorderDraft();
+        } catch {
+          /* ignore */
+        }
+
+        if (__DEV__) {
+          console.log('[cart] add', {
+            restaurantId: input.restaurantId,
+            menuItemId: input.menuItemId,
+            itemName,
+            price: unit,
+            qty: input.quantity,
+          });
+        }
+
         addLocal({
           restaurantId: input.restaurantId,
-          restaurantName: input.restaurantName,
+          restaurantName,
           menuItemId: input.menuItemId,
-          itemName: input.itemName ?? 'Item',
+          itemName,
           quantity: input.quantity,
-          price: unit > 0 ? unit : Number(input.price ?? 0),
+          price: unit,
           specialInstructions: input.specialInstructions,
         });
         return getCaseCartSnapshot();
@@ -190,10 +261,24 @@ export function useRemoveCouponMutation() {
 
 export function useUpdateCartPreferencesMutation() {
   const qc = useQueryClient();
+  const setNote = useCaseCartStore((s) => s.setNote);
+  const setDontSendCutlery = useCaseCartStore((s) => s.setDontSendCutlery);
+
   return useMutation({
-    mutationFn: updateCartPreferences,
+    mutationFn: async (input: {
+      generalNote?: string;
+      dontSendCutlery?: boolean;
+      isVipMode?: boolean;
+    }) => {
+      if (CASE_CHECKOUT_ENABLED) {
+        if (input.generalNote !== undefined) setNote(input.generalNote);
+        if (input.dontSendCutlery !== undefined) setDontSendCutlery(input.dontSendCutlery);
+        return getCaseCartSnapshot();
+      }
+      return updateCartPreferences(input);
+    },
     onSuccess: (cart) => {
-      if (cart) qc.setQueryData(cartKeys.all, cart);
+      if (cart && !CASE_CHECKOUT_ENABLED) qc.setQueryData(cartKeys.all, cart);
     },
   });
 }

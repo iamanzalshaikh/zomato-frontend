@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,6 +20,40 @@ type Props = {
   offerBadge?: string | null;
   onPress: (id: string) => void;
 };
+
+function SafeShopImage({
+  uri,
+  style,
+  placeholderBg,
+  icon = 'image-outline',
+}: {
+  uri?: string | null;
+  style: any;
+  placeholderBg: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+}) {
+  const [failed, setFailed] = useState(false);
+  const src = useMemo(() => (uri && uri.trim().length > 0 ? { uri } : null), [uri]);
+
+  if (!src || failed) {
+    return (
+      <View style={[style, { backgroundColor: placeholderBg, alignItems: 'center', justifyContent: 'center' }]}>
+        <Ionicons name={icon} size={20} color="#A1A1AA" />
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={src}
+      style={style}
+      contentFit="cover"
+      transition={0}
+      cachePolicy="memory-disk"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 export const ShopCard = memo(function ShopCard({
   merchant,
@@ -44,6 +78,8 @@ export const ShopCard = memo(function ShopCard({
     const catLabel = catMeta?.short || merchant.businessType;
     return (
       <Pressable
+        testID={`shop-card-${merchant.id}`}
+        accessibilityLabel={merchant.restaurantName}
         onPress={() => onPress(merchant.id)}
         style={({ pressed }) => [
           styles.listCard,
@@ -56,13 +92,11 @@ export const ShopCard = memo(function ShopCard({
       >
         {/* Banner image wrapper */}
         <View style={styles.listImageWrap}>
-          <Image 
-            source={{ uri: cover }} 
-            style={styles.listImage} 
-            contentFit="cover" 
-            transition={200}
-            cachePolicy="memory-disk"
-            placeholder={isDark ? '#18181C' : CaseUi.field}
+          <SafeShopImage
+            uri={cover}
+            style={styles.listImage}
+            placeholderBg={isDark ? '#18181C' : CaseUi.field}
+            icon="storefront-outline"
           />
           
           {/* Overlay badge (Gold ticket/icon) on top-left of banner */}
@@ -90,12 +124,11 @@ export const ShopCard = memo(function ShopCard({
         <View style={styles.listBodyRow}>
           {/* Circular logo */}
           <View style={[styles.listLogoCircle, { borderColor: isDark ? '#27272A' : '#E4E4E7' }]}>
-            <Image 
-              source={{ uri: logo }} 
-              style={styles.listLogoImg} 
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              placeholder={isDark ? '#18181C' : CaseUi.field}
+            <SafeShopImage
+              uri={logo}
+              style={styles.listLogoImg}
+              placeholderBg={isDark ? '#18181C' : CaseUi.field}
+              icon="storefront-outline"
             />
           </View>
 
@@ -159,15 +192,16 @@ export const ShopCard = memo(function ShopCard({
   if (variant === 'compact') {
     return (
       <Pressable
+        testID={`shop-card-${merchant.id}`}
+        accessibilityLabel={merchant.restaurantName}
         onPress={() => onPress(merchant.id)}
         style={({ pressed }) => [styles.compactCard, pressed && styles.pressed]}
       >
-        <Image 
-          source={{ uri: logo }} 
-          style={styles.compactLogo} 
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          placeholder={isDark ? '#18181C' : CaseUi.field}
+        <SafeShopImage
+          uri={logo}
+          style={styles.compactLogo}
+          placeholderBg={isDark ? '#18181C' : CaseUi.field}
+          icon="storefront-outline"
         />
         <View style={styles.listBody}>
           <Text style={styles.nameSm} numberOfLines={1}>{merchant.restaurantName}</Text>
@@ -193,6 +227,8 @@ export const ShopCard = memo(function ShopCard({
 
   return (
     <Pressable
+      testID={`shop-card-${merchant.id}`}
+      accessibilityLabel={merchant.restaurantName}
       onPress={() => onPress(merchant.id)}
       style={({ pressed }) => [
         { width },
@@ -205,13 +241,11 @@ export const ShopCard = memo(function ShopCard({
       ]}
     >
       <View style={styles.coverWrap}>
-        <Image 
-          source={{ uri: cover }} 
-          style={styles.cover} 
-          contentFit="cover" 
-          transition={200}
-          cachePolicy="memory-disk"
-          placeholder={isDark ? '#18181C' : CaseUi.field}
+        <SafeShopImage
+          uri={cover}
+          style={styles.cover}
+          placeholderBg={isDark ? '#18181C' : CaseUi.field}
+          icon="storefront-outline"
         />
         <LinearGradient
           colors={['transparent', 'rgba(0,0,0,0.68)']}

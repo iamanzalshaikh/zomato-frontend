@@ -1,32 +1,36 @@
 import { useMemo } from 'react';
-import { useQueries } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
-import { couponKeys } from '@/hooks/queries/coupons';
 import { pickPrimaryCoupon, formatCouponBadge } from '@/lib/offerDisplay';
-import { fetchCouponsByRestaurant } from '@/services/coupons';
+import { fetchActiveCoupons } from '@/services/coupons';
 
-export function useRestaurantOfferBadges(restaurantIds: string[]) {
+/**
+ * Offer badges for shop cards — ONE network call (platform coupons),
+ * not N× /coupons/restaurant/:id.
+ */
+export function useRestaurantOfferBadges(restaurantIds: string[], _limit = 6) {
   const uniqueIds = useMemo(
     () => [...new Set(restaurantIds.filter(Boolean))],
     [restaurantIds],
   );
 
-  const queries = useQueries({
-    queries: uniqueIds.map((id) => ({
-      queryKey: couponKeys.byRestaurant(id),
-      queryFn: () => fetchCouponsByRestaurant(id),
-      staleTime: 120_000,
-      enabled: Boolean(id),
-    })),
+  const q = useQuery({
+    queryKey: ['coupons', 'active'],
+    queryFn: fetchActiveCoupons,
+    enabled: uniqueIds.length > 0,
+    staleTime: 5 * 60_000,
+    gcTime: 15 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   return useMemo(() => {
     const badges: Record<string, string | null> = {};
-    uniqueIds.forEach((id, index) => {
-      const coupons = queries[index]?.data?.coupons ?? [];
-      const primary = pickPrimaryCoupon(coupons);
-      badges[id] = primary ? formatCouponBadge(primary) : null;
+    const primary = pickPrimaryCoupon(q.data?.coupons ?? []);
+    const label = primary ? formatCouponBadge(primary) : null;
+    uniqueIds.forEach((id) => {
+      badges[id] = label;
     });
     return badges;
-  }, [uniqueIds, queries]);
+  }, [uniqueIds, q.data]);
 }

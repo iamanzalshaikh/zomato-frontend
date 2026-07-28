@@ -28,14 +28,26 @@ const PRODUCTION_API_URL = BACKEND_URLS.production.api;
 const PRODUCTION_SOCKET_URL = BACKEND_URLS.production.socket;
 
 const DEFAULT_BACKEND_PORT = BACKEND_URLS.localPort;
-const FALLBACK_LAN_HOST = '192.168.1.100';
+const FALLBACK_LAN_HOST = '192.168.1.102';
 /** 127.0.0.1 works with `adb reverse tcp:5000 tcp:5000`; LAN IP works on Windows emulator without adb */
 const ANDROID_EMULATOR_HOST =
   process.env.EXPO_PUBLIC_ANDROID_API_HOST?.trim() || FALLBACK_LAN_HOST;
 
+/** Rewrite stale EXPO_PUBLIC LAN IPs after .env IP changes (Metro often caches old values). */
+function withCurrentLanHost(url: string): string {
+  if (__DEV__ && /192\.168\.\d+\.\d+/.test(url) && !url.includes(FALLBACK_LAN_HOST)) {
+    return url.replace(/192\.168\.\d+\.\d+/g, FALLBACK_LAN_HOST);
+  }
+  return url;
+}
+
 function isAndroidEmulator(): boolean {
   if (Platform.OS !== 'android') return false;
-  const constants = Platform.constants as { Model?: string; Manufacturer?: string; Fingerprint?: string };
+  const constants = Platform.constants as {
+    Model?: string;
+    Manufacturer?: string;
+    Fingerprint?: string;
+  };
   const model = String(constants?.Model ?? '');
   const manufacturer = String(constants?.Manufacturer ?? '');
   const fingerprint = String(constants?.Fingerprint ?? '');
@@ -61,7 +73,8 @@ function resolveDevHostFromExpo(): string | null {
     }
   }
 
-  const legacy = (Constants as { manifest?: { debuggerHost?: string } }).manifest?.debuggerHost;
+  const legacy = (Constants as { manifest?: { debuggerHost?: string } }).manifest
+    ?.debuggerHost;
   if (legacy && typeof legacy === 'string') {
     const host = legacy.split(':')[0]?.trim();
     if (
@@ -111,14 +124,14 @@ function getDevSocketUrl(): string {
 }
 
 export const getApiUrl = (): string => {
-  const envUrl = process.env.EXPO_PUBLIC_API_URL;
-  if (envUrl) return envUrl;
+  const envUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (envUrl) return withCurrentLanHost(envUrl);
   return isProduction ? PRODUCTION_API_URL : getDevApiUrl();
 };
 
 export const getSocketUrl = (): string => {
-  const envUrl = process.env.EXPO_PUBLIC_SOCKET_URL;
-  if (envUrl) return envUrl;
+  const envUrl = process.env.EXPO_PUBLIC_SOCKET_URL?.trim();
+  if (envUrl) return withCurrentLanHost(envUrl);
   return isProduction ? PRODUCTION_SOCKET_URL : getDevSocketUrl();
 };
 

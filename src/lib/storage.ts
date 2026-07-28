@@ -10,6 +10,17 @@ const ACCESS_TOKEN_KEY = 'auth.accessToken';
 const REFRESH_TOKEN_KEY = 'auth.refreshToken';
 
 let memory: Record<string, string | undefined> = {};
+/** Hot-path cache — avoids SecureStore/AsyncStorage on every API call. */
+let cachedAccessToken: string | null | undefined;
+let cachedRefreshToken: string | null | undefined;
+/**
+ * In-flight dedup — without this, N requests firing before the cache is warm
+ * (e.g. a cold-start burst of bootstrap/popular/wallet/orders/notifications)
+ * each pay their own full SecureStore native-bridge round trip in parallel.
+ * Mirrors the refreshPromise pattern already used in apiFetch.ts.
+ */
+let accessTokenPromise: Promise<string | null> | null = null;
+let refreshTokenPromise: Promise<string | null> | null = null;
 
 function hasSecureStoreNativeModule(): boolean {
   return requireOptionalNativeModule('ExpoSecureStore') != null;
@@ -82,17 +93,35 @@ async function secureDelete(key: string): Promise<void> {
 }
 
 export async function getAccessToken(): Promise<string | null> {
-  return secureGet(ACCESS_TOKEN_KEY);
+  if (cachedAccessToken !== undefined) return cachedAccessToken;
+  if (!accessTokenPromise) {
+    accessTokenPromise = secureGet(ACCESS_TOKEN_KEY).finally(() => {
+      accessTokenPromise = null;
+    });
+  }
+  const token = await accessTokenPromise;
+  cachedAccessToken = token;
+  return token;
 }
 
 export async function getRefreshToken(): Promise<string | null> {
-  return secureGet(REFRESH_TOKEN_KEY);
+  if (cachedRefreshToken !== undefined) return cachedRefreshToken;
+  if (!refreshTokenPromise) {
+    refreshTokenPromise = secureGet(REFRESH_TOKEN_KEY).finally(() => {
+      refreshTokenPromise = null;
+    });
+  }
+  const token = await refreshTokenPromise;
+  cachedRefreshToken = token;
+  return token;
 }
 
 export async function setTokens(input: {
   accessToken: string;
   refreshToken: string;
 }): Promise<void> {
+  cachedAccessToken = input.accessToken;
+  cachedRefreshToken = input.refreshToken;
   await Promise.all([
     secureSet(ACCESS_TOKEN_KEY, input.accessToken),
     secureSet(REFRESH_TOKEN_KEY, input.refreshToken),
@@ -100,6 +129,8 @@ export async function setTokens(input: {
 }
 
 export async function clearTokens(): Promise<void> {
+  cachedAccessToken = null;
+  cachedRefreshToken = null;
   await Promise.all([secureDelete(ACCESS_TOKEN_KEY), secureDelete(REFRESH_TOKEN_KEY)]);
   memory = {};
 }

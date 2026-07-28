@@ -2,10 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 
 import {
   fetchCaseBootstrap,
+  fetchCaseBanners,
   fetchCaseDeliveryPoints,
   fetchCaseFaq,
   fetchCaseMerchantMenu,
   fetchCaseMerchants,
+  fetchCasePopularNearYou,
   fetchCaseSupport,
   type CaseMerchantsResult,
 } from '@/services/case';
@@ -25,6 +27,10 @@ export const caseKeys = {
     page?: number;
     limit?: number;
   }) => [...caseKeys.all, 'merchants', params] as const,
+  popularNearYou: (params: { businessType?: string | null; limit?: number }) =>
+    [...caseKeys.all, 'popular-near-you', params] as const,
+  banners: (params: { placement: string; businessType?: string | null }) =>
+    [...caseKeys.all, 'banners', params] as const,
 };
 
 export function useCaseBootstrapQuery() {
@@ -64,6 +70,44 @@ export function useCaseMerchantsQuery(
   });
   usePerfQuery(`CaseMerchants(${businessType ?? 'ALL'})`, q.isFetching, q.dataUpdatedAt);
   return q;
+}
+
+export function useCasePopularNearYouQuery(
+  businessType: string | null,
+  options?: { limit?: number; enabled?: boolean },
+) {
+  const limit = options?.limit ?? 24;
+  return useQuery({
+    queryKey: caseKeys.popularNearYou({ businessType, limit }),
+    queryFn: () =>
+      fetchCasePopularNearYou({
+        businessType: businessType ?? undefined,
+        limit,
+      }),
+    enabled: options?.enabled !== false,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useCaseBannersQuery(
+  placement: 'HOME' | 'CATEGORY' | 'RESTAURANT' | 'CHECKOUT',
+  businessType?: string | null,
+  options?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: caseKeys.banners({ placement, businessType }),
+    queryFn: () =>
+      fetchCaseBanners({
+        placement,
+        businessType: businessType ?? undefined,
+      }),
+    enabled: options?.enabled !== false,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    placeholderData: (prev) => prev,
+  });
 }
 
 export function useCaseDeliveryPointsQuery() {

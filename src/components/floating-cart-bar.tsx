@@ -1,5 +1,5 @@
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeInUp, FadeOutDown, ZoomIn } from 'react-native-reanimated';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeInUp, FadeOutDown } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
 type Props = {
@@ -8,7 +8,7 @@ type Props = {
   total: number;
   restaurantName?: string | null;
   onPress: () => void;
-  /** Distance from screen bottom — use ~72 on tab screens, ~20 on full screens */
+  /** Distance from screen bottom — use ~12 on tab screens, ~20 on full screens */
   bottom?: number;
 };
 
@@ -23,6 +23,7 @@ export function FloatingCartBar({
   if (!visible || itemCount <= 0) return null;
 
   const label = itemCount === 1 ? '1 item' : `${itemCount} items`;
+  const amount = Math.round(Number(total) || 0);
 
   return (
     <Animated.View
@@ -34,15 +35,15 @@ export function FloatingCartBar({
         onPress={onPress}
         style={({ pressed }) => [styles.bar, pressed && styles.barPressed]}
         accessibilityRole="button"
-        accessibilityLabel="View cart"
+        accessibilityLabel={`View cart, ${label}, J$${amount}`}
       >
         <View style={styles.left}>
-          <Animated.View entering={ZoomIn.duration(220)} style={styles.badge}>
+          <View style={styles.badge}>
             <Ionicons name="bag-handle" size={18} color="#ff5a00" />
             <View style={styles.countPill}>
               <Text style={styles.countText}>{itemCount}</Text>
             </View>
-          </Animated.View>
+          </View>
           <View style={styles.copy}>
             <Text style={styles.heading}>View Cart</Text>
             <Text style={styles.sub} numberOfLines={1}>
@@ -52,7 +53,7 @@ export function FloatingCartBar({
         </View>
 
         <View style={styles.right}>
-          <Text style={styles.total}>J${Math.round(total)}</Text>
+          <Text style={styles.total}>J${amount}</Text>
           <View style={styles.chevron}>
             <Ionicons name="chevron-forward" size={14} color="#ffffff" />
           </View>
@@ -67,8 +68,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 14,
     right: 14,
-    zIndex: 50,
-    elevation: 10,
+    zIndex: 200,
+    elevation: 24,
   },
   bar: {
     flexDirection: 'row',
@@ -76,7 +77,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: '#ff5a00',
     borderRadius: 14,
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 12,
     shadowColor: '#ff5a00',
     shadowOffset: { width: 0, height: 6 },

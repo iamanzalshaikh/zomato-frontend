@@ -22,12 +22,14 @@ export function useRestaurantByIdQuery(restaurantId: string) {
   return q;
 }
 
-export function useRecommendedRestaurantsQuery() {
+export function useRecommendedRestaurantsQuery(enabled = true) {
   const q = useQuery({
     queryKey: restaurantKeys.recommended,
     queryFn: fetchRecommendedRestaurants,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
+    enabled,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnMount: false,
   });
   usePerfQuery('RecommendedRestaurants', q.isFetching, q.dataUpdatedAt);
   return q;

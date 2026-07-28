@@ -12,10 +12,15 @@ import {
   placeCaseOrder,
   sendCaseOrderChat,
   uploadCaseBankReceipts,
+  uploadCaseBankReceiptImage,
   type CaseQuoteInput,
   type PlaceCaseOrderInput,
 } from '@/services/caseOrders';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { usePerfQuery } from '@/lib/perf';
+import { orderDetailKeys } from '@/hooks/queries/orderDetail';
+
+const TERMINAL_ORDER_STATUSES = new Set(['DELIVERED', 'CANCELLED']);
 
 export const caseOrderKeys = {
   all: ['caseOrders'] as const,
@@ -25,12 +30,43 @@ export const caseOrderKeys = {
   quote: (payload: unknown) => [...caseOrderKeys.all, 'quote', payload] as const,
 };
 
-export function useCaseOrdersQuery() {
+/**
+ * Canonical quote payload shape shared by Cart and Checkout. Both screens
+ * must always populate every field (with explicit `false`/`undefined`
+ * defaults) so an unchanged cart produces an identical cache key across
+ * screens instead of forcing a fresh `/public/quote` round-trip on every
+ * cart <-> checkout navigation.
+ */
+export function buildCaseQuoteInput(params: {
+  lines: CaseQuoteInput['lines'];
+  deliveryPointId?: string | null;
+  couponCode?: string;
+  useLoyaltyFreeDelivery?: boolean;
+  expressDelivery?: boolean;
+  userId?: string;
+}): CaseQuoteInput {
+  return {
+    lines: params.lines,
+    deliveryPointId: params.deliveryPointId ?? undefined,
+    couponCode: params.couponCode?.trim() || undefined,
+    useLoyaltyFreeDelivery: params.useLoyaltyFreeDelivery ?? false,
+    expressDelivery: params.expressDelivery ?? false,
+    userId: params.userId,
+  };
+}
+
+export function useCaseOrdersQuery(options?: { enabled?: boolean }) {
+  // Keep the same query key as useOrderHistoryQuery (CASE mode) so Home/tabs share one fetch.
+  // Data is normalized to include `_id` for classic Order UI compatibility.
   const q = useQuery({
     queryKey: caseOrderKeys.list(),
-    queryFn: fetchCaseOrders,
-    staleTime: 2 * 60 * 1000, // 2 minutes - orders change frequently
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    queryFn: async () => {
+      const orders = await fetchCaseOrders();
+      return orders.map((o) => ({ ...o, _id: o._id || o.id }));
+    },
+    enabled: options?.enabled !== false,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
   usePerfQuery('CaseOrders', q.isFetching, q.dataUpdatedAt);
   return q;
@@ -41,20 +77,37 @@ export function useCaseOrderQuery(orderId: string) {
     queryKey: caseOrderKeys.detail(orderId),
     queryFn: () => fetchCaseOrderById(orderId),
     enabled: Boolean(orderId),
-    staleTime: 30_000, // 30 seconds - active order needs fresh data
-    refetchInterval: 15_000, // Poll every 15 seconds for active orders
+    staleTime: 30_000,
+    refetchInterval: (query) => {
+      const status = String(
+        (query.state.data as { orderStatus?: string; status?: string } | undefined)?.orderStatus ??
+          (query.state.data as { status?: string } | undefined)?.status ??
+          '',
+      ).toUpperCase();
+      if (TERMINAL_ORDER_STATUSES.has(status)) return false;
+      return 20_000;
+    },
   });
   usePerfQuery(`CaseOrder(${orderId})`, q.isFetching, q.dataUpdatedAt);
   return q;
 }
 
+/** Debounced quote so tip/coupon keystrokes don't spam `/public/quote`. */
 export function useCaseQuoteQuery(input: CaseQuoteInput | null, enabled = true) {
-  return useQuery({
-    queryKey: caseOrderKeys.quote(input),
-    queryFn: () => fetchCaseQuote(input!),
-    enabled: Boolean(enabled && input?.lines?.length),
-    staleTime: 20_000,
+  const debouncedInput = useDebouncedValue(input, 550);
+  const q = useQuery({
+    queryKey: caseOrderKeys.quote(debouncedInput),
+    queryFn: () => fetchCaseQuote(debouncedInput!),
+    enabled: Boolean(enabled && debouncedInput?.lines?.length),
+    staleTime: 90_000,
+    gcTime: 5 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    placeholderData: (previous) => previous,
   });
+  usePerfQuery('CaseQuote', q.isFetching, q.dataUpdatedAt);
+  return q;
 }
 
 export function usePlaceCaseOrderMutation() {
@@ -109,12 +162,49 @@ export function useUploadCaseReceiptsMutation() {
   });
 }
 
+export function useUploadCaseReceiptImageMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      orderId,
+      file,
+    }: {
+      orderId: string;
+      file: {
+        imageBase64: string;
+        mimeType?: string | null;
+        uri?: string | null;
+        fileName?: string | null;
+      };
+    }) => uploadCaseBankReceiptImage(orderId, file),
+    onSuccess: (data, vars) => {
+      if (__DEV__) console.log('[receipt] mutation success', vars.orderId);
+      const updated = (data as any)?.order ?? data;
+      if (updated) {
+        qc.setQueryData(orderDetailKeys.byId(vars.orderId), (prev: any) => ({
+          ...(prev ?? {}),
+          ...updated,
+          paymentStatus: updated.paymentStatus ?? 'PENDING_VERIFICATION',
+          payment: updated.payment ?? prev?.payment,
+        }));
+      }
+      void qc.invalidateQueries({ queryKey: caseOrderKeys.detail(vars.orderId) });
+      void qc.invalidateQueries({ queryKey: caseOrderKeys.list() });
+      void qc.invalidateQueries({ queryKey: orderDetailKeys.byId(vars.orderId) });
+    },
+    onError: (err: Error, vars) => {
+      if (__DEV__) console.warn('[receipt] mutation error', vars.orderId, err.message);
+    },
+  });
+}
+
 export function useCaseChatQuery(orderId: string) {
   return useQuery({
     queryKey: caseOrderKeys.chat(orderId),
     queryFn: () => fetchCaseOrderChat(orderId),
     enabled: Boolean(orderId),
-    refetchInterval: 10_000,
+    staleTime: 8_000,
+    refetchInterval: 15_000,
   });
 }
 

@@ -1,7 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { CaseUi } from '@/constants/caseUi';
 import { useCart } from '@/hooks/use-cart';
@@ -19,7 +19,14 @@ export default function AppTabs() {
   const { colors, activeScheme } = useThemeContext();
   const isDark = activeScheme === 'dark';
 
-  const ordersQ = useOrderHistoryQuery();
+  // Defer badge fetch so Home bootstrap/popular win the network on cold start
+  const [ordersReady, setOrdersReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setOrdersReady(true), 900);
+    return () => clearTimeout(t);
+  }, []);
+
+  const ordersQ = useOrderHistoryQuery({ enabled: ordersReady });
   const activeOrderCount = useMemo(() => {
     const list = Array.isArray(ordersQ.data) ? ordersQ.data : [];
     return list.filter((o) => !TERMINAL.has(String(o.orderStatus ?? '').toUpperCase())).length;
@@ -29,6 +36,8 @@ export default function AppTabs() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        lazy: true,
+        freezeOnBlur: true,
         tabBarActiveTintColor: CaseUi.orange,
         tabBarInactiveTintColor: isDark ? '#888888' : CaseUi.muted,
         tabBarStyle: {

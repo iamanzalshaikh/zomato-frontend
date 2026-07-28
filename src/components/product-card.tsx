@@ -77,7 +77,7 @@ export const ProductCard = memo(function ProductCard({
           source={{ uri: image }} 
           style={styles.image} 
           contentFit="cover" 
-          transition={200}
+          transition={0}
           cachePolicy="memory-disk"
           placeholder={isDark ? '#18181C' : CaseUi.field}
         />

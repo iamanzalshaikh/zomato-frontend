@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
-import { connectSocket, getSocketInstance, joinOrderRoom, leaveOrderRoom } from '@/lib/socketClient';
+import { connectSocket, getSocketInstance } from '@/lib/socketClient';
 import { SocketEvents, type OrderSocketPayload } from '@/lib/socketEvents';
 import { orderDetailKeys } from '@/hooks/queries/orderDetail';
 
@@ -47,7 +47,6 @@ function mergeTracking(prev: Record<string, unknown> | undefined, payload: Order
 
 export function useOrderSocket(orderId: string | undefined) {
   const qc = useQueryClient();
-  const joinedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!orderId) return;
@@ -58,9 +57,24 @@ export function useOrderSocket(orderId: string | undefined) {
         const pid = String(payload?.orderId ?? '');
         if (pid && pid !== orderId) return;
         qc.setQueryData(orderDetailKeys.track(orderId), (prev: any) => mergeTracking(prev, payload));
-        if (event !== SocketEvents.RIDER_LOCATION_UPDATE) {
-          void qc.invalidateQueries({ queryKey: orderDetailKeys.byId(orderId) });
-        }
+        qc.setQueryData(orderDetailKeys.byId(orderId), (prev: any) =>
+          prev
+            ? {
+                ...mergeTracking(prev, payload),
+                payment: prev.payment
+                  ? { ...prev.payment, status: payload.paymentStatus ?? prev.payment.status }
+                  : prev.payment,
+              }
+            : prev,
+        );
+        // No invalidateQueries here: the always-mounted useCustomerSocket
+        // (tabs layout) already invalidates orderDetailKeys.byId/caseOrderKeys
+        // for this exact orderId on the same events, globally, exactly once.
+        // This hook can run on top of it on 3 different order-related screens
+        // simultaneously (order detail, tracking, bank-transfer) — invalidating
+        // here too turned one server event into a 3-4x duplicate refetch storm.
+        // The setQueryData merges above already keep this screen's UI in sync
+        // instantly; the real refetch still happens via useCustomerSocket.
       };
       return { event, handler };
     });
@@ -69,9 +83,14 @@ export function useOrderSocket(orderId: string | undefined) {
       try {
         const s = await connectSocket();
         if (!alive) return;
+        // Deliberately no joinOrderRoom() here: every authenticated customer
+        // socket is already auto-joined to `user:{userId}` on connect
+        // (socket.handlers.ts), and the backend's broadcastOrderEvent always
+        // emits to that room for every order event regardless. Also joining
+        // `order:{orderId}` made every event arrive twice — once per room —
+        // which is exactly the duplicate order_updated/order_confirmed
+        // pattern that was doubling the notification/order-list refetch cost.
         handlers.forEach(({ event, handler }) => s.on(event, handler));
-        await joinOrderRoom(orderId);
-        if (alive) joinedRef.current = orderId;
       } catch {
         // REST polling remains fallback on track screen
       }
@@ -82,10 +101,6 @@ export function useOrderSocket(orderId: string | undefined) {
       const sock = getSocketInstance();
       if (sock) {
         handlers.forEach(({ event, handler }) => sock.off(event, handler));
-      }
-      if (joinedRef.current === orderId) {
-        leaveOrderRoom(orderId);
-        joinedRef.current = null;
       }
     };
   }, [orderId, qc]);
